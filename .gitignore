@@ -1,0 +1,26 @@
+# signing key: never publish (updates must be signed with the same key)
+keys/
+# build output
+build/
+out/
+*.idsig
+# Android SDK jar (downloaded by setup; large)
+sdk-dl/
+# secrets / keystores / credentials: never commit
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key
+keys/
+.env
+*.pass
+pass.txt
+# packaged artifacts and local files
+*.apk
+*.aab
+*.idsig
+local.properties
+.idea/
+*.log

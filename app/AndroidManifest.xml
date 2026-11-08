@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="dev.gitesh.sbmods"
+    android:versionCode="13"
+    android:versionName="3.6">
+
+    <uses-sdk android:minSdkVersion="34" android:targetSdkVersion="35" />
+
+    <!-- Only apps signed with this app's key can control the mod inside SystemUI. -->
+    <permission
+        android:name="dev.gitesh.sbmods.permission.CONTROL"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="dev.gitesh.sbmods.permission.CONTROL" />
+
+    <!-- App picker for the "open an app" tap action -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
+    <application
+        android:label="StatusBar Mods"
+        android:icon="@drawable/ic_launcher"
+        android:allowBackup="false"
+        android:theme="@android:style/Theme.DeviceDefault.DayNight">
+
+        <meta-data android:name="xposedmodule" android:value="true" />
+        <meta-data android:name="xposeddescription" android:value="Phone temperature next to the status bar clock (more items later)" />
+        <meta-data android:name="xposedminversion" android:value="93" />
+        <meta-data android:name="xposedscope" android:resource="@array/xposed_scope" />
+
+        <activity
+            android:name=".ui.SettingsActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

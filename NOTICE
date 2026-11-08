@@ -1,0 +1,15 @@
+StatusBar Mods
+Copyright (C) 2025-2026 Gitesh Raheja
+
+Licensed under the GNU General Public License v3.0 or later (see LICENSE).
+The name "StatusBar Mods", the package name dev.gitesh.sbmods and the author's
+signing key are not licensed for use by forks/redistributions that imply
+official origin; rename your fork and sign it with your own key.
+
+Third-party:
+- stubs/de/robv/android/xposed/**: compile-only API signature stubs so the
+  module builds without the Xposed framework. They contain no framework code and
+  are not packaged into the APK. The real API is provided at runtime by the
+  Vector/LSPosed framework (Xposed API, Apache License 2.0).
+- Android SDK android.jar (sdk-dl/) is downloaded separately under the Android
+  SDK License and is not redistributed in this repository.
