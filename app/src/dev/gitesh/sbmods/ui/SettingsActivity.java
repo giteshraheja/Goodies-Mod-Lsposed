@@ -361,6 +361,8 @@ public final class SettingsActivity extends Activity {
                 v -> cfg.notifMax = v, 0);
         endGroup("Samsung shows 3 app icons on the left, then a dot for the rest. Raise this to see more. It applies the next time the status bar restarts, and there must be room: a live activity takes some of it.");
 
+        buildStatusIcons();
+
         group("Recents: kept-open apps");
         slider("Apps you can keep open", 0, 12, cfg.lockMax, v -> v == 0 ? "Samsung's (3)" : v + " apps",
                 v -> cfg.lockMax = v, 0);
@@ -382,6 +384,91 @@ public final class SettingsActivity extends Activity {
         slider("Space between items", -1, 16, cfg.itemGap, v -> v < 0 ? "Samsung's" : v + " dp",
                 v -> { cfg.itemGap = v; posView.invalidate(); }, -1);
         endGroup("Less space leaves more room for icons. “Tight” and “Custom” let the status bar reach the curved edges of your screen.");
+    }
+
+    // ---- Status icons: label -> status bar slots (all added / removed together). Easy to extend: add a row.
+    private static final String[][] ICONS = {
+        {"Alarm", "alarm_clock"},
+        {"NFC", "nfc", "nfc_on"},
+        {"Bluetooth", "bluetooth", "bluetooth_connected"},
+        {"Sound mode (vibrate / mute)", "volume", "zen"},
+        {"Do not disturb", "dnd"},
+        {"Location", "location"},
+        {"VoLTE / calling icons", "ims_volte", "ims_volte2", "volte", "vowifi", "ims_vowifi"},
+        {"Headphones", "headset"},
+        {"Auto rotate", "rotate"},
+        {"Airplane mode", "airplane"},
+        {"Hotspot", "hotspot"},
+        {"Data saver", "data_saver"},
+        {"VPN", "vpn"},
+        {"Screen cast", "cast"},
+        {"Power saving / battery leaf", "power_saver"},
+    };
+
+    private String hiddenIcons;          // cached list of hidden icons; null = not read yet
+    private boolean hiddenIconsNoRoot;   // reading failed: root unavailable
+    private boolean hiddenIconsLoading;
+
+    private void loadHiddenIcons() {
+        hiddenIconsLoading = true;
+        new Thread(() -> {
+            String v = Helper.readSecure("icon_blacklist");
+            runOnUiThread(() -> {
+                hiddenIconsLoading = false;
+                hiddenIconsNoRoot = v == null;
+                hiddenIcons = v;
+                if (tab == T_LAYOUT) refresh();
+            });
+        }).start();
+    }
+
+    /** Adds (hide) or removes (show) the slots in a comma-separated list; every other entry keeps its place. Duplicates are dropped. */
+    static String mergeHidden(String current, String[] slots, boolean hide) {
+        List<String> out = new ArrayList<>();
+        if (current != null && !current.trim().equals("null")) {
+            for (String e : current.split(",")) {
+                e = e.trim();
+                if (e.isEmpty() || out.contains(e)) continue;
+                boolean ours = false;
+                for (String sl : slots) if (sl.equals(e)) ours = true;
+                if (ours && !hide) continue;
+                out.add(e);
+            }
+        }
+        if (hide) for (String sl : slots) if (!out.contains(sl)) out.add(sl);
+        StringBuilder sb = new StringBuilder();
+        for (String e : out) { if (sb.length() > 0) sb.append(','); sb.append(e); }
+        return sb.toString();
+    }
+
+    private void buildStatusIcons() {
+        if (hiddenIcons == null && !hiddenIconsNoRoot && !hiddenIconsLoading) loadHiddenIcons();
+        group("Status icons");
+        if (hiddenIcons == null) {
+            infoRow(hiddenIconsNoRoot ? "Needs root to read which icons are hidden" : "Checking…", null);
+        } else {
+            final String cur0 = hiddenIcons;
+            List<String> have = new ArrayList<>();
+            for (String e : cur0.split(",")) have.add(e.trim());
+            for (int i = 0; i < ICONS.length; i++) {
+                if (i > 0) divider();
+                final String[] slots = java.util.Arrays.copyOfRange(ICONS[i], 1, ICONS[i].length);
+                boolean shown = true;
+                for (String sl : slots) if (have.contains(sl)) shown = false;
+                switchRow(ICONS[i][0], null, shown, v -> {
+                    final String next = mergeHidden(hiddenIcons, slots, !v);
+                    new Thread(() -> {
+                        boolean ok = Helper.putSecure("icon_blacklist", next);
+                        runOnUiThread(() -> {
+                            if (ok) hiddenIcons = next;
+                            else Toast.makeText(this, "Couldn't change that \u2013 is root allowed?", Toast.LENGTH_LONG).show();
+                            refresh();
+                        });
+                    }).start();
+                });
+            }
+        }
+        endGroup("Hidden icons still work \u2013 only the picture in the status bar goes away. Changes show up within a few seconds.");
     }
 
     private boolean elementOn(int element) {
