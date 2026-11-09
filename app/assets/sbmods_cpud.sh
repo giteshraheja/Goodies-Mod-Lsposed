@@ -126,7 +126,8 @@ cl() { CL=""; set -- $(for p in $CPU/cpufreq/policy*; do awk '{ m = $1; for (i =
 # keep $3 cores awake in the cluster starting at cpu $1 (size $2); originals saved once; max_cpus holds, Samsung keeps resetting min_cpus, so re-assert when either drifted
 park1() { d=$CPU/cpu$1/core_ctl; [ $3 -gt $2 ] && set -- $1 $2 $2
   [ -f $ST/cc$1.max ] || { cat $d/min_cpus > $ST/cc$1.min; cat $d/max_cpus > $ST/cc$1.max; }
-  if [ "$(cat $d/max_cpus)" != "$3" ] || [ "$(cat $d/min_cpus)" -gt "$3" ]; then [ "$(cat $d/min_cpus)" -gt "$3" ] && echo $3 > $d/min_cpus; echo $3 > $d/max_cpus; fi; }
+  om=$(cat $ST/cc$1.min); [ "$om" -gt "$3" ] && om=$3   # min wanted: the original, but never above the target (so raising the target wakes cores again)
+  if [ "$(cat $d/max_cpus)" != "$3" ] || [ "$(cat $d/min_cpus)" != "$om" ]; then echo $om > $d/min_cpus; echo $3 > $d/max_cpus; echo $om > $d/min_cpus; fi; }
 # $1 = sbmods_cores value: "S,M,P" (one digit each) parks, anything else restores
 cores_apply() {
   case "$1" in [0-9],[0-9],[0-9]) ;; *) cores_restore; pk=0; ccna=""; return;; esac
@@ -158,7 +159,7 @@ battreport() { dumpsys batterystats 2>/dev/null | battparse; }
 # top apps: reads toybox `top -b -o %CPU,ARGS` on stdin (the LAST of two samples: one second apart, so it is "right now", not an average since the process started).
 # Keeps only app package names (first word of ARGS: dot, only [A-Za-z0-9._:]; ":process" stripped), adds up a package's processes, prints up to 3 "pkg:pct" above 1 %.
 topparse() { awk '/^Tasks:/ { split("", U); hdr = 0; next } /^%CPU\[/ { hdr = 1; next }
-  hdr && $1 ~ /^[0-9.]+$/ && $2 ~ /^[A-Za-z0-9._:]+$/ { n = $2; sub(/:.*/, "", n); if (n !~ /\./ || n ~ /^\./ || n ~ /sbmods_cpud/) next; U[n] += $1 }
+  hdr && $1 ~ /^[0-9.]+$/ && $2 ~ /^[A-Za-z0-9._:]+$/ { n = $2; sub(/:.*/, "", n); if (n !~ /^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$/ || n ~ /sbmods_cpud/) next; U[n] += $1 }
   END { for (k = 0; k < 3; k++) { m = ""; mv = 1; for (n in U) if (!(n in D) && U[n] > mv) { m = n; mv = U[n] }
       if (m == "") break; D[m] = 1; o = o (k ? "," : "") m ":" int(U[m] + 0.5) } print o }'; }
 topapps() { top -b -n 2 -d 1 -o %CPU,ARGS 2>/dev/null | topparse; }
