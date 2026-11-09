@@ -853,18 +853,38 @@ public final class Controller {
         if (shouldPoll()) { polling = true; bg.post(tick); }
     }
 
+    private int wake, tipWake = -1;
+
+    /** At most one tip per screen-on, whichever signal comes first (unlock, or screen on without a lock screen). */
+    private void tryTip(int w) {
+        if (tipWake == w) return;
+        tipWake = w;
+        tips.maybeShow(clockRef.get(), prefs);
+    }
+
     private final BroadcastReceiver systemReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context c, Intent i) {
             try {
                 String a = i.getAction();
                 if (Intent.ACTION_SCREEN_ON.equals(a)) {
                     screenOn = true;
+                    wake++;
+                    // no lock screen ("None" / not locked right now): Android may never say "user present", so the screen
+                    // coming on is the unlock
+                    final int w = wake;
+                    main.postDelayed(() -> {
+                        try {
+                            android.app.KeyguardManager km = ctx.getSystemService(android.app.KeyguardManager.class);
+                            if (screenOn && w == wake && (km == null || !km.isKeyguardLocked())) tryTip(w);
+                        } catch (Throwable t) { fail("tip", t); }
+                    }, 1500);
                     main.post(shiftTick);
                     startPolling();
                     restartClockTick();
                 } else if (Intent.ACTION_USER_PRESENT.equals(a)) {
+                    final int w = wake;
                     main.postDelayed(() -> {
-                        try { tips.maybeShow(clockRef.get(), prefs); } catch (Throwable t) { fail("tip", t); }
+                        try { tryTip(w); } catch (Throwable t) { fail("tip", t); }
                     }, 1500);
                 } else if (Intent.ACTION_SCREEN_OFF.equals(a)) {
                     screenOn = false;

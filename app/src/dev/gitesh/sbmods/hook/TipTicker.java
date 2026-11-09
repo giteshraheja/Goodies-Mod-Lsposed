@@ -61,7 +61,8 @@ final class TipTicker {
     private ValueAnimator anim;
     private TextView view;
     private View windowView;
-    private View faded;
+    private final java.util.ArrayList<View> faded = new java.util.ArrayList<>();
+    private final java.util.ArrayList<Float> fadedAlpha = new java.util.ArrayList<>();   // each one's own alpha (the back pill may be dimmed)
 
     TipTicker(Controller owner) { this.owner = owner; }
 
@@ -113,27 +114,18 @@ final class TipTicker {
         t.setTypeface(clock.getTypeface());
         t.setTextSize(TypedValue.COMPLEX_UNIT_PX, clock.getTextSize() * 0.85f);
         t.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        // Our own clipped window: from the left edge of the bar up to just before the right-side
-        // icons, so the text never runs under the network speed / Wi-Fi / battery icons.
+        // Our own clipped window: the left side of the bar, up to just before the camera hole (items moved to the
+        // right side, Wi-Fi, battery... are never run over).
         float d = ctx.getResources().getDisplayMetrics().density;
-        int iconsId = ctx.getResources().getIdentifier("system_icon_area", "id", Config.SYSUI);
-        View icons = iconsId == 0 ? null : clock.getRootView().findViewById(iconsId);
-        int[] hostAt = new int[2], iconsAt = new int[2];
+        int[] hostAt = new int[2];
         host.getLocationOnScreen(hostAt);
-        int windowW = host.getWidth();
-        if (icons != null && icons.isShown()) {
-            icons.getLocationOnScreen(iconsAt);
-            // the icon area is wide; its first visible child marks where icons really start
-            int start = iconsAt[0];
-            if (icons instanceof ViewGroup) {
-                ViewGroup g = (ViewGroup) icons;
-                for (int i = 0; i < g.getChildCount(); i++) {
-                    View k = g.getChildAt(i);
-                    if (k.isShown() && k.getWidth() > 0) { int[] c = new int[2]; k.getLocationOnScreen(c); start = c[0]; break; }
-                }
-            }
-            windowW = Math.max(windowW, start - hostAt[0] - Math.round(10 * d));
-        }
+        int holeLeft = clock.getRootView().getWidth() / 2 - Math.round(6 * d);
+        try {
+            android.view.WindowInsets wi = clock.getRootWindowInsets();
+            android.view.DisplayCutout dc = wi == null ? null : wi.getDisplayCutout();
+            if (dc != null) for (android.graphics.Rect r : dc.getBoundingRects()) if (r.top <= 0 && !r.isEmpty()) { holeLeft = r.left; break; }
+        } catch (Throwable ignored) {}
+        int windowW = Math.max(Math.round(100 * d), holeLeft - Math.round(8 * d) - hostAt[0]);
         FrameLayout window = new FrameLayout(ctx);
         window.setTag("sbmods-tip");
         window.setClipChildren(true);
@@ -148,8 +140,14 @@ final class TipTicker {
         view = t;
         windowView = window;
 
-        // Fade the icons on this side out while the tip runs.
-        if (row != null) { faded = row; row.animate().alpha(0f).setDuration(200).start(); }
+        // Fade everything else on the left out while the tip runs: Samsung's row, the back pill / live chip overlays,
+        // and the network speed if it was moved to the left.
+        faded.clear(); fadedAlpha.clear();
+        for (int i = 0; i < host.getChildCount(); i++) { View k = host.getChildAt(i); if (k != window && k.getVisibility() == View.VISIBLE) faded.add(k); }
+        int spId = ctx.getResources().getIdentifier("networkSpeed", "id", Config.SYSUI);
+        View sp = spId == 0 ? null : clock.getRootView().findViewById(spId);
+        if (sp != null && sp.isShown()) { int[] sa = new int[2]; sp.getLocationOnScreen(sa); if (sa[0] < holeLeft) faded.add(sp); }
+        for (View k : faded) { fadedAlpha.add(k.getAlpha()); k.animate().alpha(0f).setDuration(200).start(); }
 
         float width = windowW;
         float textW = t.getPaint().measureText(tip);
@@ -163,7 +161,11 @@ final class TipTicker {
         anim.setInterpolator(new LinearInterpolator());
         anim.setDuration(dur);
         anim.setStartDelay(200);
-        anim.addUpdateListener(a -> t.setTranslationX((float) a.getAnimatedValue()));
+        anim.addUpdateListener(a -> {
+            t.setTranslationX((float) a.getAnimatedValue());
+            // the back pill and the live chip reset their own alpha when apps change: keep them hidden until the tip is done
+            if (a.getCurrentPlayTime() > 250) for (View k : faded) if (k.getAlpha() > 0.01f) { k.animate().cancel(); k.setAlpha(0f); }
+        });
         anim.addListener(new AnimatorListenerAdapter() {
             @Override public void onAnimationEnd(Animator a) { cleanup(); }
             @Override public void onAnimationCancel(Animator a) { cleanup(); }
@@ -184,9 +186,8 @@ final class TipTicker {
         View w = windowView;
         windowView = null;
         if (w != null && w.getParent() instanceof ViewGroup) ((ViewGroup) w.getParent()).removeView(w);
-        View r = faded;
-        faded = null;
-        if (r != null) r.animate().alpha(1f).setDuration(250).start();
+        for (int i = 0; i < faded.size(); i++) faded.get(i).animate().alpha(i < fadedAlpha.size() ? fadedAlpha.get(i) : 1f).setDuration(250).start();
+        faded.clear(); fadedAlpha.clear();
     }
 
     /** Builds one reminder from what's actually configured, picked at random. */
