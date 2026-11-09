@@ -76,49 +76,58 @@ case "$(getprop debug.hwui.renderer)" in skiavk) g=vulkan;; *) g=opengl;; esac
 # highest available step at or below pct % of hw ($1 list, $2 hw max, $3 pct); the lowest step if none is
 pick() { echo "$1" | tr ' ' '\n' | awk -v hw="$2" -v pc="$3" 'NF{ if ($1*100 <= hw*pc && $1 > best) best=$1; if (low == "" || $1 < low) low=$1 } END{ print (best ? best : low) }'; }
 num() { case "$1" in ''|*[!0-9]*) echo "$2";; *) echo "$1";; esac; }
-val() { echo "$S" | sed -n "s/^$1=//p" | head -1; }
+# one setting from the last read ($S), using shell built-ins only (this runs a dozen times per pass)
+val() { _v="
+$S"; case "$_v" in *"
+$1="*) _v=${_v##*"
+$1="}; echo "${_v%%"
+"*}";; esac; }
 mem() { awk '/MemAvailable/{print int($2/1024)}' /proc/meminfo; }
 swp() { awk '/SwapTotal/{t=$2}/SwapFree/{f=$2}END{if(t>0)print int((t-f)*100/t); else print 0}' /proc/meminfo; }
 
 cpu_apply() { # $1 pct (0 = no limit)
   for p in /sys/devices/system/cpu/cpufreq/policy*; do
-    n=$(basename $p); hw=$(cat $p/cpuinfo_max_freq)
+    n=${p##*/}; hw=$(<$p/cpuinfo_max_freq)
     if [ "$1" = "0" ]; then
       [ -f $ST/$n.mode ] || continue
-      chmod 644 $p/scaling_max_freq; echo $hw > $p/scaling_max_freq; chmod $(cat $ST/$n.mode) $p/scaling_max_freq
+      chmod 644 $p/scaling_max_freq; echo $hw > $p/scaling_max_freq; chmod $(<$ST/$n.mode) $p/scaling_max_freq
       rm -f $ST/$n.mode $ST/$n.want
     else
-      t=$(pick "$(cat $p/scaling_available_frequencies)" $hw $1); [ -n "$t" ] || continue
+      # same level as last pass: the target is already worked out (working it out starts three programs per group of cores)
+      if [ "$1" = "$cpp" ] && [ -f $ST/$n.want ]; then t=$(<$ST/$n.want); else t=$(pick "$(<$p/scaling_available_frequencies)" $hw $1); fi; [ -n "$t" ] || continue
       [ -f $ST/$n.mode ] || stat -c %a $p/scaling_max_freq > $ST/$n.mode
       # write when the target changed, or when something raised the cap above ours (Samsung's heat limit only lowers it)
-      if [ "$(cat $ST/$n.want 2>/dev/null)" != "$t" ] || [ "$(cat $p/scaling_max_freq)" -gt "$t" ]; then
+      if { [ ! -f $ST/$n.want ] || [ "$(<$ST/$n.want)" != "$t" ]; } || [ "$(<$p/scaling_max_freq)" -gt "$t" ]; then
         chmod 644 $p/scaling_max_freq   # Samsung keeps some clusters read-only; unlocked only for the write
-        echo $t > $p/scaling_max_freq; chmod $(cat $ST/$n.mode) $p/scaling_max_freq; echo $t > $ST/$n.want
+        echo $t > $p/scaling_max_freq; chmod $(<$ST/$n.mode) $p/scaling_max_freq; echo $t > $ST/$n.want
       fi
     fi
   done
+  cpp=$1
 }
 
 gpu_apply() { # $1 pct
   [ -d $G ] || return
-  av=$(cat $G/available_frequencies); hw=$(echo "$av" | tr ' ' '\n' | sort -n | tail -1)
+  [ "$1" = "0" ] && [ ! -f $ST/gpu.min ] && return   # nothing of ours to undo
+  av=$(<$G/available_frequencies); [ -n "$GHW" ] || GHW=$(echo "$av" | tr ' ' '\n' | sort -n | tail -1); hw=$GHW   # top GPU step: worked out once
   if [ "$1" = "0" ]; then
     [ -f $ST/gpu.min ] || return
     echo $hw > $G/max_freq; cat $ST/gpu.min > $G/min_freq; rm -f $ST/gpu.min $ST/gpu.want
   else
-    t=$(pick "$av" $hw $1); [ -n "$t" ] || return
+    if [ "$1" = "$gpp" ] && [ -f $ST/gpu.want ]; then t=$(<$ST/gpu.want); else t=$(pick "$av" $hw $1); fi; [ -n "$t" ] || return
+    gpp=$1
     [ -f $ST/gpu.min ] || cat $G/min_freq > $ST/gpu.min
-    [ "$(cat $G/min_freq)" -gt "$t" ] && echo $t > $G/min_freq
-    if [ "$(cat $ST/gpu.want 2>/dev/null)" != "$t" ] || [ "$(cat $G/max_freq)" -gt "$t" ]; then echo $t > $G/max_freq; echo $t > $ST/gpu.want; fi
+    [ "$(<$G/min_freq)" -gt "$t" ] && echo $t > $G/min_freq
+    if { [ ! -f $ST/gpu.want ] || [ "$(<$ST/gpu.want)" != "$t" ]; } || [ "$(<$G/max_freq)" -gt "$t" ]; then echo $t > $G/max_freq; echo $t > $ST/gpu.want; fi
   fi
 }
 
 # CPU load in % since the previous call (all cores), from /proc/stat
-cpuload() { L=""; set -- $(head -1 /proc/stat); shift; t=0; for v in "$@"; do t=$((t + v)); done; i=$(($4 + $5))
+cpuload() { L=""; read -r _l < /proc/stat; set -- $_l; shift; t=0; for v in "$@"; do t=$((t + v)); done; i=$(($4 + $5))
   [ -n "$pt" ] && [ $((t - pt)) -gt 0 ] && L=$(( 100 * ((t - pt) - (i - pi)) / (t - pt) )); pt=$t; pi=$i; }
 
 # same, for the core-parking auto-wake (own state, so it never disturbs the 4 s sampler above)
-kload() { K=""; set -- $(head -1 /proc/stat); shift; t=0; for v in "$@"; do t=$((t + v)); done; i=$(($4 + $5))
+kload() { K=""; read -r _l < /proc/stat; set -- $_l; shift; t=0; for v in "$@"; do t=$((t + v)); done; i=$(($4 + $5))
   [ -n "$kt" ] && [ $((t - kt)) -gt 0 ] && K=$(( 100 * ((t - kt) - (i - ki)) / (t - kt) )); kt=$t; ki=$i; }
 
 # Per-core load in ONE awk pass over /proc/stat (no fork per core). $CS = previous "total:idle" per core ("-" = offline), $CP = last published list.
@@ -139,12 +148,12 @@ cl() { CL=""; set -- $(for p in $CPU/cpufreq/policy*; do awk '{ m = $1; for (i =
 # keep $3 cores awake in the cluster starting at cpu $1 (size $2); originals saved once; max_cpus holds, Samsung keeps resetting min_cpus, so re-assert when either drifted
 park1() { d=$CPU/cpu$1/core_ctl; [ $3 -gt $2 ] && set -- $1 $2 $2
   [ -f $ST/cc$1.max ] || { cat $d/min_cpus > $ST/cc$1.min; cat $d/max_cpus > $ST/cc$1.max; }
-  om=$(cat $ST/cc$1.min); [ "$om" -gt "$3" ] && om=$3   # min wanted: the original, but never above the target (so raising the target wakes cores again)
-  if [ "$(cat $d/max_cpus)" != "$3" ] || [ "$(cat $d/min_cpus)" != "$om" ]; then echo $om > $d/min_cpus; echo $3 > $d/max_cpus; echo $om > $d/min_cpus; fi; }
+  om=$(<$ST/cc$1.min); [ "$om" -gt "$3" ] && om=$3   # min wanted: the original, but never above the target (so raising the target wakes cores again)
+  if [ "$(<$d/max_cpus)" != "$3" ] || [ "$(<$d/min_cpus)" != "$om" ]; then echo $om > $d/min_cpus; echo $3 > $d/max_cpus; echo $om > $d/min_cpus; fi; }
 # $1 = sbmods_cores value: "S,M,P" (one digit each) parks, anything else restores
 cores_apply() {
   case "$1" in [0-9],[0-9],[0-9]) ;; *) cores_restore; pk=0; ccna=""; return;; esac
-  [ -n "$CL" ] || cl || { [ -n "$ccna" ] || settings put global sbmods_result "Core parking isn't available on this phone"; ccna=1; pk=0; return; }
+  [ -n "$CL" ] || cl || { [ -n "$ccna" ] || sp sbmods_result "Core parking isn't available on this phone"; ccna=1; pk=0; return; }
   IFS=,; set -- $1; unset IFS; a=$1; b=$2; c=$3
   [ $a -lt 2 ] && a=2; [ $a -gt 3 ] && a=3; [ $b -lt 1 ] && b=1; [ $b -gt 4 ] && b=4; [ $c -gt 1 ] && c=1
   set -- $CL; park1 $1 $2 $a; park1 $3 $4 $b; park1 $5 $6 $c; pk=1; }
@@ -198,14 +207,14 @@ plainok() { case "$1" in ''|*[!A-Za-z0-9._]*) return 1;; *.*) return 0;; esac; r
 gfxguard() {
   [ -f $ST/gfx.t ] || return
   gl=60; [ "$(cat $ST/gfx.stage 2>/dev/null)" = "1" ] && gl=300
-  [ $(( $(date +%s) - $(cat $ST/gfx.t) )) -ge $gl ] || return
+  [ $(( ${EPOCHREALTIME%.*} - $(<$ST/gfx.t) )) -ge $gl ] || return
   gb=$(cat $ST/gfx.pids 2>/dev/null); gn=$(callpids); gx=0
   [ -n "${gb%%|*}" ] && [ "${gb%%|*}" != "${gn%%|*}" ] && gx=1
   [ -n "${gb#*|}" ] && [ "${gb#*|}" != "${gn#*|}" ] && gx=1
   [ "$gx" = "0" ] && [ "$(cat $ST/gfx.wfc 2>/dev/null)" = "1" ] && [ "$(wfc)" = "0" ] && gx=1
   if [ "$gx" = "1" ]; then
-    setprop debug.hwui.renderer skiagl; settings put global sbmods_gfx opengl; rm -f $ST/gfx.*
-    settings put global sbmods_result "Wi-Fi calling dropped after switching to Vulkan, so I switched back to OpenGL"
+    setprop debug.hwui.renderer skiagl; sp sbmods_gfx opengl; rm -f $ST/gfx.*
+    sp sbmods_result "Wi-Fi calling dropped after switching to Vulkan, so I switched back to OpenGL"
   elif [ "$gl" = "300" ]; then rm -f $ST/gfx.*
   else echo 1 > $ST/gfx.stage; fi
 }
@@ -214,11 +223,18 @@ stopok() { case "$1" in ''|*[!A-Za-z0-9._]*) return 1;; *.*) ;; *) return 1;; es
   case "$1" in android|com.android.systemui|com.sec.android.app.launcher|dev.gitesh.sbmods|com.termux|com.android.providers.*|com.google.android.gms.*|com.google.android.gms) return 1;; esac; }
 
 # publish when the limit ends (epoch s, 0 = none), only when it changed
-pubuntil() { [ "$1" != "$UNT" ] && settings put global sbmods_until $1; UNT=$1; }
+pubuntil() { [ "$1" != "$UNT" ] && sp sbmods_until $1; UNT=$1; }
 
-last=""; tick=0; on=0; w=0; pk=0; hi=0
+# Battery: waiting and "did the settings change?" use shell built-ins only. Starting `sleep` and `stat` every second
+# kept a small core about 5 % busy all the time the phone was awake; this way an idle second costs next to nothing.
+rm -f $ST/wait; mkfifo $ST/wait 2>/dev/null
+if [ -p $ST/wait ]; then exec 9<>$ST/wait; nap() { read -t 1 _n <&9; }; else nap() { sleep 1; }; fi
+# a setting we write ourselves: the next pass must read fresh values (the settings file itself is saved a little later)
+sp() { settings put global "$@"; force=1; }
+
+tick=0; on=0; w=0; pk=0; hi=0; force=1; cmd=none
 while true; do
-  m=$(stat -c %y $F 2>/dev/null)
+  ch=0; { [ "$force" = "1" ] || [ ! -f $ST/seen ] || [ $F -nt $ST/seen ]; } && ch=1   # built-in test: no program started
   tick=$((tick + 1))
   # Overview open: publish CPU load every 4 s, only when it moved by 3+ points (apps may not read /proc/stat; each write touches flash)
   # (watch 2 = Performance panel: includes everything watch 1 does)
@@ -233,61 +249,65 @@ while true; do
     if [ $((tick % 5)) = 0 ]; then
       kload; if [ -n "$K" ] && [ "$K" -ge 90 ]; then hi=$((hi + 1)); else hi=0; fi
       if [ "$hi" -ge 2 ]; then
-        settings put global sbmods_cores 0; cores_restore; pk=0; hi=0
-        settings put global sbmods_result "Cores woken: the phone was working hard"
+        sp sbmods_cores 0; cores_restore; pk=0; hi=0
+        sp sbmods_result "Cores woken: the phone was working hard"
       fi
     fi
   else kt=""; hi=0; fi
   # nothing changed: sleep (while a limit / parking is on, still look again every 10 s for the timeout / cool-down)
-  if [ "$m" = "$last" ] && { [ "$on" = "0" ] || [ $((tick % 10)) != 0 ]; }; then sleep 1; continue; fi
-  last=$m
-  S=$(settings list global | grep -E '^(sbmods_|low_power=)')
-  w=$(val sbmods_watch)
+  if [ "$ch" = "0" ] && { [ "$on" = "0" ] || [ $((tick % 10)) != 0 ]; }; then nap; continue; fi
+  # read the settings only when they changed (or we just wrote one): `settings list` starts a whole Java program.
+  # The 10 s look-in while a limit is on re-uses the last read; one-off jobs run only on a fresh read, never twice.
+  cmd=none
+  if [ "$ch" = "1" ]; then
+    force=0; touch -r $F $ST/seen
+    S=$(settings list global | grep -E '^(sbmods_|low_power=)')
+    w=$(val sbmods_watch); cmd=$(val sbmods_cmd)
+  fi
 
-  cmd=$(val sbmods_cmd)
   case "$cmd" in
     ramclean|deepclean)
-      settings put global sbmods_cmd none
+      sp sbmods_cmd none
       b=$(mem); sb=$(swp)
       am kill-all >/dev/null 2>&1
       if [ "$cmd" = "deepclean" ]; then sync; echo 3 > /proc/sys/vm/drop_caches; echo 1 > /proc/sys/vm/compact_memory; fi
       sleep 2
       a=$(mem)
-      if [ "$cmd" = "deepclean" ]; then settings put global sbmods_result "Deep clean: +$((a-b)) MB RAM free, swap $sb% -> $(swp)%"
-      else settings put global sbmods_result "Closed background apps: +$((a-b)) MB RAM free"; fi;;
-    battreport) settings put global sbmods_cmd none; settings put global sbmods_batt "$(battreport)";;
-    top) settings put global sbmods_cmd none; settings put global sbmods_top "$(topapps)";;
+      if [ "$cmd" = "deepclean" ]; then sp sbmods_result "Deep clean: +$((a-b)) MB RAM free, swap $sb% -> $(swp)%"
+      else sp sbmods_result "Closed background apps: +$((a-b)) MB RAM free"; fi;;
+    battreport) sp sbmods_cmd none; sp sbmods_batt "$(battreport)";;
+    top) sp sbmods_cmd none; sp sbmods_top "$(topapps)";;
     stop:*)
-      settings put global sbmods_cmd none; pkg=${cmd#stop:}
-      if stopok "$pkg"; then am force-stop "$pkg" >/dev/null 2>&1; settings put global sbmods_result "Stopped $pkg"
-      else settings put global sbmods_result "Can't stop that one"; fi;;
+      sp sbmods_cmd none; pkg=${cmd#stop:}
+      if stopok "$pkg"; then am force-stop "$pkg" >/dev/null 2>&1; sp sbmods_result "Stopped $pkg"
+      else sp sbmods_result "Can't stop that one"; fi;;
     gfx:vulkan|gfx:opengl)
-      settings put global sbmods_cmd none
+      sp sbmods_cmd none
       # never kill or restart anything: apps pick the renderer up when they next start by themselves
       if [ "$cmd" = "gfx:vulkan" ]; then
         # remember how calling looked before, so the guard can tell whether OUR switch broke it
         rm -f $ST/gfx.*; wfc > $ST/gfx.wfc; callpids > $ST/gfx.pids; echo 0 > $ST/gfx.stage; date +%s > $ST/gfx.t
-        setprop debug.hwui.renderer skiavk; settings put global sbmods_gfx vulkan
-        settings put global sbmods_result "Vulkan on: apps use it the next time they open"
+        setprop debug.hwui.renderer skiavk; sp sbmods_gfx vulkan
+        sp sbmods_result "Vulkan on: apps use it the next time they open"
       else
-        rm -f $ST/gfx.*; setprop debug.hwui.renderer skiagl; settings put global sbmods_gfx opengl
-        settings put global sbmods_result "Back to OpenGL: apps switch the next time they open"
+        rm -f $ST/gfx.*; setprop debug.hwui.renderer skiagl; sp sbmods_gfx opengl
+        sp sbmods_result "Back to OpenGL: apps switch the next time they open"
       fi;;
-    appgfx:*)
-      settings put global sbmods_cmd none; pkg=${cmd#appgfx:}
-      if plainok "$pkg"; then r=$(dumpsys gfxinfo "$pkg" 2>/dev/null | head -40 | pipeparse); else r=unknown; fi
-      settings put global sbmods_appgfx "$pkg:$r";;
-    health) settings put global sbmods_cmd none; settings put global sbmods_health "$(health)";;
+    appgfx:*)   # (a sleeping app can take 10 s to answer: give up after 4 s -> unknown)
+      sp sbmods_cmd none; pkg=${cmd#appgfx:}
+      if plainok "$pkg"; then r=$(timeout 4 dumpsys gfxinfo "$pkg" 2>/dev/null | head -40 | pipeparse); else r=unknown; fi
+      sp sbmods_appgfx "$pkg:$r";;
+    health) sp sbmods_cmd none; sp sbmods_health "$(health)";;
     chargelimit:*)
-      settings put global sbmods_cmd none; n=${cmd#chargelimit:}; cf=/sys/class/power_supply/battery/batt_full_capacity
+      sp sbmods_cmd none; n=${cmd#chargelimit:}; cf=/sys/class/power_supply/battery/batt_full_capacity
       if chgok "$n" && [ -f $cf ]; then
         # the original stays outside $ST: the restore script wipes $ST, but a charge limit is meant to last
         [ -f /data/local/tmp/sbmods_chg.orig ] || cat $cf > /data/local/tmp/sbmods_chg.orig
         echo $n > $cf 2>/dev/null
-        if [ "$(cat $cf 2>/dev/null)" = "$n" ]; then settings put global sbmods_result "Charging now stops at $n%"
-        else settings put global sbmods_result "This phone didn't accept the charge limit"; fi
-        settings put global sbmods_health "$(health)"
-      else settings put global sbmods_result "Can't set that charge limit"; fi;;
+        if [ "$(cat $cf 2>/dev/null)" = "$n" ]; then sp sbmods_result "Charging now stops at $n%"
+        else sp sbmods_result "This phone didn't accept the charge limit"; fi
+        sp sbmods_health "$(health)"
+      else sp sbmods_result "Can't set that charge limit"; fi;;
   esac
   gfxguard
 
@@ -298,8 +318,8 @@ while true; do
   if [ "$(val sbmods_cool)" = "1" ]; then
     at=$(num "$(val sbmods_cool_at)" 360); t=$(cat /sys/class/power_supply/battery/temp 2>/dev/null)
     if [ -n "$t" ] && [ "$t" -le "$at" ]; then
-      settings put global sbmods_cool 0; settings put global sbmods_result "Cooled down to $((t/10))°C: back to normal speed"
-      [ "$cfull" = "1" ] && settings put global sbmods_cpu_pct 0; [ "$gfull" = "1" ] && settings put global sbmods_gpu_pct 0
+      sp sbmods_cool 0; sp sbmods_result "Cooled down to $((t/10))°C: back to normal speed"
+      [ "$cfull" = "1" ] && sp sbmods_cpu_pct 0; [ "$gfull" = "1" ] && sp sbmods_gpu_pct 0
     else
       # cool-down uses the levels you picked (the panel's CPU / GPU rows), 55 % if none
       [ "$cp" = "0" ] && [ "$cfull" = "0" ] && cp=$(num "$(val sbmods_cpu_pick)" 55); [ "$gp" = "0" ] && [ "$gfull" = "0" ] && gp=$(num "$(val sbmods_gpu_pick)" 55); ps=1
@@ -312,10 +332,10 @@ while true; do
     on=1
     [ -f $ST/since ] || { date +%s > $ST/since; echo "$BOOT" > $ST/boot; }
     lim=$(num "$(val sbmods_limit_min)" 15); [ "$lim" -gt 120 ] && lim=120; [ "$lim" -lt 1 ] && lim=15
-    pubuntil $(( $(cat $ST/since) + lim * 60 ))
-    if [ $(( $(date +%s) - $(cat $ST/since) )) -gt $((lim * 60)) ]; then
-      for k in sbmods_cpu_pct sbmods_gpu_pct sbmods_cool sbmods_cores; do settings put global $k 0; done
-      settings put global sbmods_result "Speed limits ended after $lim min"
+    pubuntil $(( $(<$ST/since) + lim * 60 ))
+    if [ $(( ${EPOCHREALTIME%.*} - $(<$ST/since) )) -gt $((lim * 60)) ]; then
+      for k in sbmods_cpu_pct sbmods_gpu_pct sbmods_cool sbmods_cores; do sp $k 0; done
+      sp sbmods_result "Speed limits ended after $lim min"
       cp=0; gp=0; cv=0; on=0; rm -f $ST/since; pubuntil 0
     fi
   else on=0; rm -f $ST/since; pubuntil 0; fi
@@ -326,8 +346,8 @@ while true; do
   cores_apply "$cv"
 
   if [ "$cp" != "0" ] && [ "$ps" = "1" ]; then
-    if [ "$(val low_power)" != "1" ]; then settings put global low_power 1; touch $ST/ps.set; fi
-  elif [ -f $ST/ps.set ]; then settings put global low_power 0; rm -f $ST/ps.set; fi
+    if [ "$(val low_power)" != "1" ]; then sp low_power 1; touch $ST/ps.set; fi
+  elif [ -f $ST/ps.set ]; then sp low_power 0; rm -f $ST/ps.set; fi
   # (no re-stat here: a change you made while we were busy must still be seen; our own writes cost one extra read at most)
-  sleep 1
+  nap
 done
