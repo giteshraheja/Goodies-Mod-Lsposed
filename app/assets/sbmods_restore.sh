@@ -13,7 +13,10 @@ if [ -d $G ]; then
   tr ' ' '\n' < $G/available_frequencies | sort -n | tail -1 > $G/max_freq
   [ -f $ST/gpu.min ] && cat $ST/gpu.min > $G/min_freq
 fi
+# parked cores: put core_ctl's saved min / max back (max first); nothing saved = nothing of ours, leave core_ctl alone
+for f in $ST/cc*.max; do [ -f "$f" ] || continue; c=${f##*/cc}; c=${c%.max}; d=/sys/devices/system/cpu/cpu$c/core_ctl
+  cat $ST/cc$c.max > $d/max_cpus; cat $ST/cc$c.min > $d/min_cpus; done
 [ -f $ST/ps.set ] && settings put global low_power 0
-for k in sbmods_cpu_pct sbmods_gpu_pct sbmods_cool sbmods_cmd; do settings put global $k 0; done
+for k in sbmods_cpu_pct sbmods_gpu_pct sbmods_cool sbmods_cores sbmods_cmd; do settings put global $k 0; done
 rm -rf $ST /data/local/tmp/sbmods_orig /data/local/tmp/sbmods_cpu_orig
 echo "SBMods: speeds restored"
