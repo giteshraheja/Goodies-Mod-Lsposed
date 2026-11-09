@@ -17,6 +17,9 @@ fi
 for f in $ST/cc*.max; do [ -f "$f" ] || continue; c=${f##*/cc}; c=${c%.max}; d=/sys/devices/system/cpu/cpu$c/core_ctl
   cat $ST/cc$c.max > $d/max_cpus; cat $ST/cc$c.min > $d/min_cpus; done
 [ -f $ST/ps.set ] && settings put global low_power 0
-for k in sbmods_cpu_pct sbmods_gpu_pct sbmods_cool sbmods_cores sbmods_cmd; do settings put global $k 0; done
+# renderer: skiavk back to OpenGL (nothing is restarted; apps follow when they next open)
+[ "$(getprop debug.hwui.renderer)" = "skiavk" ] && { setprop debug.hwui.renderer skiagl; settings put global sbmods_gfx opengl; }
+# (the battery charge limit is left alone on purpose: it is a battery-care choice, not a speed limit)
+for k in sbmods_cpu_pct sbmods_gpu_pct sbmods_cool sbmods_cores sbmods_cmd sbmods_until; do settings put global $k 0; done
 rm -rf $ST /data/local/tmp/sbmods_orig /data/local/tmp/sbmods_cpu_orig
 echo "SBMods: speeds restored"
