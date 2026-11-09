@@ -87,11 +87,12 @@ last=""; tick=0; on=0; w=0
 while true; do
   m=$(stat -c %y $F 2>/dev/null)
   tick=$((tick + 1))
-  # Overview open: publish CPU load every 2 s (apps may not read /proc/stat themselves)
-  if [ "$w" = "1" ] && [ $((tick % 2)) = 0 ]; then
-    cpuload; [ -n "$L" ] && settings put global sbmods_cpu_load $L
+  # Overview open: publish CPU load every 4 s, only when it moved by 3+ points (apps may not read /proc/stat; each write touches flash)
+  if [ "$w" = "1" ] && [ $((tick % 4)) = 0 ]; then
+    cpuload
+    if [ -n "$L" ] && { [ -z "$pl" ] || [ $((L - pl)) -ge 3 ] || [ $((pl - L)) -ge 3 ]; }; then settings put global sbmods_cpu_load $L; pl=$L; fi
     [ "$m" = "$last" ] && { sleep 0.3; last=$(stat -c %y $F 2>/dev/null); m=$last; }
-  elif [ "$w" != "1" ]; then pt=""; fi
+  elif [ "$w" != "1" ]; then pt=""; pl=""; fi
   # nothing changed: sleep (while a limit is on, still look again every 10 s for the timeout / cool-down)
   if [ "$m" = "$last" ] && { [ "$on" = "0" ] || [ $((tick % 10)) != 0 ]; }; then sleep 1; continue; fi
   last=$m

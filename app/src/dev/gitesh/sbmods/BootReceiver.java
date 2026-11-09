@@ -18,10 +18,11 @@ public final class BootReceiver extends BroadcastReceiver {
             try {
                 // Only when the status bar mod is on: it stamps global setting sbmods_alive when it loads in SystemUI (and clears it if it
                 // switches itself off). A stamp older than this boot, or none, means the mod is off: leave everything alone.
-                long bootAt = System.currentTimeMillis() - android.os.SystemClock.elapsedRealtime();
-                long alive = android.provider.Settings.Global.getLong(app.getContentResolver(), "sbmods_alive", 0);
-                if (alive < bootAt) return;
-                Thread.sleep(3000);
+                // compare boot counts, not clock times: the clock can jump right after boot (network time)
+                android.content.ContentResolver cr = app.getContentResolver();
+                int boot = android.provider.Settings.Global.getInt(cr, android.provider.Settings.Global.BOOT_COUNT, -2);
+                Thread.sleep(3000);   // give SystemUI time to load and stamp
+                if (android.provider.Settings.Global.getLong(cr, "sbmods_alive_boot", -1) != boot) return;
                 Helper.start(app);
             } catch (Throwable ignored) {
             } finally {

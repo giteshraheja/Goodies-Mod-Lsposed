@@ -164,7 +164,7 @@ public final class Controller {
         if (starts >= GUARD_LIMIT) {
             guardTripped = true;
             Log.w("crash guard tripped (" + starts + " unstable starts) - mod stays off (tries again after " + GUARD_FORGET_MS / 60000 + " min)");
-            gput("sbmods_alive", 0L);
+            gput("sbmods_alive", 0L); gput("sbmods_alive_boot", -1L);
             Entry.unhook();
             return;
         }
@@ -176,6 +176,7 @@ public final class Controller {
         cfg = Config.load(prefs);
         publishLockMax(cfg);
         gput("sbmods_alive", System.currentTimeMillis());
+        gput("sbmods_alive_boot", android.provider.Settings.Global.getInt(ctx.getContentResolver(), android.provider.Settings.Global.BOOT_COUNT, -1));   // which boot: immune to clock jumps
         clockId = ctx.getResources().getIdentifier("clock", "id", Config.SYSUI);
         rightContainerId = ctx.getResources().getIdentifier("right_clock_container", "id", Config.SYSUI);
         middleContainerId = ctx.getResources().getIdentifier("middle_clock_container", "id", Config.SYSUI);
@@ -1008,7 +1009,7 @@ public final class Controller {
             if (windowErrors >= MAX_ERRORS && !disabled) {
                 disabled = true;
                 Log.w("error storm (" + windowErrors + " in a minute) - removing mod until SystemUI restarts");
-                gput("sbmods_alive", 0L);
+                gput("sbmods_alive", 0L); gput("sbmods_alive_boot", -1L);
                 main.post(() -> {
                     try { refreshClock(); } catch (Throwable ignored) {} // restores stock clock
                     try { detach(); } catch (Throwable ignored) {}

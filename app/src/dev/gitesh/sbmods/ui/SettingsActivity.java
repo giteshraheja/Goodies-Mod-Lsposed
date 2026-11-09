@@ -260,7 +260,10 @@ public final class SettingsActivity extends Activity {
         }
         posView = new PositionView(this, cfg, new PositionView.Host() {
             @Override public void changed() { apply(); if (tab == T_LAYOUT) refresh(); }
-            @Override public void tapped(int element) { }
+            @Override public void tapped(int element) {   // tap (no drag): the same choices as a list - easier than dragging, and works with TalkBack
+                if (elementOn(element)) zonePicker(element);
+                else switchTab(element == ZoneLayout.TEMP ? T_TEMP : element == ZoneLayout.DATE ? T_CLOCK : T_BACK);
+            }
         }, screenW, holeL, holeR, cAccent, cText, cSub, cField);
         card.addView(posView, new LinearLayout.LayoutParams(-1, -2));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
@@ -384,33 +387,6 @@ public final class SettingsActivity extends Activity {
     private boolean elementOn(int element) {
         return !((element == ZoneLayout.TEMP && !cfg.tempEnabled) || (element == ZoneLayout.BACK && !cfg.backEnabled)
                 || (element == ZoneLayout.DATE && !cfg.dateSeparate));
-    }
-
-    private void zoneRow(int element) {
-        boolean off = !elementOn(element);
-        LinearLayout r = rowShell(v -> {
-            if (off) switchTab(element == ZoneLayout.TEMP ? T_TEMP : element == ZoneLayout.DATE ? T_CLOCK : T_BACK);
-            else zonePicker(element);
-        });
-        r.addView(twoLines(ZoneLayout.ELEMENT_NAMES[element], off ? "Turned off · tap to set it up" : null),
-                new LinearLayout.LayoutParams(0, -2, 1));
-        TextView value = new TextView(this);
-        value.setText(off ? "Off  ›" : describe(element) + "  ›");
-        value.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
-        value.setTextColor(off ? cSub : cAccent);
-        value.setGravity(Gravity.END);
-        value.setMaxWidth(dp(190));
-        r.addView(value);
-    }
-
-    private static final String[] ANCHOR_NAMES = {"Far left", "Far right", "Left of camera", "Right of camera"};
-
-    private String describe(int element) {
-        ZoneLayout.Plan pl = cfg.plan;
-        if (pl.mode[element] == ZoneLayout.STOCK) return "Samsung's place";
-        if (pl.mode[element] == ZoneLayout.LINK)
-            return (pl.side[element] == 0 ? "Left of " : "Right of ") + ZoneLayout.ELEMENT_NAMES[pl.to[element]].toLowerCase(Locale.ROOT);
-        return ANCHOR_NAMES[pl.right[element]];
     }
 
     private boolean anyMoved() {
