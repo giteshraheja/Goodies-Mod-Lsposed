@@ -22,6 +22,15 @@ G=/sys/class/kgsl/kgsl-3d0/devfreq
 mkdir -p $ST
 echo $$ > /data/local/tmp/sbmods_cpud.pid
 
+# a clean-up request nobody answered (helper was off) must not run by itself later
+settings put global sbmods_cmd none
+# limits never survive a restart: if the last limit started before this boot, clear them
+boot=$(( $(date +%s) - $(cut -d. -f1 /proc/uptime) ))
+if [ ! -f $ST/since ] || [ "$(cat $ST/since)" -lt "$boot" ]; then
+  for k in sbmods_cpu_pct sbmods_gpu_pct sbmods_cool; do settings put global $k 0; done
+  rm -f $ST/since $ST/*.want $ST/ps.set
+fi
+
 # older helper versions kept "original" values that were really Samsung's heat limit: drop those requests once
 if [ -d /data/local/tmp/sbmods_orig ] || [ -d /data/local/tmp/sbmods_cpu_orig ]; then
   for p in /sys/devices/system/cpu/cpufreq/policy*; do m=$(stat -c %a $p/scaling_max_freq); chmod 644 $p/scaling_max_freq; cat $p/cpuinfo_max_freq > $p/scaling_max_freq; chmod $m $p/scaling_max_freq; done

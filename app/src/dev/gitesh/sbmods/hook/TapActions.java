@@ -150,6 +150,7 @@ final class TapActions {
                 String r = Settings.Global.getString(cr, "sbmods_result");
                 if (r != null && !r.isEmpty()) { toast(ctx, r); return; }
                 if (android.os.SystemClock.uptimeMillis() < until) { h.postDelayed(this, 400); return; }
+                Settings.Global.putString(cr, "sbmods_cmd", "none");   // withdraw it, so it never runs by surprise later
                 toast(ctx, "No answer from the helper \u2013 turn it on in StatusBar Mods \u203a More");
             }
         }, 1500);

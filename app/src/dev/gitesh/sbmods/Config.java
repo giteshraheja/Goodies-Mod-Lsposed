@@ -267,6 +267,15 @@ public final class Config {
         backLive = in.i("backLive", backLive); edgeDp = in.i("edgeDp", edgeDp); edgeMode = in.i("edgeMode", edgeMode); notifMax = in.i("notifMax", notifMax); lockMax = in.i("lockMax", lockMax); dtSleep = in.b("dtSleep", dtSleep); mergeNet = in.b("mergeNet", mergeNet); itemGap = in.i("itemGap", itemGap);
         backFadeSec = in.i("backFadeSec", backFadeSec); backSizePct = in.i("backSizePct", backSizePct); backStyle = in.i("backStyle", backStyle);
         dateSeparate = in.b("dateSeparate", dateSeparate);
+        if (in.i("pm0", -1) == -1) {   // settings from before free placement: carry the old zones over
+            String[] oldKeys = {"clockZone", "tempZone", "batteryZone", "backZone"};
+            int[] els = {ZoneLayout.CLOCK, ZoneLayout.TEMP, ZoneLayout.BATTERY, ZoneLayout.BACK};
+            int[] anchor = {-1, 0, 2, 3, 1};   // old zone 1 left edge, 2 left of camera, 3 right of camera, 4 right edge
+            for (int k = 0; k < oldKeys.length; k++) {
+                int z = in.i(oldKeys[k], 0);
+                if (z >= 1 && z <= 4) { plan.mode[els[k]] = ZoneLayout.FREE; plan.right[els[k]] = anchor[z]; plan.off[els[k]] = 0; }
+            }
+        }
         for (int i = 0; i < ZoneLayout.ELEMENTS; i++) {
             plan.mode[i] = in.i("pm" + i, plan.mode[i]); plan.right[i] = in.i("pr" + i, plan.right[i]); plan.off[i] = in.i("po" + i, plan.off[i]);
             plan.to[i] = in.i("pt" + i, plan.to[i]); plan.side[i] = in.i("ps" + i, plan.side[i]);

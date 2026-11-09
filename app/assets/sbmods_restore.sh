@@ -3,7 +3,7 @@
 # "Normal" = the hardware maximum: writing it only drops our request; Samsung's own heat limit keeps working.
 ST=/data/local/tmp/sbmods_state
 G=/sys/class/kgsl/kgsl-3d0/devfreq
-[ -f /data/local/tmp/sbmods_cpud.pid ] && kill $(cat /data/local/tmp/sbmods_cpud.pid) 2>/dev/null
+p=$(cat /data/local/tmp/sbmods_cpud.pid 2>/dev/null); [ -n "$p" ] && grep -q sbmods_cpud /proc/$p/cmdline 2>/dev/null && kill $p   # never a reused PID
 rm -f /data/local/tmp/sbmods_cpud.pid
 for p in /sys/devices/system/cpu/cpufreq/policy*; do
   m=$(stat -c %a $p/scaling_max_freq); [ -f $ST/$(basename $p).mode ] && m=$(cat $ST/$(basename $p).mode)

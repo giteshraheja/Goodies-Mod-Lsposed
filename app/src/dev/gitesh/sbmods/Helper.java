@@ -48,7 +48,7 @@ public final class Helper {
         String cache = c.getCacheDir().getAbsolutePath();
         int rc = su("cp " + cache + "/sbmods_cpud.sh " + DIR + "/sbmods_cpud.sh && cp " + cache + "/sbmods_restore.sh " + DIR + "/sbmods_restore.sh"
                 + " && chmod 755 " + DIR + "/sbmods_cpud.sh " + DIR + "/sbmods_restore.sh"
-                + " && { [ -f " + DIR + "/sbmods_cpud.pid ] && kill $(cat " + DIR + "/sbmods_cpud.pid) 2>/dev/null; true; }"
+                + " && { p=$(cat " + DIR + "/sbmods_cpud.pid 2>/dev/null); [ -n \"$p\" ] && grep -q sbmods_cpud /proc/$p/cmdline 2>/dev/null && kill $p; true; }"
                 + " && { setsid nohup " + DIR + "/sbmods_cpud.sh >/dev/null 2>&1 < /dev/null & }");
         if (rc != 0) return false;
         try { Thread.sleep(1500); } catch (InterruptedException ignored) {}
@@ -56,7 +56,8 @@ public final class Helper {
     }
 
     public static boolean isRunning() {
-        return su("[ -f " + DIR + "/sbmods_cpud.pid ] && kill -0 $(cat " + DIR + "/sbmods_cpud.pid)") == 0;
+        // the PID file survives a reboot: only count it if that process really is our script
+        return su("p=$(cat " + DIR + "/sbmods_cpud.pid 2>/dev/null); [ -n \"$p\" ] && grep -q sbmods_cpud /proc/$p/cmdline") == 0;
     }
 
     /** Writes global settings (the helper's controls) as root, since this app may not write them itself. Never call on the main thread. */

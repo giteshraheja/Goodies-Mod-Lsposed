@@ -389,7 +389,6 @@ final class RecentsChip {
             boolean small = c.getWidth() < 260 * d && c.getHeight() < 70 * d && c.getHeight() > 14 * d;
             boolean strip = l[1] < bottom && l[1] + c.getHeight() > top && l[0] < 140 * d;   // in the top-left strip (not the search / more buttons), level with our row
             if (small && strip && c.getVisibility() == View.VISIBLE && (c instanceof TextView || c.isClickable())) best = Math.max(best, l[0] + c.getWidth());
-            else if (c instanceof ViewGroup && !(small)) best = Math.max(best, rightOfOthers(c, top, bottom, depth + 1));
             else if (c instanceof ViewGroup) best = Math.max(best, rightOfOthers(c, top, bottom, depth + 1));
         }
         return best;
@@ -447,6 +446,7 @@ final class RecentsChip {
                 String r = Settings.Global.getString(a.getContentResolver(), "sbmods_result");
                 if (r != null && !r.isEmpty()) { Toast.makeText(a, r, Toast.LENGTH_LONG).show(); return; }
                 if (android.os.SystemClock.uptimeMillis() < until) { main.postDelayed(this, 400); return; }
+                gput(a, "sbmods_cmd", "none");   // withdraw it, so it never runs by surprise later
                 Toast.makeText(a, "No answer from the helper – is it running?", Toast.LENGTH_LONG).show();
             }
         }, 1500);

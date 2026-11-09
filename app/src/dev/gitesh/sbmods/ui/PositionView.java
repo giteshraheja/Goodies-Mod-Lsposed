@@ -237,11 +237,15 @@ final class PositionView extends View {
             int head = -1;
             for (int k : deps) if (pl.side[k] == d) { head = k; break; }
             if (head < 0) head = deps.get(0);
-            for (int k : deps) if (k != head) { pl.to[k] = head; pl.side[k] = pl.side[k]; }
-            pl.mode[head] = ZoneLayout.FREE; pl.right[head] = a; pl.off[head] = 0;
+            for (int k : deps) if (k != head) { pl.to[k] = head; pl.side[k] = d; }   // the rest line up behind the new head, growing the same way
+            pl.mode[head] = ZoneLayout.FREE; pl.right[head] = a; pl.off[head] = pl.off[i];   // keeps the distance the moved item had
+        } else if (i == ZoneLayout.BACK) {
+            // the back button in Samsung's place: whatever was stuck to it takes its spot at the left edge, keeping its order
+            int head = deps.get(0);
+            for (int k : deps) if (k != head) { pl.to[k] = head; pl.side[k] = 1; }
+            pl.mode[head] = ZoneLayout.FREE; pl.right[head] = 0; pl.off[head] = 0;
         } else {
-            // was in Samsung's place: nothing hangs on it, but be safe
-            for (int k : deps) pl.mode[k] = ZoneLayout.STOCK;
+            for (int k : deps) pl.mode[k] = ZoneLayout.STOCK;   // nothing else can be stuck to an item in Samsung's place
         }
     }
 

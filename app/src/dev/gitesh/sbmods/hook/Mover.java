@@ -56,7 +56,6 @@ final class Mover {
         }
         rightReserve = 0;
         netPlaced = plan.mode[ZoneLayout.NETSPEED] != ZoneLayout.STOCK;
-        applyLeft(c, root, views[ZoneLayout.CLOCK] instanceof android.widget.TextView ? (android.widget.TextView) views[ZoneLayout.CLOCK] : null);
         java.util.Arrays.fill(movedViews, null);
         boolean any = plan.any();
         if (!any && applied.isEmpty()) return;
@@ -236,21 +235,6 @@ final class Mover {
 
     /** Placed items (clock, temperature, battery, back pill, date): not icons, ignored when lining icons up with the edge. */
     private final View[] movedViews = new View[ZoneLayout.ELEMENTS];
-
-    private final WeakHashMap<View, Boolean> leftShifted = new WeakHashMap<>();
-
-    /**
-     * Left side: Samsung lays out and spaces the notification icons itself (tight, and it decides how many fit).
-     * We used to re-space them by "space between items", which spread them out and pushed the last ones into the clip;
-     * now we only hand them back once so Samsung's own layout takes over again.
-     */
-    private void applyLeft(Config c, View root, android.widget.TextView clock) {
-        if (leftShifted.isEmpty()) return;
-        View parent = null;
-        for (View k : new java.util.ArrayList<>(leftShifted.keySet())) if (k != null && k.getParent() instanceof View) parent = (View) k.getParent();
-        leftShifted.clear();
-        if (parent != null) parent.requestLayout();   // Samsung re-applies its own icon positions
-    }
 
     /** "Space between items": the gap in front of the clock row (between the battery and the temperature / clock). */
     private void applyItemGap(Config c, View root) {
