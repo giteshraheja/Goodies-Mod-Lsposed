@@ -2,5 +2,9 @@
 <resources>
     <string-array name="xposed_scope">
         <item>com.android.systemui</item>
+        <!-- Overview screen chips (RAM, swap, temperature, CPU, GPU) and the lock-screen notification limit -->
+        <item>com.sec.android.app.launcher</item>
+        <!-- System framework (shown as "System Framework" in LSPosed): the lock-screen notification limit -->
+        <item>android</item>
     </string-array>
 </resources>
