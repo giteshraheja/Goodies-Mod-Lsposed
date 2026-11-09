@@ -37,8 +37,22 @@ final class TipTicker {
             "turn Bluetooth on or off", "turn Do not disturb on or off", "turn auto rotate on or off",
             "switch dark mode", "switch between sound, vibrate and mute", "play or pause music", "lock the screen",
             "open quick settings", "open your notifications", "open the camera", "open the timer",
-            "open the calculator", "open the internet panel", "open %s", "open Samsung Finder"};
+            "open the calculator", "open the internet panel", "open %s", "open Samsung Finder", "close background apps"};
     private String lastTip;
+
+    /**
+     * What's new, newest last. After an update each is shown once (one per unlock), before the usual reminders.
+     * Bump nothing by hand: an entry is "new" until its index is below the saved news_seen count.
+     */
+    private static final String[] NEWS = {
+            "New: open recent apps (Overview) to see free RAM, swap and temperature at the top",
+            "New: Overview shows CPU and GPU speed at the bottom \u2013 tap one for the Performance panel",
+            "New: Performance panel \u2013 limit CPU / GPU speed, or cool-down until the phone is cool",
+            "New: long-press CPU or GPU on Overview to turn your quick limit on or off",
+            "New: tap RAM on Overview to close background apps, Swap for a deep clean",
+            "New: drag network speed and the date anywhere in StatusBar Mods \u203a Layout",
+    };
+    private static final long NEWS_GAP_MS = 10 * 60_000L;
     private static final String[] GESTURE = {"Tap", "Double-tap", "Long-press"};
     private static final long[] MIN_GAP_MS = {0, 3 * 3600_000L, 30 * 60_000L}; // off, sometimes, often
 
@@ -54,16 +68,32 @@ final class TipTicker {
     /** Called on unlock: maybe show a tip, depending on the chosen frequency. */
     void maybeShow(TextView clock, SharedPreferences prefs) {
         Config c = owner.config();
-        if (c.tipsMode <= 0 || c.tipsMode >= MIN_GAP_MS.length || clock == null) return;
         long now = System.currentTimeMillis();
-        if (now - prefs.getLong("last_tip", 0) < MIN_GAP_MS[c.tipsMode]) return;
-        if (c.tipsMode == 1 && rnd.nextInt(3) != 0) return; // "sometimes": 1 in 3 eligible unlocks
-        if (show(clock)) prefs.edit().putLong("last_tip", now).apply();
+        String why;
+        if (c.tipsMode <= 0 || c.tipsMode >= MIN_GAP_MS.length) why = "off";
+        else if (clock == null) why = "no clock";
+        else {
+            int seen = prefs.getInt("news_seen", 0);
+            long gap = now - prefs.getLong("last_tip", 0);
+            if (seen < NEWS.length && gap >= NEWS_GAP_MS) {   // something new to tell: next unlock, no dice roll
+                if (show(clock, NEWS[seen])) { prefs.edit().putInt("news_seen", seen + 1).putLong("last_tip", now).apply(); why = "news " + seen; }
+                else why = "news: no room";
+            } else if (gap < MIN_GAP_MS[c.tipsMode]) why = "too soon";
+            else if (c.tipsMode == 1 && rnd.nextInt(3) != 0) why = "dice";   // "sometimes": 1 in 3 eligible unlocks
+            else if (show(clock)) { prefs.edit().putLong("last_tip", now).apply(); why = "shown"; }
+            else why = "nothing to show / no room";
+        }
+        prefs.edit().putString("tip_last_try", now + " " + why).apply();   // so "why didn't I see a tip?" has an answer
     }
 
     /** Shows one random tip now. Returns false if there is nothing to show or no room. */
     boolean show(TextView clock) {
-        String tip = pickTip(clock.getContext());
+        return show(clock, null);
+    }
+
+    /** text: a given line (what's new), or null for a random reminder. */
+    boolean show(TextView clock, String text) {
+        String tip = text != null ? text : pickTip(clock.getContext());
         if (tip == null) return false;
         Context ctx = clock.getContext();
         int hostId = ctx.getResources().getIdentifier("status_bar_start_side_content", "id", Config.SYSUI);
