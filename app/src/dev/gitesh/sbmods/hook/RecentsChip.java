@@ -59,7 +59,7 @@ final class RecentsChip {
             });
             XposedHelpers.findAndHookMethod(Activity.class, "onPause", new XC_MethodHook() {
                 @Override protected void afterHookedMethod(MethodHookParam p) {
-                    if (p.thisObject == owner) { main.removeCallbacks(tick); Global.gput(owner, "sbmods_watch", "0"); if (PerfPanel.panel != null) { try { PerfPanel.panel.dismiss(); } catch (Throwable ignored) {} PerfPanel.panel = null; } }
+                    if (p.thisObject == owner) { main.removeCallbacks(tick); if (PerfPanel.panel != null) { try { PerfPanel.panel.dismiss(); } catch (Throwable ignored) {} PerfPanel.panel = null; } Global.gset(owner, "sbmods_watch", "0"); }   // panel first: closing it must not leave the watch on
                 }
             });
         } catch (Throwable t) { Log.w("recents chip hook failed: " + t); }
@@ -115,7 +115,7 @@ final class RecentsChip {
             }
         }
         owner = a;
-        Global.gput(a, "sbmods_watch", "1");   // the helper measures CPU load only while this screen is open
+        Global.gset(a, "sbmods_watch", "1");   // the helper measures CPU load only while this screen is open
         main.removeCallbacks(tick);
         main.post(tick);
     }
@@ -146,8 +146,8 @@ final class RecentsChip {
                 Activity a = owner;
                 if (a == null || topRow == null || !topRow.isAttachedToWindow()) return;
                 boolean shown = topRow.isShown();
-                int w = Global.gint(a, "sbmods_watch", 0);
-                if (shown != (w == 1)) Global.gput(a, "sbmods_watch", shown ? "1" : "0");   // CPU load only while Overview is really on screen (not the home screen)
+                // CPU load only while Overview is really on screen (not the home screen); 2 = the Performance panel is open (per-core load too)
+                Global.gset(a, "sbmods_watch", !shown ? "0" : PerfPanel.showing() ? "2" : "1");
                 if (shown) { align(a); refresh(a); }
                 main.postDelayed(this, 2500);
             } catch (Throwable t) { Log.w("recents chip tick: " + t); }
@@ -298,19 +298,9 @@ final class RecentsChip {
     }
 
     static void refresh(Context ctx) {
-        long availMb = 0, totalMb = 1, swapPct = 0;
-        try (BufferedReader r = new BufferedReader(new FileReader("/proc/meminfo"))) {
-            long st = 0, sf = 0;
-            String l;
-            while ((l = r.readLine()) != null) {
-                if (l.startsWith("MemTotal:")) totalMb = Math.max(1, kb(l) / 1024);
-                else if (l.startsWith("MemAvailable:")) availMb = kb(l) / 1024;
-                else if (l.startsWith("SwapTotal:")) st = kb(l);
-                else if (l.startsWith("SwapFree:")) sf = kb(l);
-            }
-            swapPct = st > 0 ? (st - sf) * 100 / st : 0;
-        } catch (Throwable ignored) {}
-        float freeFrac = availMb / (float) totalMb;
+        Mem m = readMem();
+        long availMb = m.availMb, swapPct = m.swapPct;
+        float freeFrac = availMb / (float) m.totalMb;
         set(ramChip, "RAM", String.format(java.util.Locale.US, "%.1f GB", availMb / 1024f), freeFrac < 0.10f ? RED : freeFrac < 0.20f ? AMBER : GREEN, freeFrac);
         set(swapChip, "Swap", swapPct + "%", swapPct >= 90 ? RED : swapPct >= 60 ? AMBER : GREEN, swapPct / 100f);
         float temp = 0;
@@ -327,8 +317,29 @@ final class RecentsChip {
         int load = Global.gint(ctx, "sbmods_cpu_load", -1);
         chipFor(cpuChip, "CPU", ps.cpuCur > 0 ? Perf.ghz(ps.cpuCur) + (load >= 0 ? " \u00b7 " + load + "%" : "") : "\u2014", cp, ps.cpuCap, ps.cpuHw, true);
         chipFor(gpuChip, "GPU", ps.gpuCur > 0 ? ps.gpuCur + " MHz" + (gpuAvg(ps.gpuBusy) >= 3 ? " \u00b7 " + gpuAvg(-2) + "%" : "") : "\u2014", gp, ps.gpuCap, ps.gpuHw, false);
-        if (PerfPanel.panel != null && PerfPanel.panel.isShowing()) PerfPanel.panelLive(ctx, ps);
     }
+
+    /** RAM and swap from /proc/meminfo (shared by the chips and the panel's Memory card). */
+    static final class Mem { long availMb, totalMb = 1; int swapPct; }
+
+    static Mem readMem() {
+        Mem m = new Mem();
+        try (BufferedReader r = new BufferedReader(new FileReader("/proc/meminfo"))) {
+            long st = 0, sf = 0;
+            String l;
+            while ((l = r.readLine()) != null) {
+                if (l.startsWith("MemTotal:")) m.totalMb = Math.max(1, kb(l) / 1024);
+                else if (l.startsWith("MemAvailable:")) m.availMb = kb(l) / 1024;
+                else if (l.startsWith("SwapTotal:")) st = kb(l);
+                else if (l.startsWith("SwapFree:")) sf = kb(l);
+            }
+            m.swapPct = st > 0 ? (int) ((st - sf) * 100 / st) : 0;
+        } catch (Throwable ignored) {}
+        return m;
+    }
+
+    /** Is the Overview screen really on screen right now? */
+    static boolean overviewShown() { return topRow != null && topRow.isShown(); }
 
     private static long kb(String line) {
         String[] p = line.trim().split("\\s+");
@@ -338,8 +349,11 @@ final class RecentsChip {
     // ------------------------------------------------------------------ actions
 
     /** Ask the root helper to do something (close apps / deep clean) and show what it reports. */
-    private static void command(Activity a, String cmd, String msg, long waitMs) {
-        if (!Global.gput(a, "sbmods_result", "")) { Toast.makeText(a, "Can't reach the helper", Toast.LENGTH_SHORT).show(); return; }
+    static void command(Activity a, String cmd, String msg, long waitMs) {
+        long gap = PanelCmd.waitMs();   // the helper reads one request at a time: let the panel's last one be picked up first
+        if (gap > 0) { main.postDelayed(() -> command(a, cmd, msg, waitMs), gap); return; }
+        PanelCmd.cleaning(true);
+        if (!Global.gput(a, "sbmods_result", "")) { PanelCmd.cleaning(false); Toast.makeText(a, "Can't reach the helper", Toast.LENGTH_SHORT).show(); return; }
         Global.gput(a, "sbmods_cmd", cmd);
         Toast.makeText(a, msg, Toast.LENGTH_SHORT).show();
         // the helper checks every few seconds and the job itself takes a few more: keep looking until it answers
@@ -347,8 +361,9 @@ final class RecentsChip {
         main.postDelayed(new Runnable() {
             @Override public void run() {
                 String r = Settings.Global.getString(a.getContentResolver(), "sbmods_result");
-                if (r != null && !r.isEmpty()) { Toast.makeText(a, r, Toast.LENGTH_LONG).show(); return; }
+                if (r != null && !r.isEmpty()) { PanelCmd.cleaning(false); Toast.makeText(a, r, Toast.LENGTH_LONG).show(); return; }
                 if (android.os.SystemClock.uptimeMillis() < until) { main.postDelayed(this, 400); return; }
+                PanelCmd.cleaning(false);
                 Global.gput(a, "sbmods_cmd", "none");   // withdraw it, so it never runs by surprise later
                 Toast.makeText(a, "No answer from the helper – is it running?", Toast.LENGTH_LONG).show();
             }

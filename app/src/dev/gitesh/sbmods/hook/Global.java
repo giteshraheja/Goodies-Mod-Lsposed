@@ -16,4 +16,15 @@ final class Global {
     static int gint(Context c, String key, int def) {
         try { return Settings.Global.getInt(c.getContentResolver(), key, def); } catch (Throwable t) { return def; }
     }
+
+    static String gstr(Context c, String key) {
+        try { return Settings.Global.getString(c.getContentResolver(), key); } catch (Throwable t) { return null; }
+    }
+
+    /** Write only when the value really differs (every write wakes the helper and everyone watching the setting). */
+    static boolean gset(Context c, String key, String val) {
+        String cur = gstr(c, key);
+        if (val.equals(cur)) return true;
+        return gput(c, key, val);
+    }
 }
