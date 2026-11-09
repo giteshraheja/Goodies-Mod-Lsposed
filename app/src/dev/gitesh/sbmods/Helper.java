@@ -31,6 +31,50 @@ public final class Helper {
         }
     }
 
+    /** Runs a command as root and returns its trimmed stdout, or null if root is not available / it failed / it timed out. Never call on the main thread. */
+    static String suOut(String cmd) {
+        try {
+            Process p = Runtime.getRuntime().exec(new String[]{"su", "-c", cmd});
+            p.getOutputStream().close();
+            final java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+            Thread t = new Thread(() -> {
+                try (InputStream in = p.getInputStream()) {
+                    byte[] b = new byte[1024];
+                    int n;
+                    while ((n = in.read(b)) > 0) synchronized (buf) { buf.write(b, 0, n); }
+                } catch (Throwable ignored) {}
+            });
+            t.start();
+            if (!p.waitFor(20, TimeUnit.SECONDS)) { p.destroyForcibly(); return null; }
+            t.join(2000);
+            if (p.exitValue() != 0) return null;
+            synchronized (buf) { return buf.toString("UTF-8").trim(); }
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** Reads a secure setting as root. Returns null if root is not available; "" if the setting is not set. Never call on the main thread. */
+    public static String readSecure(String key) {
+        String v = suOut("settings get secure " + key.replace("'", ""));
+        if (v == null) return null;
+        return v.equals("null") ? "" : v;
+    }
+
+    /** Reads a secure setting as root; "" if it is not set or root is not available. Never call on the main thread. */
+    public static String getSecure(String key) {
+        String v = readSecure(key);
+        return v == null ? "" : v;
+    }
+
+    /** Writes a secure setting as root. An empty value removes the setting. Never call on the main thread. */
+    public static boolean putSecure(String key, String value) {
+        key = key.replace("'", "");
+        String v = value == null ? "" : value.replace("'", "");
+        if (v.isEmpty()) return su("settings delete secure " + key) == 0;
+        return su("settings put secure " + key + " '" + v + "'") == 0;
+    }
+
     private static boolean copyAsset(Context c, String name) {
         try (InputStream in = c.getAssets().open(name); FileOutputStream out = new FileOutputStream(new File(c.getCacheDir(), name))) {
             byte[] buf = new byte[4096];
