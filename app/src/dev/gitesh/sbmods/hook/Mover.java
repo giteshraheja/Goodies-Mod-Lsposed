@@ -36,7 +36,7 @@ final class Mover {
         if (root == null) { releaseZones(); return; }   // status bar not attached (yet / any more)
         View[] views = java.util.Arrays.copyOf(viewsIn, ZoneLayout.ELEMENTS);
         if (views[ZoneLayout.NETSPEED] == null) {
-            int nid = root.getResources().getIdentifier("networkSpeed", "id", "com.android.systemui");
+            int nid = id(root, "networkSpeed");
             views[ZoneLayout.NETSPEED] = nid == 0 ? null : root.findViewById(nid);
         }
         applyEdge(c, root);   // uses rightReserve from the previous frame
@@ -62,8 +62,8 @@ final class Mover {
         if (!any || root == null) { BackChip.extraPad = 0; releaseZones(); return; }
 
         if (endId == -1) {
-            endId = root.getResources().getIdentifier("status_bar_end_side_content", "id", "com.android.systemui");
-            startId = root.getResources().getIdentifier("status_bar_start_side_except_heads_up", "id", "com.android.systemui");
+            endId = id(root, "status_bar_end_side_content");
+            startId = id(root, "status_bar_start_side_except_heads_up");
         }
         float density = root.getResources().getDisplayMetrics().density;
         root.getLocationOnScreen(rloc);
@@ -137,12 +137,12 @@ final class Mover {
         boolean backGone = plan.mode[ZoneLayout.BACK] == ZoneLayout.STOCK && Float.isNaN(nat[ZoneLayout.BACK]);
         if (backGone) {
             nat[ZoneLayout.BACK] = leftEdge; w[ZoneLayout.BACK] = 0;
-            int lid = root.getResources().getIdentifier("samsung_ongoing_activity_chip_container", "id", "com.android.systemui");
+            int lid = id(root, "samsung_ongoing_activity_chip_container");
             View live = lid == 0 ? null : root.findViewById(lid);
             if (BackChip.capsuleShown(live)) {
                 live.getLocationOnScreen(loc);
                 nat[ZoneLayout.BACK] = loc[0] - rloc[0] - live.getTranslationX() + live.getWidth() + gapPx;
-                int nbid = root.getResources().getIdentifier("start_side_notif_and_chip_container", "id", "com.android.systemui");
+                int nbid = id(root, "start_side_notif_and_chip_container");
                 notifBox = nbid == 0 ? null : root.findViewById(nbid);
             }
         }
@@ -150,9 +150,9 @@ final class Mover {
         float spInset = 0;
         if (mv[ZoneLayout.NETSPEED] && views[ZoneLayout.NETSPEED] != null) {
             View sv = views[ZoneLayout.NETSPEED];
+            float ink0, ink1;
             ignoreMoved = true;
-            float ink0 = nearestLeafLeftAfter(sv, null, -1e9f), ink1 = lastLeafRight(sv);
-            ignoreMoved = false;
+            try { ink0 = nearestLeafLeftAfter(sv, null, -1e9f); ink1 = lastLeafRight(sv); } finally { ignoreMoved = false; }
             sv.getLocationOnScreen(loc);
             if (ink0 == Float.MAX_VALUE || ink1 < 0) w[ZoneLayout.NETSPEED] = 0;   // nothing drawn (no traffic): takes no room
             else if (ink1 > ink0) {
@@ -207,8 +207,8 @@ final class Mover {
         // ---- 6. Samsung's icons that still reach into the space of placed items are cut off cleanly
         // (only Samsung's icons themselves: the battery lives in the same box and must not be cut)
         String[] left = {"notificationIcons"}, right = netPlaced ? new String[]{"statusIcons"} : new String[]{"networkSpeed", "statusIcons"};
-        for (String n : left) { int id = root.getResources().getIdentifier(n, "id", "com.android.systemui"); clipTo(id == 0 ? null : root.findViewById(id), false, ln[1], rloc[0]); }
-        for (String n : right) { int id = root.getResources().getIdentifier(n, "id", "com.android.systemui"); clipTo(id == 0 ? null : root.findViewById(id), true, ln[3], rloc[0]); }
+        for (String n : left) { int id = id(root, n); clipTo(id == 0 ? null : root.findViewById(id), false, ln[1], rloc[0]); }
+        for (String n : right) { int id = id(root, n); clipTo(id == 0 ? null : root.findViewById(id), true, ln[3], rloc[0]); }
         if (netPlaced && views[ZoneLayout.NETSPEED] != null && views[ZoneLayout.NETSPEED].getClipBounds() != null) views[ZoneLayout.NETSPEED].setClipBounds(null);   // placed: drop a cut left from when it sat in Samsung's place
 
         for (View v : new java.util.ArrayList<>(applied.keySet())) {
@@ -238,7 +238,7 @@ final class Mover {
 
     /** "Space between items": the gap in front of the clock row (between the battery and the temperature / clock). */
     private void applyItemGap(Config c, View root) {
-        int id = root.getResources().getIdentifier("right_clock_container", "id", "com.android.systemui");
+        int id = id(root, "right_clock_container");
         View v = id == 0 ? null : root.findViewById(id);
         if (v == null || !(v.getLayoutParams() instanceof ViewGroup.MarginLayoutParams)) return;
         ViewGroup.MarginLayoutParams m = (ViewGroup.MarginLayoutParams) v.getLayoutParams();
@@ -262,8 +262,8 @@ final class Mover {
     private void applyNetMerge(Config c, View root) {
         View box = mobileBox.get();
         if (box == null || !box.isAttachedToWindow()) {
-            int mid = root.getResources().getIdentifier("mobile_signal", "id", "com.android.systemui");
-            int sid = root.getResources().getIdentifier("statusIcons", "id", "com.android.systemui");
+            int mid = id(root, "mobile_signal");
+            int sid = id(root, "statusIcons");
             View m = mid == 0 ? null : root.findViewById(mid);
             View row = sid == 0 ? null : root.findViewById(sid);
             box = null;
@@ -275,7 +275,7 @@ final class Mover {
             mobileBox = new java.lang.ref.WeakReference<>(box);
         }
         if (box == null) return;
-        int wid = root.getResources().getIdentifier("wifi_signal", "id", "com.android.systemui");
+        int wid = id(root, "wifi_signal");
         View wifi = wid == 0 ? null : root.findViewById(wid);
         boolean wifiUp = wifi != null && wifi.isShown() && wifi.getWidth() > 0;
         if (c.mergeNet && wifiUp) {
@@ -299,7 +299,7 @@ final class Mover {
         if (root == null) return;
         View v = padView.get();
         if (v == null || !v.isAttachedToWindow()) {
-            int id = root.getResources().getIdentifier("status_bar_contents", "id", "com.android.systemui");
+            int id = id(root, "status_bar_contents");
             v = id == 0 ? null : root.findViewById(id);
             padView = new java.lang.ref.WeakReference<>(v);
             origPad = null;
@@ -331,7 +331,7 @@ final class Mover {
      * Slide the right-hand content over until the last visible icon is exactly the chosen distance from the edge.
      */
     private void trimRightGap(Config c, View root, int edgeDp) {
-        int id = root.getResources().getIdentifier("status_bar_end_side_content", "id", "com.android.systemui");
+        int id = id(root, "status_bar_end_side_content");
         View box = trimView.get();
         if (box == null || !box.isAttachedToWindow()) {
             box = id == 0 ? null : root.findViewById(id);
@@ -387,20 +387,20 @@ final class Mover {
         if (netPlaced) return;   // the speed text is placed by the layout, not lined up with Wi-Fi
         View sp = speedBox.get();
         if (sp == null || !sp.isAttachedToWindow()) {
-            int id = root.getResources().getIdentifier("networkSpeed", "id", "com.android.systemui");
+            int id = id(root, "networkSpeed");
             sp = id == 0 ? null : root.findViewById(id);
             speedBox = new java.lang.ref.WeakReference<>(sp);
         }
         if (sp == null) return;
         if (c.itemGap < 0 || !sp.isShown() || sp.getWidth() <= 0) { if (sp.getTranslationX() != 0) sp.setTranslationX(0); return; }
-        int wid = root.getResources().getIdentifier("wifi_signal", "id", "com.android.systemui");
+        int wid = id(root, "wifi_signal");
         View wifi = wid == 0 ? null : root.findViewById(wid);
         if (wifi == null || !wifi.isShown() || wifi.getWidth() <= 0) return;
         float sr = lastLeafRight(sp);
         if (sr < 0) return;
         float wl = glyphBounds(wifi)[0];
         // other icons (mute, hotspot...) may sit between the speed text and Wi-Fi: keep the gap to the nearest one
-        int eid = root.getResources().getIdentifier("status_bar_end_side_content", "id", "com.android.systemui");
+        int eid = id(root, "status_bar_end_side_content");
         View eb = eid == 0 ? null : root.findViewById(eid);
         if (eb != null) {
             sp.getLocationOnScreen(tloc);
@@ -497,8 +497,19 @@ final class Mover {
         return null;
     }
 
+    private final java.util.HashMap<String, Integer> ids = new java.util.HashMap<>();
+
+    /** SystemUI view id by name, looked up once (by-name lookups are slow and this runs every frame). */
+    private int id(View root, String name) {
+        Integer v = ids.get(name);
+        if (v == null) { v = root.getResources().getIdentifier(name, "id", "com.android.systemui"); ids.put(name, v); }
+        return v;
+    }
+
     /** Put everything back (mod detaching / switching off / all zones Default). */
     void releaseAll() {
+        BackChip.extraPad = 0;   // no leftover room after the back button
+        ignoreMoved = false;
         View spx = speedBox.get();
         if (spx != null && spx.getTranslationX() != 0) spx.setTranslationX(0);
         View tb = trimView.get();

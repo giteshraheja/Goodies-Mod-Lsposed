@@ -268,12 +268,18 @@ public final class Config {
         backFadeSec = in.i("backFadeSec", backFadeSec); backSizePct = in.i("backSizePct", backSizePct); backStyle = in.i("backStyle", backStyle);
         dateSeparate = in.b("dateSeparate", dateSeparate);
         if (in.i("pm0", -1) == -1) {   // settings from before free placement: carry the old zones over
-            String[] oldKeys = {"clockZone", "tempZone", "batteryZone", "backZone"};
-            int[] els = {ZoneLayout.CLOCK, ZoneLayout.TEMP, ZoneLayout.BATTERY, ZoneLayout.BACK};
+            // old order inside a zone (from its anchor inward): back button, clock, temperature, battery
+            String[] oldKeys = {"backZone", "clockZone", "tempZone", "batteryZone"};
+            int[] els = {ZoneLayout.BACK, ZoneLayout.CLOCK, ZoneLayout.TEMP, ZoneLayout.BATTERY};
             int[] anchor = {-1, 0, 2, 3, 1};   // old zone 1 left edge, 2 left of camera, 3 right of camera, 4 right edge
+            int[] inward = {-1, 1, 0, 1, 0};   // which side the next item in that zone goes (1 = right of the previous)
+            int[] last = {-1, -1, -1, -1, -1};
             for (int k = 0; k < oldKeys.length; k++) {
-                int z = in.i(oldKeys[k], 0);
-                if (z >= 1 && z <= 4) { plan.mode[els[k]] = ZoneLayout.FREE; plan.right[els[k]] = anchor[z]; plan.off[els[k]] = 0; }
+                int z = in.i(oldKeys[k], 0), e = els[k];
+                if (z < 1 || z > 4) continue;
+                if (last[z] < 0) { plan.mode[e] = ZoneLayout.FREE; plan.right[e] = anchor[z]; plan.off[e] = 0; }
+                else { plan.mode[e] = ZoneLayout.LINK; plan.to[e] = last[z]; plan.side[e] = inward[z]; }   // shared a zone: side by side, not stacked
+                last[z] = e;
             }
         }
         for (int i = 0; i < ZoneLayout.ELEMENTS; i++) {

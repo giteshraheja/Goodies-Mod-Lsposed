@@ -25,9 +25,11 @@ echo $$ > /data/local/tmp/sbmods_cpud.pid
 # a clean-up request nobody answered (helper was off) must not run by itself later
 settings put global sbmods_cmd none
 # limits never survive a restart: if the last limit started before this boot, clear them
-boot=$(( $(date +%s) - $(cut -d. -f1 /proc/uptime) ))
-if [ ! -f $ST/since ] || [ "$(cat $ST/since)" -lt "$boot" ]; then
+# (by boot count, not clock time: the clock may still be wrong this early after boot)
+BOOT=$(settings get global boot_count)
+if [ ! -f $ST/since ] || [ "$(cat $ST/boot 2>/dev/null)" != "$BOOT" ]; then
   for k in sbmods_cpu_pct sbmods_gpu_pct sbmods_cool; do settings put global $k 0; done
+  [ -f $ST/ps.set ] && settings put global low_power 0   # power saving we turned on goes off with the limit
   rm -f $ST/since $ST/*.want $ST/ps.set
 fi
 
@@ -91,7 +93,6 @@ while true; do
   if [ "$w" = "1" ] && [ $((tick % 4)) = 0 ]; then
     cpuload
     if [ -n "$L" ] && { [ -z "$pl" ] || [ $((L - pl)) -ge 3 ] || [ $((pl - L)) -ge 3 ]; }; then settings put global sbmods_cpu_load $L; pl=$L; fi
-    [ "$m" = "$last" ] && { sleep 0.3; last=$(stat -c %y $F 2>/dev/null); m=$last; }
   elif [ "$w" != "1" ]; then pt=""; pl=""; fi
   # nothing changed: sleep (while a limit is on, still look again every 10 s for the timeout / cool-down)
   if [ "$m" = "$last" ] && { [ "$on" = "0" ] || [ $((tick % 10)) != 0 ]; }; then sleep 1; continue; fi
@@ -112,22 +113,24 @@ while true; do
   fi
 
   cp=$(num "$(val sbmods_cpu_pct)" 0); gp=$(num "$(val sbmods_gpu_pct)" 0); ps=$(val sbmods_cpu_ps)
-  [ "$cp" -ge 100 ] && cp=0; [ "$gp" -ge 100 ] && gp=0
+  # 100 = "Full" picked on purpose: stays at full speed even during cool-down
+  cfull=0; gfull=0; [ "$cp" -ge 100 ] && { cp=0; cfull=1; }; [ "$gp" -ge 100 ] && { gp=0; gfull=1; }
   [ "$cp" != "0" ] && [ "$cp" -lt 35 ] && cp=35; [ "$gp" != "0" ] && [ "$gp" -lt 35 ] && gp=35
   if [ "$(val sbmods_cool)" = "1" ]; then
     at=$(num "$(val sbmods_cool_at)" 360); t=$(cat /sys/class/power_supply/battery/temp 2>/dev/null)
     if [ -n "$t" ] && [ "$t" -le "$at" ]; then
       settings put global sbmods_cool 0; settings put global sbmods_result "Cooled down to $((t/10))°C: back to normal speed"
+      [ "$cfull" = "1" ] && settings put global sbmods_cpu_pct 0; [ "$gfull" = "1" ] && settings put global sbmods_gpu_pct 0
     else
       # cool-down uses the levels you picked (the panel's CPU / GPU rows), 55 % if none
-      [ "$cp" = "0" ] && cp=$(num "$(val sbmods_cpu_pick)" 55); [ "$gp" = "0" ] && gp=$(num "$(val sbmods_gpu_pick)" 55); ps=1
+      [ "$cp" = "0" ] && [ "$cfull" = "0" ] && cp=$(num "$(val sbmods_cpu_pick)" 55); [ "$gp" = "0" ] && [ "$gfull" = "0" ] && gp=$(num "$(val sbmods_gpu_pick)" 55); ps=1
     fi
   fi
 
   # safety: a limit never lasts longer than the chosen time
   if [ "$cp" != "0" ] || [ "$gp" != "0" ]; then
     on=1
-    [ -f $ST/since ] || date +%s > $ST/since
+    [ -f $ST/since ] || { date +%s > $ST/since; echo "$BOOT" > $ST/boot; }
     lim=$(num "$(val sbmods_limit_min)" 15); [ "$lim" -gt 120 ] && lim=120; [ "$lim" -lt 1 ] && lim=15
     if [ $(( $(date +%s) - $(cat $ST/since) )) -gt $((lim * 60)) ]; then
       for k in sbmods_cpu_pct sbmods_gpu_pct sbmods_cool; do settings put global $k 0; done
@@ -142,6 +145,6 @@ while true; do
   if [ "$cp" != "0" ] && [ "$ps" = "1" ]; then
     if [ "$(val low_power)" != "1" ]; then settings put global low_power 1; touch $ST/ps.set; fi
   elif [ -f $ST/ps.set ]; then settings put global low_power 0; rm -f $ST/ps.set; fi
-  last=$(stat -c %y $F 2>/dev/null)   # our own writes above must not count as a change
+  # (no re-stat here: a change you made while we were busy must still be seen; our own writes cost one extra read at most)
   sleep 1
 done

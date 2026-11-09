@@ -69,7 +69,17 @@ final class RecentsChip {
 
     private static void onResume(Activity a) {
         if (!a.getPackageName().equals(Entry.LAUNCHER)) return;
-        if (Settings.Global.getInt(a.getContentResolver(), "sbmods_recents_chip", 1) == 0) return;
+        if (Settings.Global.getInt(a.getContentResolver(), "sbmods_recents_chip", 1) == 0) {   // switched off: take away chips already there
+            int rid = a.getResources().getIdentifier("recentContainer", "id", Entry.LAUNCHER);
+            View rc = rid == 0 ? null : a.findViewById(rid);
+            if (rc instanceof ViewGroup) for (String t : new String[]{TAG, TAG + "_gpu", TAG + "_cpu"}) {
+                View v = rc.findViewWithTag(t);
+                if (v != null && v.getParent() instanceof ViewGroup) ((ViewGroup) v.getParent()).removeView(v);
+            }
+            main.removeCallbacks(tick); topRow = null;
+            gput(a, "sbmods_watch", "0");
+            return;
+        }
         int cid = a.getResources().getIdentifier("recentContainer", "id", Entry.LAUNCHER);
         View c = cid == 0 ? null : a.findViewById(cid);
         if (!(c instanceof FrameLayout)) return;   // not the Overview screen
@@ -243,9 +253,10 @@ final class RecentsChip {
             try {
                 Activity a = owner;
                 if (a == null || topRow == null || !topRow.isAttachedToWindow()) return;
-                align(a);
-                if (topRow.isShown() && gint(a, "sbmods_watch", 0) != 1) gput(a, "sbmods_watch", "1");   // Samsung may pause / resume out of order
-                refresh(a);
+                boolean shown = topRow.isShown();
+                int w = gint(a, "sbmods_watch", 0);
+                if (shown != (w == 1)) gput(a, "sbmods_watch", shown ? "1" : "0");   // CPU load only while Overview is really on screen (not the home screen)
+                if (shown) { align(a); refresh(a); }
                 main.postDelayed(this, 2500);
             } catch (Throwable t) { Log.w("recents chip tick: " + t); }
         }
@@ -420,7 +431,7 @@ final class RecentsChip {
 
         Perf.Snap ps = Perf.read();
         int cp = gint(ctx, "sbmods_cpu_pct", 0), gp = gint(ctx, "sbmods_gpu_pct", 0);
-        if (cool) { if (cp == 0) cp = gint(ctx, "sbmods_cpu_pick", 55); if (gp == 0) gp = gint(ctx, "sbmods_gpu_pick", 55); }   // cool-down uses your levels
+        cp = effPct(ctx, "cpu", cp, cool); gp = effPct(ctx, "gpu", gp, cool);   // cool-down uses your levels; 100 = Full on purpose
         int load = gint(ctx, "sbmods_cpu_load", -1);
         chipFor(cpuChip, "CPU", ps.cpuCur > 0 ? Perf.ghz(ps.cpuCur) + (load >= 0 ? " \u00b7 " + load + "%" : "") : "\u2014", cp, ps.cpuCap, ps.cpuHw, true);
         chipFor(gpuChip, "GPU", ps.gpuCur > 0 ? ps.gpuCur + " MHz" + (gpuAvg(ps.gpuBusy) >= 3 ? " \u00b7 " + gpuAvg(-2) + "%" : "") : "\u2014", gp, ps.gpuCap, ps.gpuHw, false);
@@ -559,9 +570,17 @@ final class RecentsChip {
         t.sub(sub, subC);
     }
 
+    /** The level really in force: 0 / 100 = full speed; during cool-down "no choice" (0) means your picked level. */
+    static int effPct(Context c, String which, int raw, boolean cool) {
+        if (raw >= 100) return 0;
+        if (raw == 0 && cool) return gint(c, "sbmods_" + which + "_pick", 55);
+        return raw;
+    }
+
     /** Long-press: limit on (at the level last chosen in the panel) / off. */
     private static void quickLimit(Activity a, String which) {
         int on = gint(a, "sbmods_" + which + "_pct", 0);
+        if (on >= 100) on = 0;
         int level = gint(a, "sbmods_" + which + "_pick", 55);
         gput(a, "sbmods_" + which + "_pct", on > 0 ? "0" : String.valueOf(level));
         pChangedAt = android.os.SystemClock.uptimeMillis();
@@ -662,8 +681,7 @@ final class RecentsChip {
         boolean cpu = which.equals("cpu");
         Perf.Snap s = Perf.read();
         int hw = cpu ? s.cpuHw : s.gpuHw;
-        int cur = gint(a, "sbmods_" + which + "_pct", 0);
-        if (cur == 0 && gint(a, "sbmods_cool", 0) == 1) cur = gint(a, "sbmods_" + which + "_pick", 55);   // cooling: show the level it uses
+        int cur = effPct(a, which, gint(a, "sbmods_" + which + "_pct", 0), gint(a, "sbmods_cool", 0) == 1);   // what is really in force
         LinearLayout seg = new LinearLayout(a);
         GradientDrawable sb = new GradientDrawable();
         sb.setColor(0x22FFFFFF);
@@ -688,8 +706,9 @@ final class RecentsChip {
             if (on) { GradientDrawable ob = new GradientDrawable(); ob.setColor(i == 0 ? GREEN : CYAN); ob.setCornerRadius(15 * d); b.setBackground(ob); }
             b.setOnClickListener(v -> {
                 if (pct > 0) gput(a, "sbmods_" + which + "_pick", String.valueOf(pct));
-                if (gint(a, "sbmods_cool", 0) == 1 && pct > 0) gput(a, "sbmods_" + which + "_pct", "0");   // cooling: just its level, ends with it
-                else gput(a, "sbmods_" + which + "_pct", String.valueOf(pct));
+                boolean cooling = gint(a, "sbmods_cool", 0) == 1;
+                // cooling: a level just sets the cool-down level (ends with it); Full = this one at full speed while cooling (100)
+                gput(a, "sbmods_" + which + "_pct", cooling ? (pct > 0 ? "0" : "100") : String.valueOf(pct));
                 pChangedAt = android.os.SystemClock.uptimeMillis();
                 rebuildPanel(a);
             });
@@ -733,7 +752,8 @@ final class RecentsChip {
         } catch (Throwable ignored) {}
         pTemp.setText(Math.round(temp) + "°C");
         int cp = gint(c, "sbmods_cpu_pct", 0), gp = gint(c, "sbmods_gpu_pct", 0);
-        if (gint(c, "sbmods_cool", 0) == 1) { if (cp == 0) cp = gint(c, "sbmods_cpu_pick", 55); if (gp == 0) gp = gint(c, "sbmods_gpu_pick", 55); }
+        boolean cool = gint(c, "sbmods_cool", 0) == 1;
+        cp = effPct(c, "cpu", cp, cool); gp = effPct(c, "gpu", gp, cool);
         boolean missed = (cp > 0 && s.cpuCap > Perf.pick(Perf.cpuSteps, s.cpuHw, cp)) || (gp > 0 && s.gpuCap > Perf.pick(Perf.gpuSteps, s.gpuHw, gp));
         boolean late = android.os.SystemClock.uptimeMillis() - pChangedAt > 4000;
         pWarn.setVisibility(missed && late ? View.VISIBLE : View.GONE);
