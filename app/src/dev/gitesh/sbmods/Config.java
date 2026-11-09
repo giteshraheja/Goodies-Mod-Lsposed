@@ -21,6 +21,7 @@ public final class Config {
     public static final String ACTION_TEST = PKG + ".TEST_ACTION";
     public static final String ACTION_RESTART = PKG + ".RESTART";
     public static final String ACTION_TIP = PKG + ".SHOW_TIP";
+    public static final String ACTION_TOAST = PKG + ".TOAST";
 
     // Thermal sensor types (android.os.Temperature.TYPE_*)
     public static final int SENSOR_CPU = 0, SENSOR_BATTERY = 2, SENSOR_SKIN = 3;
@@ -80,8 +81,10 @@ public final class Config {
     public int gapDp = 4;
     public int sizePct = 100;
 
-    // ---- positions (ZoneLayout.STOCK/LEFT/HOLE_LEFT/HOLE_RIGHT/RIGHT) ----
-    public int clockZone = 0, tempZone = 0, batteryZone = 0, backZone = 0;
+    // ---- positions: where each movable item sits (see ZoneLayout) ----
+    public ZoneLayout.Plan plan = new ZoneLayout.Plan();
+    /** Show the day/date as its own item (only with the Custom clock) so it can be placed on its own. */
+    public boolean dateSeparate = false;
     /** Margin for the left / right edge zones in dp; -1 = keep Samsung's own side padding (curved screens can go tighter). */
     public int edgeDp = 4;          // manual value (dp), used when edgeMode == 2
     /** Space between neighbouring status bar items in dp; -1 = Samsung's own. */
@@ -157,8 +160,15 @@ public final class Config {
         for (int i = 0; i < SLOTS; i++) setAction(i, clamp(action(i), 0, ACT_MAX));
         if (apps == null || apps.length != SLOTS) apps = new String[SLOTS];
         backChars = clamp(backChars, 3, 14);
-        clockZone = clamp(clockZone, 0, 4); tempZone = clamp(tempZone, 0, 4); batteryZone = clamp(batteryZone, 0, 4);
-        backZone = clamp(backZone, 0, 4);
+        if (plan == null) plan = new ZoneLayout.Plan();
+        for (int i = 0; i < ZoneLayout.ELEMENTS; i++) {
+            plan.mode[i] = clamp(plan.mode[i], 0, 2);
+            plan.right[i] = clamp(plan.right[i], 0, 3);
+            plan.off[i] = clamp(plan.off[i], -400, 400);
+            plan.to[i] = clamp(plan.to[i], 0, ZoneLayout.ELEMENTS - 1);
+            plan.side[i] = clamp(plan.side[i], 0, 1);
+            if (plan.mode[i] == ZoneLayout.LINK && plan.to[i] == i) plan.mode[i] = ZoneLayout.STOCK;
+        }
         edgeDp = clamp(edgeDp, 0, 24);
         edgeMode = clamp(edgeMode, 0, 2);
         itemGap = clamp(itemGap, -1, 16);
@@ -224,8 +234,9 @@ public final class Config {
         o.i("clockLong", clockLong); o.i("tempTap", tempTap); o.i("tempLong", tempLong);
         o.b("tapHaptic", tapHaptic);
         o.i("batteryDouble", batteryDouble); o.i("clockDouble", clockDouble); o.i("tempDouble", tempDouble);
-        o.i("backLive", backLive); o.i("backZone", backZone); o.i("edgeDp", edgeDp); o.i("edgeMode", edgeMode); o.i("notifMax", notifMax); o.i("lockMax", lockMax); o.b("dtSleep", dtSleep); o.b("mergeNet", mergeNet); o.i("itemGap", itemGap); o.i("backFadeSec", backFadeSec); o.i("backSizePct", backSizePct); o.i("backStyle", backStyle);
-        o.i("clockZone", clockZone); o.i("tempZone", tempZone); o.i("batteryZone", batteryZone);
+        o.i("backLive", backLive); o.i("edgeDp", edgeDp); o.i("edgeMode", edgeMode); o.i("notifMax", notifMax); o.i("lockMax", lockMax); o.b("dtSleep", dtSleep); o.b("mergeNet", mergeNet); o.i("itemGap", itemGap); o.i("backFadeSec", backFadeSec); o.i("backSizePct", backSizePct); o.i("backStyle", backStyle);
+        o.b("dateSeparate", dateSeparate);
+        for (int i = 0; i < ZoneLayout.ELEMENTS; i++) { o.i("pm" + i, plan.mode[i]); o.i("pr" + i, plan.right[i]); o.i("po" + i, plan.off[i]); o.i("pt" + i, plan.to[i]); o.i("ps" + i, plan.side[i]); }
         o.i("cameraTap", cameraTap); o.i("cameraDouble", cameraDouble); o.i("cameraLong", cameraLong);
         for (int i = 0; i < 6; i++) o.i("net" + i, netActs[i]);
         for (int i = 0; i < SLOTS; i++) o.s("app" + i, app(i));
@@ -253,10 +264,13 @@ public final class Config {
         tapHaptic = in.b("tapHaptic", tapHaptic);
         batteryDouble = in.i("batteryDouble", batteryDouble); clockDouble = in.i("clockDouble", clockDouble);
         tempDouble = in.i("tempDouble", tempDouble);
-        backLive = in.i("backLive", backLive); backZone = in.i("backZone", backZone); edgeDp = in.i("edgeDp", edgeDp); edgeMode = in.i("edgeMode", edgeMode); notifMax = in.i("notifMax", notifMax); lockMax = in.i("lockMax", lockMax); dtSleep = in.b("dtSleep", dtSleep); mergeNet = in.b("mergeNet", mergeNet); itemGap = in.i("itemGap", itemGap);
+        backLive = in.i("backLive", backLive); edgeDp = in.i("edgeDp", edgeDp); edgeMode = in.i("edgeMode", edgeMode); notifMax = in.i("notifMax", notifMax); lockMax = in.i("lockMax", lockMax); dtSleep = in.b("dtSleep", dtSleep); mergeNet = in.b("mergeNet", mergeNet); itemGap = in.i("itemGap", itemGap);
         backFadeSec = in.i("backFadeSec", backFadeSec); backSizePct = in.i("backSizePct", backSizePct); backStyle = in.i("backStyle", backStyle);
-        clockZone = in.i("clockZone", clockZone); tempZone = in.i("tempZone", tempZone);
-        batteryZone = in.i("batteryZone", batteryZone);
+        dateSeparate = in.b("dateSeparate", dateSeparate);
+        for (int i = 0; i < ZoneLayout.ELEMENTS; i++) {
+            plan.mode[i] = in.i("pm" + i, plan.mode[i]); plan.right[i] = in.i("pr" + i, plan.right[i]); plan.off[i] = in.i("po" + i, plan.off[i]);
+            plan.to[i] = in.i("pt" + i, plan.to[i]); plan.side[i] = in.i("ps" + i, plan.side[i]);
+        }
         cameraTap = in.i("cameraTap", cameraTap); cameraDouble = in.i("cameraDouble", cameraDouble);
         cameraLong = in.i("cameraLong", cameraLong);
         for (int i = 0; i < 6; i++) netActs[i] = in.i("net" + i, netActs[i]);

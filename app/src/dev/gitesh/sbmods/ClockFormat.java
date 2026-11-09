@@ -70,6 +70,22 @@ public final class ClockFormat {
                 time.setSpan(new RelativeSizeSpan(AMPM_SMALL), start, time.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
 
+        SpannableStringBuilder block = dateBlock(c, now, loc);
+        if (block == null || c.dateSeparate) return time;
+
+        SpannableStringBuilder out = new SpannableStringBuilder();
+        if (c.dateAfterTime) { out.append(time); gap(out, c.gapDateTime); out.append(block); }
+        else { out.append(block); gap(out, c.gapDateTime); out.append(time); }
+        return out;
+    }
+
+    /** The day / date on its own (Custom clock with "Date as its own item"), or null. */
+    public static CharSequence dateText(Config c, Date now, Locale loc) {
+        if (!c.dateSeparate || c.clockMode != Config.CLOCK_BUILDER) return null;
+        try { return dateBlock(c, now, loc); } catch (Throwable t) { return null; }
+    }
+
+    private static SpannableStringBuilder dateBlock(Config c, Date now, Locale loc) {
         String day = null;
         if (c.weekday == Config.WEEKDAY_TWO) day = new android.icu.text.SimpleDateFormat("EEEEEE", loc).format(now);
         else if (c.weekday != Config.WEEKDAY_NONE)
@@ -83,7 +99,7 @@ public final class ClockFormat {
             }
             date = new SimpleDateFormat(d, loc).format(now);
         }
-        if (day == null && date == null) return time;
+        if (day == null && date == null) return null;
 
         SpannableStringBuilder block = new SpannableStringBuilder();
         String first = c.dateFirst ? date : day, second = c.dateFirst ? day : date;
@@ -93,10 +109,7 @@ public final class ClockFormat {
         if (c.dateSizePct != 100)
             block.setSpan(new RelativeSizeSpan(c.dateSizePct / 100f), 0, block.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
 
-        SpannableStringBuilder out = new SpannableStringBuilder();
-        if (c.dateAfterTime) { out.append(time); gap(out, c.gapDateTime); out.append(block); }
-        else { out.append(block); gap(out, c.gapDateTime); out.append(time); }
-        return out;
+        return block;
     }
 
     /** Appends a space whose width is pct % of a normal space (0 = none). */

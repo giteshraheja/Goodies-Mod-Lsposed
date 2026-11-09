@@ -18,7 +18,8 @@ public final class Entry implements IXposedHookLoadPackage {
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lp) {
         try {
-            if ("android".equals(lp.packageName) || LAUNCHER.equals(lp.packageName)) { hookLockLimit(lp); return; }
+            if ("android".equals(lp.packageName)) { hookLockLimit(lp); return; }
+            if (LAUNCHER.equals(lp.packageName)) { hookLockLimit(lp); RecentsChip.install(lp); return; }
             if (!Config.SYSUI.equals(lp.packageName)) return;
             if (lp.processName != null && !Config.SYSUI.equals(lp.processName)) return;
             if (attachHook != null) return;

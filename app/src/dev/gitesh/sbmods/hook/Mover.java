@@ -31,16 +31,36 @@ final class Mover {
     private final int[] loc = new int[2], rloc = new int[2];
     private int endId = -1, startId = -1;
 
-    /** views: clock, temperature label, battery, back button (any may be null). */
-    void update(Config c, View root, View... views) {
-        applyEdge(c, root);
+    /** views: clock, temperature label, battery, back button, date (any may be null), in ZoneLayout element order. */
+    void update(Config c, View root, View... viewsIn) {
+        if (root == null) { releaseZones(); return; }   // status bar not attached (yet / any more)
+        View[] views = java.util.Arrays.copyOf(viewsIn, ZoneLayout.ELEMENTS);
+        if (views[ZoneLayout.NETSPEED] == null) {
+            int nid = root.getResources().getIdentifier("networkSpeed", "id", "com.android.systemui");
+            views[ZoneLayout.NETSPEED] = nid == 0 ? null : root.findViewById(nid);
+        }
+        applyEdge(c, root);   // uses rightReserve from the previous frame
         applyItemGap(c, root);
         applyNetMerge(c, root);
-        int backZ = ((c.backLive == 3 || c.backLive == 4) && BackChip.stackLive) ? 0 : c.backZone;   // Stack: shares the live activity's spot
-        int[] zone = {c.clockZone, c.tempZone, c.batteryZone, backZ};
-        boolean any = zone[0] != 0 || zone[1] != 0 || zone[2] != 0 || zone[3] != 0;
+        ZoneLayout.Plan plan = c.plan.copy();
+        if ((c.backLive == 3 || c.backLive == 4) && BackChip.stackLive) plan.mode[ZoneLayout.BACK] = ZoneLayout.STOCK;   // Stack: shares the live activity's spot
+        if (!c.dateSeparate) plan.mode[ZoneLayout.DATE] = ZoneLayout.STOCK;
+        // stuck to an item that isn't showing: go back to Samsung's own place
+        // (except the back button: without it, things stuck to it take its spot, right after the live activity)
+        for (int i = 0; i < ZoneLayout.ELEMENTS; i++) {
+            if (plan.mode[i] != ZoneLayout.LINK) continue;
+            int t = plan.to[i];
+            if (t == ZoneLayout.BACK) continue;
+            View tv = t >= 0 && t < ZoneLayout.ELEMENTS ? views[t] : null;
+            if (tv == null || !tv.isShown() || tv.getWidth() <= 0 || tv.getAlpha() < 0.05f) plan.mode[i] = ZoneLayout.STOCK;
+        }
+        rightReserve = 0;
+        netPlaced = plan.mode[ZoneLayout.NETSPEED] != ZoneLayout.STOCK;
+        applyLeft(c, root, views[ZoneLayout.CLOCK] instanceof android.widget.TextView ? (android.widget.TextView) views[ZoneLayout.CLOCK] : null);
+        java.util.Arrays.fill(movedViews, null);
+        boolean any = plan.any();
         if (!any && applied.isEmpty()) return;
-        if (!any || root == null) { releaseZones(); return; }
+        if (!any || root == null) { BackChip.extraPad = 0; releaseZones(); return; }
 
         if (endId == -1) {
             endId = root.getResources().getIdentifier("status_bar_end_side_content", "id", "com.android.systemui");
@@ -49,20 +69,28 @@ final class Mover {
         float density = root.getResources().getDisplayMetrics().density;
         root.getLocationOnScreen(rloc);
 
-        // which atoms are actually moving (showing + zone set)
+        // which items are actually placed (showing + not in Samsung's place)
         float[] w = new float[ZoneLayout.ELEMENTS];
         boolean[] mv = new boolean[ZoneLayout.ELEMENTS];
         for (int i = 0; i < ZoneLayout.ELEMENTS; i++) {
             View v = i < views.length ? views[i] : null;
-            if (v != null && zone[i] != 0 && v.isShown() && v.getWidth() > 0) {
+            if (v != null && plan.mode[i] != ZoneLayout.STOCK && v.isShown() && v.getWidth() > 0) {
                 mv[i] = true;
                 w[i] = v.getWidth() * v.getScaleX();
             }
         }
+        // where items that stay in Samsung's place are right now (other items can be stuck to them, e.g. "right of the back button")
+        float[] nat = new float[ZoneLayout.ELEMENTS];
+        java.util.Arrays.fill(nat, Float.NaN);
+        for (int i = 0; i < ZoneLayout.ELEMENTS; i++) {
+            View v = views[i];
+            if (v == null || plan.mode[i] != ZoneLayout.STOCK || !v.isShown() || v.getWidth() <= 0) continue;
+            v.getLocationOnScreen(loc);
+            nat[i] = loc[0] - rloc[0];   // where it really is right now (the back button is nudged sideways by its own code, so don't undo that)
+            w[i] = v.getWidth() * v.getScaleX();
+        }
 
-        // ---- 1. free the layout space of moved items, so Samsung's own layout closes the gap
-        //          (and gives Wi-Fi / signal icons their room back); find which side each lives on
-        IdentityHashMap<View, Float> shift = new IdentityHashMap<>();
+        // ---- 1. take placed items out of their row's width, so Samsung's own layout closes the gap
         ViewGroup endBox = null, startBox = null;
         for (int i = 0; i < ZoneLayout.ELEMENTS; i++) {
             View atom = i < views.length ? views[i] : null;
@@ -73,37 +101,11 @@ final class Mover {
             if (side == null) continue;
             if (side.getId() == endId) endBox = side; else startBox = side;
         }
-        float gapPx = (c.itemGap >= 0 ? c.itemGap : 6) * density;
-        applyHoleRoom(root, zone, w, mv, gapPx);
-        // make room for items parked at the left / right edge
-        float[] edgeTotal = new float[2]; // [0] left zone, [1] right zone
-        int[] cnt = new int[2];
-        for (int i = 0; i < ZoneLayout.ELEMENTS; i++) {
-            if (!mv[i]) continue;
-            int z = zone[i] == ZoneLayout.LEFT ? 0 : zone[i] == ZoneLayout.RIGHT ? 1 : -1;
-            if (z < 0) continue;
-            edgeTotal[z] += w[i];
-            cnt[z]++;
-        }
         if (startBox == null) startBox = (ViewGroup) root.findViewById(startId);
         if (endBox == null) endBox = (ViewGroup) root.findViewById(endId);
-        if (cnt[0] > 0 && startBox != null) pushChildren(shift, startBox, edgeTotal[0] + gapPx * (cnt[0] - 1) + gapPx);
-        if (cnt[1] > 0 && endBox != null) pushChildren(shift, endBox, -(edgeTotal[1] + gapPx * (cnt[1] - 1) + gapPx));
+        float gapPx = (c.itemGap >= 0 ? c.itemGap : 6) * density;
 
-        // moved atoms get absolute positions below; never shift them here
-        for (int i = 0; i < ZoneLayout.ELEMENTS; i++) if (mv[i]) shift.remove(views[i]);
-
-        // ---- 2. apply shifts; reset whatever we shifted before and no longer need
-        IdentityHashMap<View, Boolean> keep = new IdentityHashMap<>();
-        for (Map.Entry<View, Float> e : shift.entrySet()) {
-            View v = e.getKey();
-            keep.put(v, true);
-            float tx = Math.round(e.getValue());
-            if (Math.abs(v.getTranslationX() - tx) > 0.5f) v.setTranslationX(tx);
-            if (!applied.containsKey(v)) { applied.put(v, true); unclip(v, root); }
-        }
-
-        // ---- 3. absolute positions for the moved atoms (their parents are shifted by now)
+        // ---- 2. where the edges are
         float screenW = root.getWidth();
         float holeL = screenW / 2 - 6 * density, holeR = screenW / 2 + 6 * density;
         WindowInsets wi = root.getRootWindowInsets();
@@ -116,7 +118,7 @@ final class Mover {
                 break;
             }
         }
-        // edges follow Samsung's own side padding, so "Left edge" lines up with where the clock normally starts
+        // edges follow Samsung's own side padding, so an item at the edge lines up with where the clock normally starts
         float leftEdge = 16 * density, rightEdge = 16 * density;
         if (startBox != null && startBox.getWidth() > 0) {
             startBox.getLocationOnScreen(loc);
@@ -127,7 +129,71 @@ final class Mover {
             rightEdge = screenW - (loc[0] - rloc[0] - endBox.getTranslationX() + endBox.getWidth());
         }
         if (c.edgeEff() >= 0) { leftEdge = c.edgeEff() * density; rightEdge = c.edgeEff() * density; }
-        float[] x = ZoneLayout.solve(zone, w, screenW, holeL, holeR, leftEdge, rightEdge, gapPx, 8 * density);
+
+        // ---- 3. solve: positions of the placed items, and how much room Samsung's icons give up
+        ZoneLayout.Plan px = plan.copy();
+        for (int i = 0; i < ZoneLayout.ELEMENTS; i++) px.off[i] = Math.round(plan.off[i] * density);
+        // no back button right now: things stuck to it take its spot - right after the live activity if one shows, else the far left
+        View notifBox = null;
+        boolean backGone = plan.mode[ZoneLayout.BACK] == ZoneLayout.STOCK && Float.isNaN(nat[ZoneLayout.BACK]);
+        if (backGone) {
+            nat[ZoneLayout.BACK] = leftEdge; w[ZoneLayout.BACK] = 0;
+            int lid = root.getResources().getIdentifier("samsung_ongoing_activity_chip_container", "id", "com.android.systemui");
+            View live = lid == 0 ? null : root.findViewById(lid);
+            if (BackChip.capsuleShown(live)) {
+                live.getLocationOnScreen(loc);
+                nat[ZoneLayout.BACK] = loc[0] - rloc[0] - live.getTranslationX() + live.getWidth() + gapPx;
+                int nbid = root.getResources().getIdentifier("start_side_notif_and_chip_container", "id", "com.android.systemui");
+                notifBox = nbid == 0 ? null : root.findViewById(nbid);
+            }
+        }
+        // the network-speed text has blank padding inside its box: space it by the drawn text so the gap to its neighbours is exactly "space between items"
+        float spInset = 0;
+        if (mv[ZoneLayout.NETSPEED] && views[ZoneLayout.NETSPEED] != null) {
+            View sv = views[ZoneLayout.NETSPEED];
+            ignoreMoved = true;
+            float ink0 = nearestLeafLeftAfter(sv, null, -1e9f), ink1 = lastLeafRight(sv);
+            ignoreMoved = false;
+            sv.getLocationOnScreen(loc);
+            if (ink0 == Float.MAX_VALUE || ink1 < 0) w[ZoneLayout.NETSPEED] = 0;   // nothing drawn (no traffic): takes no room
+            else if (ink1 > ink0) {
+                float l0 = Math.max(0, ink0 - loc[0]), r0 = Math.max(0, loc[0] + w[ZoneLayout.NETSPEED] - ink1);
+                if (l0 + r0 < w[ZoneLayout.NETSPEED] - 4 * density) { spInset = l0; w[ZoneLayout.NETSPEED] -= l0 + r0; }
+            }
+        }
+        float[] x = ZoneLayout.solve(px, w, screenW, holeL, holeR, 8 * density, leftEdge, rightEdge, gapPx, nat);
+        if (spInset > 0 && !Float.isNaN(x[ZoneLayout.NETSPEED])) x[ZoneLayout.NETSPEED] -= spInset;
+        float safe = 0;   // keep inside the screen only: the edge distance you chose is honoured exactly (burn-in protection may still nudge the bar up to 3 px)
+        for (int i = 0; i < ZoneLayout.ELEMENTS; i++)
+            if (!Float.isNaN(x[i]) && w[i] > 0) x[i] = Math.max(safe, Math.min(screenW - safe - w[i], x[i]));
+        float leftBase = leftEdge;   // Samsung's notification icons start after a back button that stays in its place
+        if (!Float.isNaN(nat[ZoneLayout.BACK]) && w[ZoneLayout.BACK] > 0) leftBase = Math.max(leftEdge, nat[ZoneLayout.BACK] + w[ZoneLayout.BACK] + gapPx);
+        if (notifBox != null) leftBase = Math.max(leftEdge, nat[ZoneLayout.BACK]);   // no back button, live activity showing: the icons start right after it
+        float[] ln = ZoneLayout.lanes(x, w, screenW, holeL, holeR, leftEdge, rightEdge, gapPx, 8 * density, 14 * density, leftBase);
+
+        IdentityHashMap<View, Float> shift = new IdentityHashMap<>();
+        float pushLeft = ln[0] - leftBase;
+        boolean chipBase = !backGone && leftBase > leftEdge + 0.5f;   // a back button in Samsung's place: its own row padding makes the room (a push would drag the button along)
+        BackChip.extraPad = chipBase && pushLeft > 0.5f ? pushLeft : 0;
+        if (notifBox != null) { if (pushLeft > 0.5f) add(shift, notifBox, pushLeft); }   // only the icons make room: the live activity stays put
+        else if (startBox != null && !chipBase && pushLeft > 0.5f) pushChildren(shift, startBox, pushLeft);
+        float rightPush = (screenW - rightEdge) - ln[2];
+        if (endBox != null && rightPush > 0.5f) pushChildren(shift, endBox, -rightPush);
+        rightReserve = Math.max(0, rightPush);
+        for (int i = 0; i < ZoneLayout.ELEMENTS; i++) if (mv[i]) movedViews[i] = views[i];
+        for (int i = 0; i < ZoneLayout.ELEMENTS; i++) if (mv[i]) shift.remove(views[i]);   // placed items get absolute positions below
+
+        // ---- 4. apply shifts; reset whatever we shifted before and no longer need
+        IdentityHashMap<View, Boolean> keep = new IdentityHashMap<>();
+        for (Map.Entry<View, Float> e : shift.entrySet()) {
+            View v = e.getKey();
+            keep.put(v, true);
+            float tx = Math.round(e.getValue());
+            if (Math.abs(v.getTranslationX() - tx) > 0.5f) v.setTranslationX(tx);
+            if (!applied.containsKey(v)) { applied.put(v, true); unclip(v, root); }
+        }
+
+        // ---- 5. absolute positions for the placed items (their parents are shifted by now)
         for (int i = 0; i < ZoneLayout.ELEMENTS; i++) {
             if (!mv[i] || Float.isNaN(x[i])) continue;
             View v = views[i];
@@ -139,46 +205,51 @@ final class Mover {
             if (!applied.containsKey(v)) { applied.put(v, true); unclip(v, root); }
         }
 
+        // ---- 6. Samsung's icons that still reach into the space of placed items are cut off cleanly
+        // (only Samsung's icons themselves: the battery lives in the same box and must not be cut)
+        String[] left = {"notificationIcons"}, right = netPlaced ? new String[]{"statusIcons"} : new String[]{"networkSpeed", "statusIcons"};
+        for (String n : left) { int id = root.getResources().getIdentifier(n, "id", "com.android.systemui"); clipTo(id == 0 ? null : root.findViewById(id), false, ln[1], rloc[0]); }
+        for (String n : right) { int id = root.getResources().getIdentifier(n, "id", "com.android.systemui"); clipTo(id == 0 ? null : root.findViewById(id), true, ln[3], rloc[0]); }
+        if (netPlaced && views[ZoneLayout.NETSPEED] != null && views[ZoneLayout.NETSPEED].getClipBounds() != null) views[ZoneLayout.NETSPEED].setClipBounds(null);   // placed: drop a cut left from when it sat in Samsung's place
+
         for (View v : new java.util.ArrayList<>(applied.keySet())) {
             if (v != null && !keep.containsKey(v)) { applied.remove(v); if (v.getTranslationX() != 0) v.setTranslationX(0); }
         }
     }
 
-    private final WeakHashMap<View, int[]> origRoom = new WeakHashMap<>();
+    private final java.util.ArrayList<java.lang.ref.WeakReference<View>> clipped = new java.util.ArrayList<>();
 
-    private void setRoom(View v, boolean start, int px) {
-        ViewGroup.LayoutParams lp = v.getLayoutParams();
-        if (!(lp instanceof ViewGroup.MarginLayoutParams)) return;
-        ViewGroup.MarginLayoutParams m = (ViewGroup.MarginLayoutParams) lp;
-        int[] o = origRoom.get(v);
-        if (o == null) { o = new int[]{m.getMarginStart(), m.getMarginEnd()}; origRoom.put(v, o); }
-        int wantStart = start ? o[0] + px : o[0], wantEnd = start ? o[1] : o[1] + px;
-        if (m.getMarginStart() != wantStart || m.getMarginEnd() != wantEnd) {
-            m.setMarginStart(wantStart);
-            m.setMarginEnd(wantEnd);
-            v.setLayoutParams(m);
-        }
+    /** Cuts v at a screen-x limit (from its right side: keep left part; or from its left side: keep right part). */
+    private void clipTo(View v, boolean cutLeft, float limit, int rootLeft) {
+        if (v == null || v.getWidth() <= 0) return;
+        v.getLocationOnScreen(loc);
+        float lx = limit + rootLeft - loc[0];            // limit in the view's own coordinates
+        Rect cb = null;
+        if (!cutLeft && lx < v.getWidth()) cb = new Rect(0, 0, Math.max(0, Math.round(lx)), v.getHeight());
+        if (cutLeft && lx > 0) cb = new Rect(Math.min(v.getWidth(), Math.round(lx)), 0, v.getWidth(), v.getHeight());
+        Rect cur = v.getClipBounds();
+        if (cb == null) { if (cur != null) v.setClipBounds(null); return; }
+        if (!cb.equals(cur)) v.setClipBounds(cb);
+        for (java.lang.ref.WeakReference<View> r : clipped) if (r.get() == v) return;
+        clipped.add(new java.lang.ref.WeakReference<>(v));
     }
 
+    /** Placed items (clock, temperature, battery, back pill, date): not icons, ignored when lining icons up with the edge. */
+    private final View[] movedViews = new View[ZoneLayout.ELEMENTS];
+
+    private final WeakHashMap<View, Boolean> leftShifted = new WeakHashMap<>();
+
     /**
-     * Items parked beside the camera hole must not sit on top of Samsung's own icons: shrink the
-     * left content (notification icons) or the right content (system icons) by the space they take.
+     * Left side: Samsung lays out and spaces the notification icons itself (tight, and it decides how many fit).
+     * We used to re-space them by "space between items", which spread them out and pushed the last ones into the clip;
+     * now we only hand them back once so Samsung's own layout takes over again.
      */
-    private void applyHoleRoom(View root, int[] zone, float[] w, boolean[] mv, float gapPx) {
-        float left = 0, right = 0;
-        int nl = 0, nr = 0;
-        for (int i = 0; i < ZoneLayout.ELEMENTS; i++) {
-            if (!mv[i]) continue;
-            if (zone[i] == ZoneLayout.HOLE_LEFT) { left += w[i]; nl++; }
-            if (zone[i] == ZoneLayout.HOLE_RIGHT) { right += w[i]; nr++; }
-        }
-        if (nl > 0) left += gapPx * (nl - 1) + gapPx;
-        if (nr > 0) right += gapPx * (nr - 1) + gapPx;
-        int lid = root.getResources().getIdentifier("status_bar_left_container", "id", "com.android.systemui");
-        int rid = root.getResources().getIdentifier("system_icon_area", "id", "com.android.systemui");
-        View lb = lid == 0 ? null : root.findViewById(lid), rb = rid == 0 ? null : root.findViewById(rid);
-        if (lb != null && (nl > 0 || origRoom.containsKey(lb))) setRoom(lb, false, Math.round(left));
-        if (rb != null && (nr > 0 || origRoom.containsKey(rb))) setRoom(rb, true, Math.round(right));
+    private void applyLeft(Config c, View root, android.widget.TextView clock) {
+        if (leftShifted.isEmpty()) return;
+        View parent = null;
+        for (View k : new java.util.ArrayList<>(leftShifted.keySet())) if (k != null && k.getParent() instanceof View) parent = (View) k.getParent();
+        leftShifted.clear();
+        if (parent != null) parent.requestLayout();   // Samsung re-applies its own icon positions
     }
 
     /** "Space between items": the gap in front of the clock row (between the battery and the temperature / clock). */
@@ -264,6 +335,9 @@ final class Mover {
         applyRightUniform(c, root);
     }
 
+    /** Width kept free at the right edge for items parked at "Far right" (trimRightGap must not undo the push). */
+    private float rightReserve;
+    private boolean netPlaced;
     private java.lang.ref.WeakReference<View> trimView = new java.lang.ref.WeakReference<>(null);
     private final int[] tloc = new int[2];
 
@@ -285,7 +359,7 @@ final class Mover {
         root.getLocationOnScreen(rloc);
         float leafR = lastLeafRight(box);
         if (leafR < 0) return;
-        float gap = (rloc[0] + root.getWidth()) - leafR - edgeDp * density;   // > 0: too far from the edge
+        float gap = (rloc[0] + root.getWidth()) - leafR - edgeDp * density - rightReserve;   // > 0: too far from the edge
         if (Math.abs(gap) >= 1f) box.setTranslationX(box.getTranslationX() + Math.round(gap));
     }
 
@@ -326,6 +400,7 @@ final class Mover {
      * by trimRightGap, so spacing no longer depends on each icon's hidden padding.
      */
     private void applyRightUniform(Config c, View root) {
+        if (netPlaced) return;   // the speed text is placed by the layout, not lined up with Wi-Fi
         View sp = speedBox.get();
         if (sp == null || !sp.isAttachedToWindow()) {
             int id = root.getResources().getIdentifier("networkSpeed", "id", "com.android.systemui");
@@ -340,13 +415,39 @@ final class Mover {
         float sr = lastLeafRight(sp);
         if (sr < 0) return;
         float wl = glyphBounds(wifi)[0];
+        // other icons (mute, hotspot...) may sit between the speed text and Wi-Fi: keep the gap to the nearest one
+        int eid = root.getResources().getIdentifier("status_bar_end_side_content", "id", "com.android.systemui");
+        View eb = eid == 0 ? null : root.findViewById(eid);
+        if (eb != null) {
+            sp.getLocationOnScreen(tloc);
+            float natL = tloc[0] - sp.getTranslationX() + sp.getWidth() / 2f;
+            wl = Math.min(wl, nearestLeafLeftAfter(eb, sp, natL));
+        }
         float gap = c.itemGap * root.getResources().getDisplayMetrics().density;
         float delta = (wl - gap) - sr;
         if (Math.abs(delta) >= 1f) sp.setTranslationX(sp.getTranslationX() + Math.round(delta));
     }
 
+    /** Left edge of the left-most drawn leaf (other than skip) that lies right of x; MAX if none. */
+    private float nearestLeafLeftAfter(View v, View skip, float x) {
+        if (v == skip || v.getVisibility() != View.VISIBLE || v.getWidth() <= 0 || v.getHeight() <= 0 || v.getAlpha() < 0.05f) return Float.MAX_VALUE;
+        boolean group = v instanceof ViewGroup && !v.getClass().getName().contains("Compose");
+        if (!group) {
+            if (v instanceof android.widget.TextView && ((android.widget.TextView) v).length() == 0) return Float.MAX_VALUE;
+            if (v instanceof android.widget.ImageView && ((android.widget.ImageView) v).getDrawable() == null) return Float.MAX_VALUE;
+            float[] gb = glyphBounds(v);
+            return gb[0] > x ? gb[0] : Float.MAX_VALUE;
+        }
+        ViewGroup g = (ViewGroup) v;
+        float best = Float.MAX_VALUE;
+        for (int i = 0; i < g.getChildCount(); i++) best = Math.min(best, nearestLeafLeftAfter(g.getChildAt(i), skip, x));
+        return best;
+    }
+
     /** Right edge (screen px) of the right-most thing actually drawn inside v, or -1 if nothing is. */
+    private boolean ignoreMoved;
     private float lastLeafRight(View v) {
+        if (!ignoreMoved) for (View m : movedViews) if (m == v) return -1;
         if (v.getVisibility() != View.VISIBLE || v.getWidth() <= 0 || v.getHeight() <= 0 || v.getAlpha() < 0.05f) return -1;
         boolean group = v instanceof ViewGroup && !v.getClass().getName().contains("Compose");
         if (!group) {
@@ -425,14 +526,8 @@ final class Mover {
 
     /** Undo item moves (translations, freed space) but leave the edge padding alone. */
     private void releaseZones() {
-        for (java.util.Map.Entry<View, int[]> e : new java.util.ArrayList<>(origRoom.entrySet())) {
-            View v = e.getKey();
-            if (v != null && v.getLayoutParams() instanceof ViewGroup.MarginLayoutParams) {
-                ViewGroup.MarginLayoutParams m = (ViewGroup.MarginLayoutParams) v.getLayoutParams();
-                m.setMarginStart(e.getValue()[0]); m.setMarginEnd(e.getValue()[1]); v.setLayoutParams(m);
-            }
-        }
-        origRoom.clear();
+        for (java.lang.ref.WeakReference<View> r : clipped) { View cv = r.get(); if (cv != null && cv.getClipBounds() != null) cv.setClipBounds(null); }
+        clipped.clear();
         for (View v : new java.util.ArrayList<>(applied.keySet()))
             if (v != null && v.getTranslationX() != 0) v.setTranslationX(0);
         applied.clear();

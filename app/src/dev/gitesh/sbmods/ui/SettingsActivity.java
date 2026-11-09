@@ -49,6 +49,7 @@ import java.util.Locale;
 
 import dev.gitesh.sbmods.ClockFormat;
 import dev.gitesh.sbmods.Config;
+import dev.gitesh.sbmods.Helper;
 import dev.gitesh.sbmods.ZoneLayout;
 import dev.gitesh.sbmods.items.TempItem;
 
@@ -258,7 +259,7 @@ public final class SettingsActivity extends Activity {
         }
         posView = new PositionView(this, cfg, new PositionView.Host() {
             @Override public void changed() { apply(); if (tab == T_LAYOUT) refresh(); }
-            @Override public void tapped(int element) { zonePicker(element); }
+            @Override public void tapped(int element) { }
         }, screenW, holeL, holeR, cAccent, cText, cSub, cField);
         card.addView(posView, new LinearLayout.LayoutParams(-1, -2));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
@@ -306,6 +307,7 @@ public final class SettingsActivity extends Activity {
         fillTabs();
         build();
         scroll.scrollTo(0, 0);
+        scroll.post(() -> scroll.scrollTo(0, 0));   // again after the new tab has been laid out
     }
 
     // ================================================================ content
@@ -332,16 +334,18 @@ public final class SettingsActivity extends Activity {
     // ---------------------------------------------------------------- Layout tab
 
     private void buildLayout() {
-        group("Where things go");
-        for (int i = 0; i < ZoneLayout.ELEMENTS; i++) {
-            if (i > 0) divider();
-            zoneRow(i);
-        }
-        endGroup("Drag items in the preview, or tap a row to choose a spot. The other items close up around it.");
+        group("How to arrange the bar");
+        infoRow("Drag and drop in the preview",
+                "Press an item in the preview at the top and drag it along the bar. It settles at the nearest edge, beside the camera, or next to another item, and stays stuck to it. "
+                + "Drop it between two items to slot it in; everything re-spaces itself and Samsung's own icons move out of the way.\n\n"
+                + "You can move the clock, the date (turn on \u201cDate as its own item\u201d in the Clock tab), the temperature, the battery, the network speed and the back button. "
+                + "Drop an item on the grey tray to send it back to Samsung's place.");
+        endGroup(null);
+
         if (anyMoved()) {
-            group(null);
+            group("Positions");
             actionRow("Put everything back", "Return all items to Samsung's own places", cAccent, v -> {
-                cfg.clockZone = cfg.tempZone = cfg.batteryZone = cfg.backZone = 0;
+                cfg.plan = new ZoneLayout.Plan();
                 apply();
                 refresh();
             });
@@ -376,16 +380,21 @@ public final class SettingsActivity extends Activity {
         endGroup("Less space leaves more room for icons. “Tight” and “Custom” let the status bar reach the curved edges of your screen.");
     }
 
+    private boolean elementOn(int element) {
+        return !((element == ZoneLayout.TEMP && !cfg.tempEnabled) || (element == ZoneLayout.BACK && !cfg.backEnabled)
+                || (element == ZoneLayout.DATE && !cfg.dateSeparate));
+    }
+
     private void zoneRow(int element) {
-        boolean off = (element == ZoneLayout.TEMP && !cfg.tempEnabled) || (element == ZoneLayout.BACK && !cfg.backEnabled);
+        boolean off = !elementOn(element);
         LinearLayout r = rowShell(v -> {
-            if (off) switchTab(element == ZoneLayout.TEMP ? T_TEMP : T_BACK);
+            if (off) switchTab(element == ZoneLayout.TEMP ? T_TEMP : element == ZoneLayout.DATE ? T_CLOCK : T_BACK);
             else zonePicker(element);
         });
         r.addView(twoLines(ZoneLayout.ELEMENT_NAMES[element], off ? "Turned off · tap to set it up" : null),
                 new LinearLayout.LayoutParams(0, -2, 1));
         TextView value = new TextView(this);
-        value.setText(off ? "Off  ›" : ZoneLayout.NAMES[getZone(element)] + "  ›");
+        value.setText(off ? "Off  ›" : describe(element) + "  ›");
         value.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
         value.setTextColor(off ? cSub : cAccent);
         value.setGravity(Gravity.END);
@@ -393,30 +402,40 @@ public final class SettingsActivity extends Activity {
         r.addView(value);
     }
 
+    private static final String[] ANCHOR_NAMES = {"Far left", "Far right", "Left of camera", "Right of camera"};
+
+    private String describe(int element) {
+        ZoneLayout.Plan pl = cfg.plan;
+        if (pl.mode[element] == ZoneLayout.STOCK) return "Samsung's place";
+        if (pl.mode[element] == ZoneLayout.LINK)
+            return (pl.side[element] == 0 ? "Left of " : "Right of ") + ZoneLayout.ELEMENT_NAMES[pl.to[element]].toLowerCase(Locale.ROOT);
+        return ANCHOR_NAMES[pl.right[element]];
+    }
+
     private boolean anyMoved() {
-        return cfg.clockZone != 0 || cfg.tempZone != 0 || cfg.batteryZone != 0 || cfg.backZone != 0;
-    }
-
-    private int getZone(int element) {
-        return element == ZoneLayout.CLOCK ? cfg.clockZone : element == ZoneLayout.TEMP ? cfg.tempZone
-                : element == ZoneLayout.BATTERY ? cfg.batteryZone : cfg.backZone;
-    }
-
-    private void setZone(int element, int z) {
-        if (element == ZoneLayout.CLOCK) cfg.clockZone = z; else if (element == ZoneLayout.TEMP) cfg.tempZone = z;
-        else if (element == ZoneLayout.BATTERY) cfg.batteryZone = z; else cfg.backZone = z;
+        for (int i = 0; i < ZoneLayout.ELEMENTS; i++) if (cfg.plan.mode[i] != ZoneLayout.STOCK) return true;
+        return false;
     }
 
     /** The same choice as dragging, as a list. */
     private void zonePicker(int element) {
         String what = ZoneLayout.ELEMENT_NAMES[element].toLowerCase(Locale.ROOT);
+        java.util.ArrayList<String> names = new java.util.ArrayList<>();
+        java.util.ArrayList<Integer> codes = new java.util.ArrayList<>();
+        names.add("Samsung's place"); codes.add(0);
+        names.add("Far left"); codes.add(1);
+        names.add("Left of the camera"); codes.add(2);
+        names.add("Right of the camera"); codes.add(3);
+        names.add("Far right"); codes.add(4);
+        for (int j = 0; j < ZoneLayout.ELEMENTS; j++) {
+            if (!posView.canLinkTo(element, j)) continue;
+            String o = ZoneLayout.ELEMENT_NAMES[j].toLowerCase(Locale.ROOT);
+            names.add("Left of the " + o); codes.add(10 + 2 * j);
+            names.add("Right of the " + o); codes.add(11 + 2 * j);
+        }
         new AlertDialog.Builder(this).setTitle("Where should the " + what + " go?")
-                .setSingleChoiceItems(ZoneLayout.NAMES, getZone(element), (dlg, which) -> {
-                    setZone(element, which);
-                    dlg.dismiss();
-                    apply();
-                    posView.invalidate();
-                    if (tab == T_LAYOUT) refresh();
+                .setItems(names.toArray(new String[0]), (dlg, which) -> {
+                    posView.place(element, codes.get(which));
                 }).setNegativeButton("Cancel", null).show();
     }
 
@@ -481,6 +500,9 @@ public final class SettingsActivity extends Activity {
                     v -> { cfg.dateFirst = v == 1; apply(); refresh(); });
         }
         if (hasDay || hasDate) {
+            divider();
+            switchRow("Date as its own item", "Lets you place the day and date anywhere, apart from the time (Layout tab)", cfg.dateSeparate,
+                    v -> { cfg.dateSeparate = v; apply(); refresh(); });
             divider();
             String dd = hasDay ? sample(cfg.weekday, 0) : sample(-1, cfg.date);
             segmentedBlock("Placement", new String[]{dd + "  12:30", "12:30  " + dd}, cfg.dateAfterTime ? 1 : 0,
@@ -879,7 +901,136 @@ public final class SettingsActivity extends Activity {
 
     // ---------------------------------------------------------------- More tab
 
+    private void infoRow(String title, String text) {
+        LinearLayout r = rowShell(null);
+        r.addView(twoLines(title, text), new LinearLayout.LayoutParams(0, -2, 1));
+    }
+
+    private Boolean helperRunning;   // null = not checked yet
+
+    private void checkHelper() {
+        new Thread(() -> {
+            boolean on0 = Helper.isRunning();
+            final boolean on = on0 && !Helper.isCurrent(this) ? Helper.start(this) : on0;   // app was updated: run the new helper
+            runOnUiThread(() -> { boolean changed = helperRunning == null || helperRunning != on; helperRunning = on; if (changed && tab == T_MORE) refresh(); });
+        }).start();
+    }
+
+    private int gl(String key, int def) {
+        try { return android.provider.Settings.Global.getInt(getContentResolver(), key, def); } catch (Throwable t) { return def; }
+    }
+
+    /** Writes the helper's controls (root), then redraws. */
+    private void putGl(String... kv) {
+        new Thread(() -> {
+            boolean ok = Helper.putGlobal(kv);
+            runOnUiThread(() -> { if (!ok) Toast.makeText(this, "Root access was not granted to this app", Toast.LENGTH_LONG).show(); refresh(); });
+        }).start();
+    }
+
+    private static int readSys(String f, int div) {
+        try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.FileReader(f))) {
+            return (int) (Long.parseLong(r.readLine().trim().split("\\s+")[0]) / div);
+        } catch (Throwable t) { return -1; }
+    }
+
+    /** What really limits the CPU / GPU right now, in plain words (read from the kernel, no root needed). */
+    private String speedNow() {
+        java.io.File[] fs = new java.io.File("/sys/devices/system/cpu/cpufreq").listFiles((d, n) -> n.startsWith("policy"));
+        String cpu = "CPU: unknown";
+        if (fs != null && fs.length > 0) {
+            java.util.Arrays.sort(fs, (x, y) -> Integer.compare(Integer.parseInt(x.getName().substring(6)), Integer.parseInt(y.getName().substring(6))));
+            String p = fs[fs.length - 1].getPath() + "/";
+            int cap = readSys(p + "scaling_max_freq", 1000), hw = readSys(p + "cpuinfo_max_freq", 1000);
+            if (cap > 0 && hw > 0)
+                cpu = String.format(Locale.US, "CPU fastest core: up to %.1f of %.1f GHz", cap / 1000f, hw / 1000f) + (cap < hw * 0.97f ? (gl("sbmods_cpu_pct", 0) > 0 || gl("sbmods_cool", 0) == 1 ? " (your limit)" : " (Samsung's heat limit)") : " (full speed)");
+        }
+        String g = "/sys/class/kgsl/kgsl-3d0/devfreq/";
+        int gcap = readSys(g + "max_freq", 1000000), ghw = -1;
+        try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.FileReader(g + "available_frequencies"))) {
+            for (String s : r.readLine().trim().split("\\s+")) ghw = Math.max(ghw, (int) (Long.parseLong(s) / 1000000));
+        } catch (Throwable ignored) {}
+        String gpu = gcap > 0 && ghw > 0 ? "GPU: up to " + gcap + " of " + ghw + " MHz" + (gcap < ghw * 0.97f ? (gl("sbmods_gpu_pct", 0) > 0 || gl("sbmods_cool", 0) == 1 ? " (your limit)" : " (Samsung's heat limit)") : " (full speed)") : "GPU: unknown";
+        return cpu + "\n" + gpu;
+    }
+
     private void buildMore() {
+        group("Cheat sheet: what taps do");
+        infoRow("In this app",
+                "Preview bar: press an item and drag it; drop it on the grey tray to put it back in Samsung's place.\n"
+                + "Sliders: tap “Reset” next to a value to go back to the starting value.\n"
+                + "Gestures tab: every status bar item can have a tap, double-tap and long-press action. “Test” tries it.");
+        divider();
+        infoRow("Status bar",
+                "Clock, temperature and battery: tap, double-tap and long-press do whatever you chose in the Gestures tab.\n"
+                + "Back button: tap = jump back to the previous app.\n"
+                + "Camera hole: tap = Samsung Finder (or your choice). Empty spot, double-tap (if on) = lock the screen.");
+        divider();
+        infoRow("Overview screen (recent apps)",
+                "RAM: tap = close background apps. Swap: tap = deep clean. Temp: tap = cool-down on / off. Long-press any of them = Device care.\n"
+                + "CPU (bottom right) and GPU (bottom left) show the live speed and what holds it back (full speed, Samsung's heat limit, or your limit). "
+                + "Tap = Performance panel, long-press = quick limit on / off.");
+        endGroup(null);
+
+        // ---- the helper
+        if (helperRunning == null) checkHelper();
+        group("Root helper");
+        switchRow("Run the helper", "Closing apps and speed limits need root, so this small helper does them for the Overview screen. Allow root for this app when asked. "
+                        + (helperRunning == null ? "Checking…" : helperRunning ? "It is running." : "It is not running – the RAM, swap and speed buttons won't do anything."),
+                helperRunning != null && helperRunning, v -> {
+                    new Thread(() -> {
+                        boolean ok = v ? Helper.start(this) : Helper.stopAndRestore();
+                        boolean now = Helper.isRunning();
+                        runOnUiThread(() -> {
+                            helperRunning = now;
+                            if (v && !now) Toast.makeText(this, ok ? "The helper did not start" : "Root access was not granted to this app", Toast.LENGTH_LONG).show();
+                            else Toast.makeText(this, v ? "Helper is running" : "Stopped, full speed restored", Toast.LENGTH_SHORT).show();
+                            refresh();
+                        });
+                    }).start();
+                });
+        divider();
+        switchRow("Start it when the phone starts", "Only if the status bar mod is on. Speed limits never survive a restart.",
+                prefs.getBoolean("helperAtBoot", false), v -> prefs.edit().putBoolean("helperAtBoot", v).apply());
+        endGroup("Idle, it only checks once a second whether you pressed something; it doesn't keep the phone awake.");
+
+        // ---- speed limits
+        group("CPU and GPU speed");
+        infoRow("Right now", speedNow());
+        divider();
+        final int[] pcts = {85, 70, 55, 40};
+        final String[] pctNames = {"85% – barely noticeable", "70% – cooler, still smooth", "55% – battery saver", "40% – lowest (slow)"};
+        int cpuPick = gl("sbmods_cpu_pick", 55), gpuPick = gl("sbmods_gpu_pick", 55);
+        int ci = 2, gi = 2;
+        for (int i = 0; i < pcts.length; i++) { if (pcts[i] == cpuPick) ci = i; if (pcts[i] == gpuPick) gi = i; }
+        choiceRow("CPU quick limit", pctNames, ci, i -> putGl("sbmods_cpu_pick", String.valueOf(pcts[i])));
+        divider();
+        choiceRow("GPU quick limit", pctNames, gi, i -> putGl("sbmods_gpu_pick", String.valueOf(pcts[i])));
+        divider();
+        switchRow("Power saving while the CPU is limited", "Also turns on Samsung's power saving mode for as long as the CPU limit is on.",
+                gl("sbmods_cpu_ps", 0) == 1, v -> putGl("sbmods_cpu_ps", v ? "1" : "0"));
+        divider();
+        final int[] mins = {15, 30, 60, 120};
+        int mi = 0;
+        for (int i = 0; i < mins.length; i++) if (mins[i] == gl("sbmods_limit_min", 15)) mi = i;
+        choiceRow("Limits end by themselves after", new String[]{"15 minutes", "30 minutes", "1 hour", "2 hours"}, mi, i -> putGl("sbmods_limit_min", String.valueOf(mins[i])));
+        divider();
+        final int[] temps = {340, 350, 360, 370, 380};
+        int ti = 2;
+        for (int i = 0; i < temps.length; i++) if (temps[i] == gl("sbmods_cool_at", 360)) ti = i;
+        choiceRow("Cool-down stops at", new String[]{"34°C", "35°C", "36°C", "37°C", "38°C"}, ti, i -> putGl("sbmods_cool_at", String.valueOf(temps[i])));
+        divider();
+        actionRow("Full speed now", "Ends any CPU / GPU limit and cool-down. Samsung's own heat protection always stays on.", cAccent, v ->
+                putGl("sbmods_cpu_pct", "0", "sbmods_gpu_pct", "0", "sbmods_cool", "0"));
+        endGroup("A limit is a share of the chip's real maximum, and only speeds the phone lists are used. "
+                + "Samsung lowers the maximum by itself when the phone is warm – that's the “heat limit” you may see; this app never removes it. "
+                + "The quick limit is what a long-press on the CPU / GPU chip turns on; the Performance panel (tap) lets you pick any level.");
+
+        group("Overview screen");
+        switchRow("Show the chips", "RAM, swap and temperature at the top; CPU and GPU at the bottom of the recent apps screen.",
+                gl("sbmods_recents_chip", 1) != 0, v -> putGl("sbmods_recents_chip", v ? "1" : "0"));
+        endGroup(null);
+
         group("Screen care");
         switchRow("Protect against screen burn-in", "Nudges the status bar a few pixels every couple of minutes so fixed icons don't leave marks. Only runs while the screen is on.",
                 cfg.pixelShift, v -> { cfg.pixelShift = v; apply(); });
@@ -931,6 +1082,7 @@ public final class SettingsActivity extends Activity {
             if (bi != null) pct = bi.getIntExtra("level", 50) * 100 / Math.max(1, bi.getIntExtra("scale", 100));
         } catch (Exception ignored) {}
         posView.setClockRight("right".equals(clockSide));
+        posView.setDate(ClockFormat.dateText(cfg, new Date(), Locale.getDefault()));
         posView.setTexts(clockText(), lab, pct);
     }
 

@@ -14,25 +14,26 @@ import android.view.ViewConfiguration;
 
 import dev.gitesh.sbmods.Config;
 import dev.gitesh.sbmods.ZoneLayout;
+import dev.gitesh.sbmods.ZoneLayout.Plan;
 
 /**
- * A live mock of the top of the screen: the status bar with the camera hole. Drag the clock, the
- * temperature or the battery to a zone (left edge / left of the camera / right of the camera /
- * right edge) or onto the "Default" tray to put it back. The same ZoneLayout engine runs inside
- * SystemUI, so the preview is what you get. A tap (no drag) asks the host for a list instead.
- * Everything is drawn in "screen dp" units and scaled to the view width.
+ * A live mock of the top of the screen: the status bar with the camera hole. Drag any item anywhere along
+ * the bar: it follows your finger, then settles against the nearest screen edge, the camera, or the side of
+ * another item (and then stays stuck to it). Drop it on the grey tray to put it back in Samsung's place.
+ * The same ZoneLayout engine runs inside SystemUI, so the preview is what you get. A tap (no drag) asks the
+ * host for a list instead. Everything is drawn in "screen dp" units and scaled to the view width.
  */
 final class PositionView extends View {
     interface Host {
-        /** A zone changed (cfg already updated): save + send. */
+        /** A position changed (cfg already updated): save + send. */
         void changed();
-        /** Element tapped without dragging: let the user pick a zone from a list. */
+        /** Element tapped without dragging: let the user pick a spot from a list. */
         void tapped(int element);
     }
 
     // layout, in units
-    private static final float BAR_Y = 8, BAR_H = 36, LABEL_Y = 48, TRAY_Y = 68, TRAY_H = 30, TOTAL_H = 106;
-    private static final float EDGE = 16, GAP = 6, HOLE_GAP = 8, TEXT = 15;
+    private static final float BAR_Y = 8, BAR_H = 36, TRAY_Y = 54, TRAY_H = 28, TOTAL_H = 92;
+    private static final float EDGE = 16, GAP = 6, HOLE_GAP = 8, TEXT = 15, SNAP = 10;
 
     private final Config cfg;
     private final Host host;
@@ -43,21 +44,22 @@ final class PositionView extends View {
     private final Paint tp = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF r = new RectF();
 
-    private CharSequence clock = "10:04", temp = "34°";
+    private CharSequence clock = "10:04", temp = "34°", date = "";
     private int battery = 27;
     private boolean clockRight;
     private float scale = 1f;
 
-    // element state
+    // element state (animated positions)
     private final float[] curX = new float[ZoneLayout.ELEMENTS];
     private final float[] curY = new float[ZoneLayout.ELEMENTS];
     private final boolean[] placed = new boolean[ZoneLayout.ELEMENTS];
 
     // drag state
     private int drag = -1;
-    private int candidate = ZoneLayout.STOCK;
+    private Plan cand;            // the plan as it would be if dropped now
+    private float snapGuide = Float.NaN;   // x of the guide line while an edge / neighbour snap is active
     private float fx, fy, downX, downY, grabDx;
-    private boolean moved;
+    private boolean moved, overTray;
     private final int slop;
 
     PositionView(Context c, Config cfg, Host host, float screenW, float holeL, float holeR,
@@ -76,6 +78,8 @@ final class PositionView extends View {
 
     /** Which side Samsung's clock is on in the real status bar ("right" for Good Lock layouts). */
     void setClockRight(boolean right) { clockRight = right; }
+
+    void setDate(CharSequence d) { date = d == null ? "" : d; }
 
     void setTexts(CharSequence clock, CharSequence temp, int batteryPct) {
         this.clock = clock == null ? "" : clock;
@@ -97,6 +101,8 @@ final class PositionView extends View {
         if (i == ZoneLayout.CLOCK) return textW(clock, 1f);
         if (i == ZoneLayout.TEMP) return cfg.tempEnabled ? textW(temp, cfg.sizePct / 100f) : 0;
         if (i == ZoneLayout.BACK) return cfg.backEnabled ? backWidth() : 0;
+        if (i == ZoneLayout.DATE) return cfg.dateSeparate ? textW(date, 1f) : 0;
+        if (i == ZoneLayout.NETSPEED) return 30;
         return 30; // battery icon
     }
 
@@ -106,21 +112,27 @@ final class PositionView extends View {
         return tp.measureText(s, 0, s.length());
     }
 
-    private int zoneOf(int i) {
-        return i == drag ? candidate : getZone(i);
+    private float edge() { return cfg.edgeEff() >= 0 ? cfg.edgeEff() : EDGE; }
+    private float gap() { return cfg.itemGap >= 0 ? cfg.itemGap : GAP; }
+
+    /** The plan that is drawn: the real one, or the would-be one while dragging. Hidden items are in Samsung's place. */
+    private Plan live() {
+        Plan pl = (cand != null ? cand : cfg.plan).copy();
+        if (!cfg.dateSeparate) pl.mode[ZoneLayout.DATE] = ZoneLayout.STOCK;
+        // same as the status bar: stuck to an item that isn't showing -> back in Samsung's place (the back button's spot is kept)
+        for (int i = 0; i < ZoneLayout.ELEMENTS; i++) {
+            int t = pl.to[i];
+            if (pl.mode[i] == ZoneLayout.LINK && t != ZoneLayout.BACK && t >= 0 && t < ZoneLayout.ELEMENTS && width(t) <= 0) pl.mode[i] = ZoneLayout.STOCK;
+        }
+        return pl;
     }
 
-    private int getZone(int i) {
-        return i == ZoneLayout.CLOCK ? cfg.clockZone : i == ZoneLayout.TEMP ? cfg.tempZone
-                : i == ZoneLayout.BATTERY ? cfg.batteryZone : cfg.backZone;
+    private float[] widths() {
+        float[] w = new float[ZoneLayout.ELEMENTS];
+        for (int i = 0; i < w.length; i++) w[i] = width(i);
+        return w;
     }
 
-    private void setZone(int i, int z) {
-        if (i == ZoneLayout.CLOCK) cfg.clockZone = z; else if (i == ZoneLayout.TEMP) cfg.tempZone = z;
-        else if (i == ZoneLayout.BATTERY) cfg.batteryZone = z; else cfg.backZone = z;
-    }
-
-    private float decoyRight, notifX = -1;
     private static final String BACK_APP = "WhatsApp";
 
     private String backText() {
@@ -141,70 +153,170 @@ final class PositionView extends View {
         return tp.measureText(backText()) + 16;
     }
 
+    private float decoyRight, notifX = -1, notifClip, decoyClip;
+
     /**
      * Where each element wants to be (left x), in units. Same rules as the status bar hook:
-     * what stays on Default closes up around what left, and items parked at an edge push that
-     * side's content over.
+     * placed items sit where the plan says, Samsung's icons make room, and what stays in
+     * Samsung's place closes up around them.
      */
     private float[] targets() {
-        int n = ZoneLayout.ELEMENTS;
-        int[] zone = new int[n];
-        float[] w = new float[n];
-        for (int i = 0; i < n; i++) { zone[i] = zoneOf(i); w[i] = width(i); }
-        float ze = cfg.edgeEff() >= 0 ? cfg.edgeEff() : EDGE;   // edge zones can hug the curved screen edge
-        float ig = cfg.itemGap >= 0 ? cfg.itemGap : GAP;        // space between items
-        float[] x = ZoneLayout.solve(zone, w, screenW, holeL, holeR, ze, ze, ig, HOLE_GAP);
+        Plan pl = live();
+        float[] w = widths();
+        float e = edge(), g = gap();
+        float[] nat = natural(pl, w, e);
+        float[] x = ZoneLayout.solve(pl, w, screenW, holeL, holeR, HOLE_GAP, e, e, g, nat);
+        float leftBase = e;
+        if (!Float.isNaN(nat[ZoneLayout.BACK]) && w[ZoneLayout.BACK] > 0) leftBase = e + w[ZoneLayout.BACK] + g;
+        float[] ln = ZoneLayout.lanes(x, w, screenW, holeL, holeR, e, e, g, HOLE_GAP, 14, leftBase);
+        notifClip = ln[1]; decoyClip = ln[3];
 
-        float pushL = 0, pushR = 0;
-        int nl = 0, nr = 0;
-        for (int i = 0; i < n; i++) {
-            if (w[i] <= 0) continue;
-            if (zone[i] == ZoneLayout.LEFT) { pushL += w[i]; nl++; }
-            if (zone[i] == ZoneLayout.RIGHT) { pushR += w[i]; nr++; }
-        }
-        if (nl > 0) pushL += GAP * (nl - 1) + GAP;
-        if (nr > 0) pushR += GAP * (nr - 1) + GAP;
-
-        // right side, hugging the edge: battery (and the clock when Samsung puts it there)
-        float se = cfg.edgeEff() >= 0 ? cfg.edgeEff() : EDGE;   // stock edge padding follows the setting too
-        float rx = screenW - se - pushR;
-        int[] right = clockRight ? new int[]{ZoneLayout.CLOCK, ZoneLayout.TEMP, ZoneLayout.BATTERY}
+        float rx = ln[2];
+        int[] right = clockRight ? (cfg.dateAfterTime ? new int[]{ZoneLayout.DATE, ZoneLayout.CLOCK, ZoneLayout.TEMP, ZoneLayout.BATTERY}
+                        : new int[]{ZoneLayout.CLOCK, ZoneLayout.DATE, ZoneLayout.TEMP, ZoneLayout.BATTERY})
                 : new int[]{ZoneLayout.BATTERY};
         for (int id : right) {
-            if (w[id] <= 0 || zone[id] != ZoneLayout.STOCK) continue;
+            if (w[id] <= 0 || pl.mode[id] != ZoneLayout.STOCK) continue;
             rx -= w[id];
             x[id] = rx;
-            boolean tempFollows = id == ZoneLayout.CLOCK && zone[ZoneLayout.TEMP] == ZoneLayout.STOCK && w[ZoneLayout.TEMP] > 0;
-            rx -= tempFollows ? cfg.gapDp : (cfg.itemGap >= 0 ? cfg.itemGap : 8);
+            boolean follows = (id == ZoneLayout.CLOCK || id == ZoneLayout.DATE) && w[ZoneLayout.TEMP] > 0 && pl.mode[ZoneLayout.TEMP] == ZoneLayout.STOCK;
+            rx -= follows ? cfg.gapDp : (cfg.itemGap >= 0 ? cfg.itemGap : 8);
         }
         decoyRight = rx;
 
-        // left side: clock + temperature when the clock is on the left, then notification icons
-        float lx = se + pushL;
+        float lx = ln[0];
         if (!clockRight) {
             boolean before = cfg.labelPos == Config.POS_BEFORE;
-            int[] left = before ? new int[]{ZoneLayout.TEMP, ZoneLayout.CLOCK} : new int[]{ZoneLayout.CLOCK, ZoneLayout.TEMP};
+            int[] ct = cfg.dateAfterTime ? new int[]{ZoneLayout.CLOCK, ZoneLayout.DATE} : new int[]{ZoneLayout.DATE, ZoneLayout.CLOCK};
+            int[] left = before ? new int[]{ZoneLayout.TEMP, ct[0], ct[1]} : new int[]{ct[0], ct[1], ZoneLayout.TEMP};
             for (int id : left) {
-                if (w[id] <= 0 || zone[id] != ZoneLayout.STOCK) continue;
+                if (w[id] <= 0 || pl.mode[id] != ZoneLayout.STOCK) continue;
                 x[id] = lx;
-                lx += w[id] + (id == left[0] && w[left[1]] > 0 && zone[left[1]] == ZoneLayout.STOCK ? cfg.gapDp : (cfg.itemGap >= 0 ? cfg.itemGap : 8));
+                lx += w[id] + (id == ZoneLayout.TEMP || id == left[left.length - 1] ? (cfg.itemGap >= 0 ? cfg.itemGap : 8) : cfg.gapDp);
             }
         }
-        if (w[ZoneLayout.BACK] > 0 && zone[ZoneLayout.BACK] == ZoneLayout.STOCK) { x[ZoneLayout.BACK] = lx; lx += w[ZoneLayout.BACK] + (cfg.itemGap >= 0 ? cfg.itemGap : 6); }
+        if (w[ZoneLayout.BACK] > 0 && pl.mode[ZoneLayout.BACK] == ZoneLayout.STOCK) { x[ZoneLayout.BACK] = e; lx = Math.max(lx, leftBase); }
         notifX = lx;
+        if (w[ZoneLayout.NETSPEED] > 0 && pl.mode[ZoneLayout.NETSPEED] == ZoneLayout.STOCK) x[ZoneLayout.NETSPEED] = decoyRight - 34 - w[ZoneLayout.NETSPEED];
+        for (int i = 0; i < x.length; i++) if (Float.isNaN(x[i])) x[i] = 0;
         return x;
     }
 
     private float barCy() { return BAR_Y + BAR_H / 2; }
 
-    /** Which zone a finger position means. */
-    private int zoneAt(float x, float y) {
-        if (y > TRAY_Y - 8) return ZoneLayout.STOCK;
-        float mid = (holeL + holeR) / 2;
-        if (x < holeL * 0.5f) return ZoneLayout.LEFT;
-        if (x < mid) return ZoneLayout.HOLE_LEFT;
-        if (x < mid + (screenW - holeR) * 0.5f) return ZoneLayout.HOLE_RIGHT;
-        return ZoneLayout.RIGHT;
+    /** Where items that stay in Samsung's place are: only the back button matters (others can be stuck to it). */
+    private float[] natural(Plan pl, float[] w, float e) {
+        float[] nat = new float[ZoneLayout.ELEMENTS];
+        java.util.Arrays.fill(nat, Float.NaN);
+        if (pl.mode[ZoneLayout.BACK] == ZoneLayout.STOCK) nat[ZoneLayout.BACK] = e;   // also without a back button: things stuck to it sit at the far left
+        return nat;
+    }
+
+    // ------------------------------------------------------------ placing
+
+    private boolean dependsOn(Plan pl, int a, int b) {   // does a (through links) hang on b?
+        int guard = 0;
+        while (a >= 0 && pl.mode[a] == ZoneLayout.LINK && guard++ < 8) {
+            if (pl.to[a] == b) return true;
+            a = pl.to[a];
+        }
+        return false;
+    }
+
+    /** Item i leaves its place: whatever was stuck to it closes the gap (takes over i's spot). */
+    private void release(Plan pl, int i, float[] x, float[] w) {
+        java.util.ArrayList<Integer> deps = new java.util.ArrayList<>();
+        for (int k = 0; k < ZoneLayout.ELEMENTS; k++)
+            if (k != i && pl.mode[k] == ZoneLayout.LINK && pl.to[k] == i) deps.add(k);
+        if (deps.isEmpty()) return;
+        if (pl.mode[i] == ZoneLayout.LINK) {
+            int t = pl.to[i], s = pl.side[i];
+            for (int k : deps) { pl.to[k] = t; pl.side[k] = s; }
+        } else if (pl.mode[i] == ZoneLayout.FREE) {
+            int a = pl.right[i], d = (a == 0 || a == 3) ? 1 : 0;      // the way the row grows from this anchor
+            int head = -1;
+            for (int k : deps) if (pl.side[k] == d) { head = k; break; }
+            if (head < 0) head = deps.get(0);
+            for (int k : deps) if (k != head) { pl.to[k] = head; pl.side[k] = pl.side[k]; }
+            pl.mode[head] = ZoneLayout.FREE; pl.right[head] = a; pl.off[head] = 0;
+        } else {
+            // was in Samsung's place: nothing hangs on it, but be safe
+            for (int k : deps) pl.mode[k] = ZoneLayout.STOCK;
+        }
+    }
+
+    /** Where item i, with its left side at "left", settles: the nearest slot (an edge, the camera, or the side of another item). */
+    private Plan snap(int i, float left) {
+        Plan pl = cfg.plan.copy();
+        if (!cfg.dateSeparate) pl.mode[ZoneLayout.DATE] = ZoneLayout.STOCK;
+        float[] w = widths();
+        float e = edge(), g = gap();
+        float[] nat = natural(pl, w, e);
+        float[] x = ZoneLayout.solve(pl, w, screenW, holeL, holeR, HOLE_GAP, e, e, g, nat);
+        if (!Float.isNaN(nat[ZoneLayout.BACK])) x[ZoneLayout.BACK] = nat[ZoneLayout.BACK];
+        float wi = w[i];
+        Plan after = pl.copy();
+        release(after, i, x, w);
+        float best = Float.MAX_VALUE; int kind = -1, arg = 0;   // kinds: 0 left edge, 1 right edge, 2 camera-left, 3 camera-right, 4 link
+        float guide = Float.NaN, d;
+        float[] land = {e, screenW - e - wi, holeL - HOLE_GAP - wi, holeR + HOLE_GAP};
+        float[] gd = {e, screenW - e, holeL - HOLE_GAP, holeR + HOLE_GAP};
+        for (int k = 0; k < 4; k++) {
+            if (land[k] < 0 || land[k] + wi > screenW) continue;
+            if ((d = Math.abs(left - land[k])) < best) { best = d; kind = k; guide = gd[k]; }
+        }
+        for (int j = 0; j < ZoneLayout.ELEMENTS; j++) {
+            if (j == i || w[j] <= 0 || Float.isNaN(x[j]) || dependsOn(after, j, i)) continue;
+            float ll = x[j] - g - wi, lr = x[j] + w[j] + g;
+            if (ll >= 0 && ll + wi <= screenW && (d = Math.abs(left - ll)) < best) { best = d; kind = 4; arg = j * 2; guide = x[j] - g / 2; }
+            if (lr >= 0 && lr + wi <= screenW && (d = Math.abs(left - lr)) < best) { best = d; kind = 4; arg = j * 2 + 1; guide = x[j] + w[j] + g / 2; }
+        }
+        snapGuide = guide;
+        if (kind == 4) link(after, i, arg / 2, arg % 2);
+        else if (kind >= 0) edgePlace(after, i, kind);
+        return after;
+    }
+
+    /** Put i at a screen edge / beside the camera; anything already sitting there is nudged inward next to it. */
+    private void edgePlace(Plan pl, int i, int kind) {
+        int a = kind == 0 ? 0 : kind == 1 ? 1 : kind == 2 ? 2 : 3;
+        int inward = (a == 0 || a == 3) ? 1 : 0;       // side of i where the rest of the row goes
+        for (int k = 0; k < ZoneLayout.ELEMENTS; k++)
+            if (k != i && pl.mode[k] == ZoneLayout.FREE && pl.right[k] == a && pl.off[k] == 0) {
+                pl.mode[k] = ZoneLayout.LINK; pl.to[k] = i; pl.side[k] = inward;
+            }
+        pl.mode[i] = ZoneLayout.FREE; pl.right[i] = a; pl.off[i] = 0;
+    }
+
+    /** Stick i to the side of j (0 = left of it, 1 = right of it); what was stuck on that side moves on to i. */
+    private void link(Plan pl, int i, int j, int side) {
+        for (int k = 0; k < ZoneLayout.ELEMENTS; k++)
+            if (k != i && pl.mode[k] == ZoneLayout.LINK && pl.to[k] == j && pl.side[k] == side && !dependsOn(pl, j, k)) pl.to[k] = i;
+        pl.mode[i] = ZoneLayout.LINK; pl.to[i] = j; pl.side[i] = side;
+    }
+
+    /** Called by the list picker: 0 Samsung's place, 1 far left, 2 left of camera, 3 right of camera, 4 far right, 10+2j / 11+2j left / right of item j. */
+    void place(int i, int choice) {
+        Plan pl = cfg.plan.copy();
+        float[] w = widths();
+        float e = edge(), g = gap();
+        float[] x = ZoneLayout.solve(live(), w, screenW, holeL, holeR, HOLE_GAP, e, e, g);
+        release(pl, i, x, w);
+        if (choice == 0) pl.mode[i] = ZoneLayout.STOCK;
+        else if (choice >= 1 && choice <= 4) edgePlace(pl, i, choice == 1 ? 0 : choice == 2 ? 2 : choice == 3 ? 3 : 1);
+        else if (choice >= 10) {
+            int j = (choice - 10) / 2, side = (choice - 10) % 2;
+            if (j != i && !dependsOn(pl, j, i)) link(pl, i, j, side);
+        }
+        cfg.plan = pl;
+        invalidate();
+        host.changed();
+    }
+
+    /** Which items could item i be stuck to (placed, showing, not already hanging on i). */
+    boolean canLinkTo(int i, int j) {
+        return j != i && width(j) > 0 && (cfg.plan.mode[j] != ZoneLayout.STOCK || j == ZoneLayout.BACK) && !dependsOn(cfg.plan, j, i)
+                && !(j == ZoneLayout.DATE && !cfg.dateSeparate);
     }
 
     // ------------------------------------------------------------ drawing
@@ -213,7 +325,7 @@ final class PositionView extends View {
     protected void onDraw(Canvas c) {
         c.save();
         c.scale(scale, scale);
-        boolean dragging = drag >= 0;
+        boolean dragging = drag >= 0 && moved;
         float cy = barCy();
 
         // bar
@@ -222,21 +334,6 @@ final class PositionView extends View {
         r.set(0, BAR_Y, screenW, BAR_Y + BAR_H);
         c.drawRoundRect(r, 12, 12, p);
 
-        // zone highlights while dragging
-        float mid = (holeL + holeR) / 2;
-        float[][] zr = {
-                {0, holeL * 0.5f}, {holeL * 0.5f, mid}, {mid, mid + (screenW - holeR) * 0.5f},
-                {mid + (screenW - holeR) * 0.5f, screenW}};
-        for (int z = 1; z <= 4; z++) {
-            boolean hot = dragging && candidate == z;
-            if (hot || dragging) {
-                p.setColor(hot ? withAlpha(cAccent, 0x55) : withAlpha(0xFFFFFFFF, 0x10));
-                r.set(zr[z - 1][0] + 1, BAR_Y + 2, zr[z - 1][1] - 1, BAR_Y + BAR_H - 2);
-                c.drawRoundRect(r, 9, 9, p);
-            }
-        }
-
-        // decoy system icons (Samsung's, not movable): signal + wifi, left of the stock battery slot
         float[] tx = targets();
         drawDecoys(c, decoyRight, cy);
         drawNotifs(c, notifX, cy);
@@ -250,25 +347,22 @@ final class PositionView extends View {
         c.drawCircle((holeL + holeR) / 2, cy, 6f, p);
         p.setStyle(Paint.Style.FILL);
 
-        // zone captions under the bar
-        tp.setTextSize(9f);
-        tp.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        tp.setTextAlign(Paint.Align.CENTER);
-        String[] names = {"Far left", "Left of camera", "Right of camera", "Far right"};
-        for (int z = 1; z <= 4; z++) {
-            boolean hot = dragging && candidate == z;
-            tp.setColor(hot ? cAccent : withAlpha(cSub, dragging ? 0xFF : 0x99));
-            c.drawText(names[z - 1], (zr[z - 1][0] + zr[z - 1][1]) / 2, LABEL_Y + 10, tp);
+        // snap guide
+        if (dragging && !Float.isNaN(snapGuide) && !overTray) {
+            p.setColor(withAlpha(cAccent, 0xCC));
+            c.drawRect(snapGuide - 0.8f, BAR_Y + 3, snapGuide + 0.8f, BAR_Y + BAR_H - 3, p);
         }
 
-        // default tray
-        boolean trayHot = dragging && candidate == ZoneLayout.STOCK && fy > TRAY_Y - 8;
+        // tray
         r.set(0, TRAY_Y, screenW, TRAY_Y + TRAY_H);
-        p.setColor(trayHot ? withAlpha(cAccent, 0x33) : withAlpha(cField, 0xFF));
+        p.setColor(overTray ? withAlpha(cAccent, 0x33) : withAlpha(cField, 0xFF));
         c.drawRoundRect(r, 10, 10, p);
+        tp.setTextAlign(Paint.Align.CENTER);
+        tp.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         tp.setTextSize(10f);
-        tp.setColor(trayHot ? cAccent : cSub);
-        String hint = dragging ? "Drop here to put it back in Samsung's place" : "Drag an item to move it · tap it to pick from a list";
+        tp.setColor(overTray ? cAccent : cSub);
+        String hint = dragging ? "Drop here to put it back in Samsung's place"
+                : "Drag an item and drop it at an edge, by the camera, or between items";
         c.drawText(hint, screenW / 2, TRAY_Y + TRAY_H / 2 + 3.5f, tp);
 
         // elements (dragged one last, on top)
@@ -279,17 +373,17 @@ final class PositionView extends View {
                 float w = width(i);
                 if (w <= 0) continue;
                 float gx, gy;
-                if (i == drag) { gx = fx - grabDx; gy = fy; curX[i] = gx; curY[i] = gy; placed[i] = true; }
+                if (i == drag && moved) { gx = fx - grabDx; gy = fy; curX[i] = gx; curY[i] = gy; placed[i] = true; }
                 else {
                     float ty = cy;
                     if (!placed[i]) { curX[i] = tx[i]; curY[i] = ty; placed[i] = true; }
-                    curX[i] += (tx[i] - curX[i]) * 0.35f;
-                    curY[i] += (ty - curY[i]) * 0.35f;
+                    curX[i] += (tx[i] - curX[i]) * 0.4f;
+                    curY[i] += (ty - curY[i]) * 0.4f;
                     if (Math.abs(tx[i] - curX[i]) > 0.3f || Math.abs(ty - curY[i]) > 0.3f) animating = true;
                     else { curX[i] = tx[i]; curY[i] = ty; }
                     gx = curX[i]; gy = curY[i];
                 }
-                drawChip(c, i, gx, gy, w, i == drag);
+                drawChip(c, i, gx, gy, w, i == drag && moved);
             }
         }
         c.restore();
@@ -298,7 +392,7 @@ final class PositionView extends View {
 
     private void drawChip(Canvas c, int i, float x, float cy, float w, boolean lifted) {
         // handle behind the item: faint, so it reads as something you can grab
-        r.set(x - 4, cy - 11, x + w + 4, cy + 11);
+        r.set(x - 1.5f, cy - 11, x + w + 1.5f, cy + 11);
         p.setStyle(Paint.Style.FILL);
         p.setColor(lifted ? withAlpha(cAccent, 0x66) : 0x22FFFFFF);
         if (i != ZoneLayout.BACK || lifted) c.drawRoundRect(r, 11, 11, p);
@@ -311,6 +405,15 @@ final class PositionView extends View {
         }
         if (i == ZoneLayout.BATTERY) { drawBattery(c, x, cy); return; }
         if (i == ZoneLayout.BACK) { drawBackChip(c, x, cy, w); return; }
+        if (i == ZoneLayout.NETSPEED) {
+            tp.setTextAlign(Paint.Align.CENTER);
+            tp.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            tp.setColor(0xFFFFFFFF);
+            tp.setTextSize(9f);
+            c.drawText("12.3", x + w / 2, cy - 1f, tp);
+            c.drawText("K/s", x + w / 2, cy + 8f, tp);
+            return;
+        }
         float k = i == ZoneLayout.TEMP ? cfg.sizePct / 100f : 1f;
         tp.setTextAlign(Paint.Align.LEFT);
         tp.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
@@ -324,7 +427,7 @@ final class PositionView extends View {
             } catch (Exception ignored) {}
         }
         tp.setColor(col);
-        CharSequence s = i == ZoneLayout.CLOCK ? clock : temp;
+        CharSequence s = i == ZoneLayout.CLOCK ? clock : i == ZoneLayout.DATE ? date : temp;
         c.drawText(s, 0, s.length(), x, cy + TEXT * k * 0.36f, tp);
     }
 
@@ -419,7 +522,7 @@ final class PositionView extends View {
 
     /** Two notification dots, so the left side feels like a real status bar and shows being pushed. */
     private void drawNotifs(Canvas c, float x, float cy) {
-        if (x + 24 > holeL - 4) return;
+        if (x + 24 > Math.min(holeL - 4, notifClip + 2)) return;
         p.setStyle(Paint.Style.FILL);
         p.setColor(0x55FFFFFF);
         c.drawCircle(x + 6, cy, 4.5f, p);
@@ -427,7 +530,7 @@ final class PositionView extends View {
     }
 
     private void drawDecoys(Canvas c, float right, float cy) {
-        if (right - 30 < holeR + 4 && right > holeL) return; // no room next to the camera hole
+        if (right - 30 < Math.max(holeR + 4, decoyClip - 2) && right > holeL) return; // no room next to the camera hole / placed items
         p.setStyle(Paint.Style.FILL);
         p.setColor(0x66FFFFFF);
         float x = right - 18;
@@ -479,11 +582,10 @@ final class PositionView extends View {
                 if (i < 0) return false;
                 getParent().requestDisallowInterceptTouchEvent(true);
                 drag = i;
-                candidate = getZone(i);
                 downX = e.getX(); downY = e.getY();
                 grabDx = x - curX[i];
                 fx = x; fy = y;
-                moved = false;
+                moved = false; overTray = false; cand = null; snapGuide = Float.NaN;
                 performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
                 invalidate();
                 return true;
@@ -493,8 +595,20 @@ final class PositionView extends View {
                 if (!moved && Math.abs(e.getX() - downX) < slop && Math.abs(e.getY() - downY) < slop) return true;
                 moved = true;
                 fx = x; fy = Math.max(BAR_Y + 4, Math.min(TOTAL_H - 8, y));
-                int z = zoneAt(x, y);
-                if (z != candidate) { candidate = z; performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK); }
+                boolean tray = y > TRAY_Y - 6;
+                if (tray != overTray) { overTray = tray; performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK); }
+                Plan before = cand;
+                if (tray) {
+                    cand = cfg.plan.copy();
+                    float[] w = widths();
+                    float[] xs = ZoneLayout.solve(live(), w, screenW, holeL, holeR, HOLE_GAP, edge(), edge(), gap());
+                    release(cand, drag, xs, w);
+                    cand.mode[drag] = ZoneLayout.STOCK;
+                    snapGuide = Float.NaN;
+                } else {
+                    cand = snap(drag, x - grabDx);
+                }
+                if (before != null && !samePlan(before, cand)) performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
                 invalidate();
                 return true;
             }
@@ -502,20 +616,28 @@ final class PositionView extends View {
                 int i = drag;
                 if (i < 0) return false;
                 drag = -1;
-                if (moved) {
-                    int before = getZone(i);
-                    setZone(i, candidate);
-                    if (before != candidate) { performHapticFeedback(HapticFeedbackConstants.CONFIRM); host.changed(); }
-                } else host.tapped(i);
+                if (moved && cand != null) {
+                    boolean changed = !samePlan(cfg.plan, cand);
+                    cfg.plan = cand;
+                    cand = null;
+                    if (changed) { performHapticFeedback(HapticFeedbackConstants.CONFIRM); host.changed(); }
+                } else if (!moved) host.tapped(i);
+                cand = null; overTray = false; moved = false;
                 invalidate();
                 return true;
             }
             case MotionEvent.ACTION_CANCEL:
-                drag = -1;
+                drag = -1; cand = null; overTray = false; moved = false;
                 invalidate();
                 return true;
             default:
                 return super.onTouchEvent(e);
         }
+    }
+
+    private static boolean samePlan(Plan a, Plan b) {
+        for (int i = 0; i < ZoneLayout.ELEMENTS; i++)
+            if (a.mode[i] != b.mode[i] || a.right[i] != b.right[i] || a.off[i] != b.off[i] || a.to[i] != b.to[i] || a.side[i] != b.side[i]) return false;
+        return true;
     }
 }

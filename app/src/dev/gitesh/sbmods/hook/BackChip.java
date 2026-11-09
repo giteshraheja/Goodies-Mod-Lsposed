@@ -30,6 +30,7 @@ import java.lang.reflect.Proxy;
 import java.util.List;
 
 import dev.gitesh.sbmods.Config;
+import dev.gitesh.sbmods.ZoneLayout;
 
 /**
  * "◀ App" on the left of the status bar: shows the previously used app and switches back to it
@@ -48,7 +49,8 @@ final class BackChip {
     private int targetTask = -1;
     private String homePkg;
     private String lastPkg, iconPkg;
-    private android.graphics.drawable.Drawable iconDraw;
+    private android.graphics.drawable.Drawable iconDraw, iconDrawDark;
+    private android.graphics.drawable.Drawable shownIcon;
     private int tint = 0xFF3A3A3E;
     private boolean faded;                   // dulled to plain text after the chosen time
     private String shownKey;                 // what the chip currently points at (restarts the fade timer on change)
@@ -108,7 +110,7 @@ final class BackChip {
             c.setAlpha(1f);
             if (Math.abs(c.getTranslationX() - tx) > 0.5f) c.setTranslationX(tx);
             if (Math.abs(c.getTranslationY() - ty) > 0.5f) c.setTranslationY(ty);
-            float push = Math.max(0, c.getWidth() - overlap);
+            float push = Math.max(0, c.getWidth() - overlap) + extraPad;   // + room for things placed right after the button (network speed)
             if (nb != null && Math.abs(nb.getTranslationX() - push) > 0.5f) nb.setTranslationX(push);
             mergeApplied = true;
         } else if (mergeApplied) {
@@ -257,6 +259,15 @@ final class BackChip {
         return false;
     }
 
+    /** Fill + a thin outline (boundary) in the text colour, so the button stays readable on any wallpaper. */
+    private void setPill(int fill) {
+        if (pill == null) return;
+        pill.setColor(fill);
+        float d = chip != null ? chip.getResources().getDisplayMetrics().density : 2.5f;
+        int line = (fill >>> 24) == 0 ? 0 : ((chip != null ? chip.getCurrentTextColor() : 0xFFFFFFFF) & 0x00FFFFFF) | 0xB3000000;
+        pill.setStroke(Math.max(2, Math.round(1.2f * d)), line);
+    }
+
     private LinearLayout leftRow;
     private int rowPadStart;
 
@@ -281,7 +292,7 @@ final class BackChip {
         chip.setPadding(Math.round(7 * d), Math.round(1 * d), Math.round(9 * d), Math.round(1 * d));
         pill = new android.graphics.drawable.GradientDrawable();
         pill.setCornerRadius(100 * d);
-        pill.setColor(0x33FFFFFF);
+        setPill(0x33FFFFFF);
         chip.setBackground(pill);
         // The chip is an overlay next to Samsung's left row, not a child of it: Samsung's notification /
         // live-activity logic looks at its own row's children, and an extra child there made the live
@@ -319,6 +330,9 @@ final class BackChip {
     }
 
     /** Keep Samsung's left row clear of the overlay chip (only while the chip sits at the left start). */
+    /** Room (px) the layout needs after the back button, e.g. for network speed placed right of it. Set by Mover. */
+    static volatile float extraPad;
+
     private void syncRow() {
         LinearLayout row = leftRow;
         if (row == null || chip == null) return;
@@ -326,13 +340,13 @@ final class BackChip {
         int want = rowPadStart;
         float wantTx = 0;
         // (in Merge / Stack with a live activity the parked spot is ignored, see Mover, so the chip is at the left start then)
-        if (chip.getVisibility() == View.VISIBLE && (cfg.backZone == 0 || stackLive) && chip.getWidth() > 0 && !peeking) {
+        if (chip.getVisibility() == View.VISIBLE && (cfg.plan.mode[ZoneLayout.BACK] == ZoneLayout.STOCK || stackLive) && chip.getWidth() > 0 && !peeking) {
             float d = chip.getResources().getDisplayMetrics().density;
             int w = chip.getWidth() + Math.round((cfg.itemGap >= 0 ? cfg.itemGap : 6) * d);
             // attached to a visible capsule (Merge / Stack): the capsule keeps its own spot, nothing to make room for.
             // Otherwise (also the tiny tab while a live activity is opening): make room with real padding, which Samsung's
             // layout respects - sliding the row looked fine but Samsung resets it during its open-card animation.
-            if (!(stackLive && shareLive)) want += w;
+            if (!(stackLive && shareLive)) want += w + Math.round(extraPad);
         }
         if (row.getPaddingStart() != want)
             row.setPaddingRelative(want, row.getPaddingTop(), row.getPaddingEnd(), row.getPaddingBottom());
@@ -363,8 +377,12 @@ final class BackChip {
         if (!sliverApplied && chip.getCurrentTextColor() != color) chip.setTextColor(color);
         if (pill != null && !capsule && !faded && pillFor != color) {   // translucent pill in the text colour: reads as a button
             pillFor = color;
-            pill.setColor((color & 0x00FFFFFF) | 0x33000000);
+            setPill((color & 0x00FFFFFF) | 0x33000000);
             chip.invalidate();
+        }
+        if (iconDrawDark != null && chip.getCompoundDrawables()[0] != null) {   // keep the chevron readable when the bar turns light / dark or the pill fades
+            android.graphics.drawable.Drawable want = chevronFor(clock);
+            if (want != shownIcon) { shownIcon = want; chip.setCompoundDrawables(want, null, null, null); }
         }
         float size = clock.getTextSize() * 0.9f * owner.config().backSizePct / 100f;
         if (Math.abs(chip.getTextSize() - size) > 0.5f) chip.setTextSize(TypedValue.COMPLEX_UNIT_PX, size);
@@ -491,7 +509,7 @@ final class BackChip {
             fadeAnim = android.animation.ValueAnimator.ofFloat(1f, 0f);
             fadeAnim.setDuration(900);
             fadeAnim.addUpdateListener(a -> {
-                if (pill != null) pill.setColor((from & 0x00FFFFFF) | (Math.round(((from >>> 24)) * (float) a.getAnimatedValue()) << 24));
+                if (pill != null) setPill((from & 0x00FFFFFF) | (Math.round(((from >>> 24)) * (float) a.getAnimatedValue()) << 24));
                 c.invalidate();
             });
             fadeAnim.addListener(new android.animation.AnimatorListenerAdapter() {
@@ -525,7 +543,7 @@ final class BackChip {
             c.setCompoundDrawables(null, null, null, null);
             if (faded) {
                 c.setPadding(Math.round(4 * d), Math.round(1 * d), Math.round(4 * d), Math.round(1 * d));
-                if (pill != null) { pill.setColor(0); c.invalidate(); }
+                if (pill != null) { setPill(0); c.invalidate(); }
             } else {
                 c.setPadding(Math.round(7 * d), Math.round(1 * d), Math.round(9 * d), Math.round(1 * d));
                 pillFor = 0; // style() repaints the translucent pill
@@ -545,22 +563,8 @@ final class BackChip {
                 ic2.clipPath(clip);
                 ic.setBounds(0, 0, px, px);
                 ic.draw(ic2);
-                android.graphics.Bitmap bm = android.graphics.Bitmap.createBitmap(chev + px, px, android.graphics.Bitmap.Config.ARGB_8888);
-                android.graphics.Canvas cv = new android.graphics.Canvas(bm);
-                cv.drawBitmap(icon, chev, 0, null);
-                android.graphics.Paint sp = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
-                sp.setStyle(android.graphics.Paint.Style.STROKE);
-                sp.setStrokeCap(android.graphics.Paint.Cap.ROUND);
-                sp.setStrokeJoin(android.graphics.Paint.Join.ROUND);
-                sp.setStrokeWidth(Math.max(1f, 1.7f * dk));
-                sp.setColor(0xFFFFFFFF);
-                android.graphics.Path ch = new android.graphics.Path();
-                float cx = 4.2f * dk, hh = 3.4f * dk;          // chevron "‹"
-                ch.moveTo(cx, px / 2f - hh); ch.lineTo(cx - 2.4f * dk, px / 2f); ch.lineTo(cx, px / 2f + hh);
-                cv.drawPath(ch, sp);
-                android.graphics.drawable.BitmapDrawable bd = new android.graphics.drawable.BitmapDrawable(ctx.getResources(), bm);
-                bd.setBounds(0, 0, chev + px, px);
-                iconDraw = bd;
+                iconDraw = chevIcon(ctx, icon, chev, px, dk, 0xFFFFFFFF);       // white chevron (on a coloured / dark background)
+                iconDrawDark = chevIcon(ctx, icon, chev, px, dk, 0xFF1B1B1F);   // dark chevron (on a light background)
                 tint = tintOf(icon);
                 iconPkg = iconKey;
             } catch (Throwable t) {
@@ -569,10 +573,43 @@ final class BackChip {
                 iconPkg = iconKey;
             }
         }
-        c.setCompoundDrawables(iconDraw, null, null, null);
+        shownIcon = chevronFor(c);
+        c.setCompoundDrawables(shownIcon, null, null, null);
         c.setCompoundDrawablePadding(Math.round(3 * dk));
-        c.setPadding(Math.round(4 * dk), Math.round(1.5f * dk), Math.round(10 * dk), Math.round(1.5f * dk));
-        if (pill != null) { pill.setColor(faded ? 0 : tint); c.invalidate(); }
+        // once the pill has faded there is nothing to pad against: close the empty space on the right (and a little on the left)
+        c.setPadding(Math.round((faded ? 1.5f : 4) * dk), Math.round(1.5f * dk), Math.round((faded ? 1.5f : 10) * dk), Math.round(1.5f * dk));
+        if (pill != null) { setPill(faded ? 0 : tint); c.invalidate(); }
+    }
+
+    private static android.graphics.drawable.Drawable chevIcon(Context ctx, android.graphics.Bitmap icon, int chev, int px, float dk, int color) {
+        android.graphics.Bitmap bm = android.graphics.Bitmap.createBitmap(chev + px, px, android.graphics.Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas cv = new android.graphics.Canvas(bm);
+        cv.drawBitmap(icon, chev, 0, null);
+        android.graphics.Paint sp = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        sp.setStyle(android.graphics.Paint.Style.STROKE);
+        sp.setStrokeCap(android.graphics.Paint.Cap.ROUND);
+        sp.setStrokeJoin(android.graphics.Paint.Join.ROUND);
+        sp.setStrokeWidth(Math.max(1f, 1.7f * dk));
+        sp.setColor(color);
+        android.graphics.Path ch = new android.graphics.Path();
+        float cx = 4.2f * dk, hh = 3.4f * dk;          // chevron "\u2039"
+        ch.moveTo(cx, px / 2f - hh); ch.lineTo(cx - 2.4f * dk, px / 2f); ch.lineTo(cx, px / 2f + hh);
+        cv.drawPath(ch, sp);
+        android.graphics.drawable.BitmapDrawable bd = new android.graphics.drawable.BitmapDrawable(ctx.getResources(), bm);
+        bd.setBounds(0, 0, chev + px, px);
+        return bd;
+    }
+
+    private static float luma(int c) {
+        return (0.299f * ((c >> 16) & 0xFF) + 0.587f * ((c >> 8) & 0xFF) + 0.114f * (c & 0xFF)) / 255f;
+    }
+
+    /** White or dark chevron, whichever stands out: against the pill while it is showing, against the status bar once the pill has faded. */
+    private android.graphics.drawable.Drawable chevronFor(TextView clock) {
+        if (iconDrawDark == null) return iconDraw;
+        boolean pillShown = !faded && pill != null && tint != 0;
+        boolean lightBehind = pillShown ? luma(tint) > 0.62f : luma(clock.getCurrentTextColor()) < 0.5f;   // dark status bar text = light bar
+        return lightBehind ? iconDrawDark : iconDraw;
     }
 
     /** The icon's main colour, darkened a little so white text stays readable on it. */

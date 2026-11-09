@@ -52,6 +52,8 @@ public final class Controller {
     private static final int MAX_ERRORS = 25;
     private static final int GUARD_LIMIT = 3;
     private static final long GUARD_STABLE_MS = 90_000;
+    private static final long GUARD_FORGET_MS = 10 * 60_000;   // a tripped guard re-arms itself after this long without a restart
+    private static final long ERROR_WINDOW_MS = 60_000;         // MAX_ERRORS only count when they come in a burst
     private static final String VERSION = "3.6";
 
     private static Controller sInstance;
@@ -65,6 +67,7 @@ public final class Controller {
     private Handler bg;
     private Context ctx;
     private SharedPreferences prefs;
+    private android.widget.Toast lastToast;
     private volatile Config cfg = new Config();
     private final Sensors sensors = new Sensors();
 
@@ -87,18 +90,15 @@ public final class Controller {
 
     Config config() { return cfg; }
 
-    /** Debug note readable from the shared prefs file (logcat is unavailable on this phone). */
-    static void dbg(String key, String value) {
-        try { if (sInstance != null && sInstance.prefs != null) sInstance.prefs.edit().putString("dbg_" + key, value).apply(); } catch (Throwable ignored) {}
-    }
-    private int errors, replaceCount;
+    private int errors, replaceCount, windowErrors;
+    private long errWindowStart;
     private long replaceWindow;
     private String lastError = "";
     private volatile CharSequence lastText = "";
     private boolean screenOn = true, polling;
 
     private WeakReference<TextView> clockRef = new WeakReference<>(null);
-    private TextView label;
+    private TextView label, dateView;
     private ViewTreeObserver observer;
     private final ViewTreeObserver.OnPreDrawListener preDraw = () -> {
         try { syncWithClock(); } catch (Throwable t) { fail("predraw", t); }
@@ -157,19 +157,25 @@ public final class Controller {
         registerControlReceiver();
 
         int starts = prefs.getInt("guard_starts", 0);
+        long lastStart = prefs.getLong("guard_last", 0);
+        long nowMs = System.currentTimeMillis();
+        // Self-healing: the guard only protects against a crash LOOP. If the last start was a while ago, the loop is over: forget it.
+        if (starts > 0 && (nowMs - lastStart > GUARD_FORGET_MS || nowMs < lastStart)) starts = 0;
         if (starts >= GUARD_LIMIT) {
             guardTripped = true;
-            Log.w("crash guard tripped (" + starts + " unstable starts) - mod stays off");
+            Log.w("crash guard tripped (" + starts + " unstable starts) - mod stays off (tries again after " + GUARD_FORGET_MS / 60000 + " min)");
+            gput("sbmods_alive", 0L);
             Entry.unhook();
             return;
         }
-        prefs.edit().putInt("guard_starts", starts + 1).commit();
+        prefs.edit().putInt("guard_starts", starts + 1).putLong("guard_last", nowMs).commit();
         main.postDelayed(() -> {
             try { prefs.edit().putInt("guard_starts", 0).apply(); } catch (Throwable ignored) {}
         }, GUARD_STABLE_MS);
 
         cfg = Config.load(prefs);
         publishLockMax(cfg);
+        gput("sbmods_alive", System.currentTimeMillis());
         clockId = ctx.getResources().getIdentifier("clock", "id", Config.SYSUI);
         rightContainerId = ctx.getResources().getIdentifier("right_clock_container", "id", Config.SYSUI);
         middleContainerId = ctx.getResources().getIdentifier("middle_clock_container", "id", Config.SYSUI);
@@ -220,6 +226,13 @@ public final class Controller {
         label.setGravity(Gravity.CENTER_VERTICAL);
         label.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         label.setVisibility(View.GONE);
+        dateView = new TextView(clock.getContext());
+        dateView.setTag("sbmods_date");
+        dateView.setSingleLine(true);
+        dateView.setIncludeFontPadding(clock.getIncludeFontPadding());
+        dateView.setGravity(Gravity.CENTER_VERTICAL);
+        dateView.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        dateView.setVisibility(View.GONE);
         place();
 
         stockText = clock.getText() == null ? null : clock.getText().toString();
@@ -275,7 +288,12 @@ public final class Controller {
             ViewParent p = label.getParent();
             if (p instanceof ViewGroup) ((ViewGroup) p).removeView(label);
         }
+        if (dateView != null) {
+            ViewParent dp = dateView.getParent();
+            if (dp instanceof ViewGroup) ((ViewGroup) dp).removeView(dateView);
+        }
         label = null;
+        dateView = null;
         clockTouched = false;
         clockRef = new WeakReference<>(null);
     }
@@ -308,6 +326,15 @@ public final class Controller {
         lp.gravity = Gravity.CENTER_VERTICAL;
         if (before) lp.setMarginEnd(gap); else lp.setMarginStart(gap);
         parent.addView(label, idx, lp);
+        if (dateView != null) {
+            if (dateView.getParent() instanceof ViewGroup) ((ViewGroup) dateView.getParent()).removeView(dateView);
+            int ci = parent.indexOfChild(clock);
+            LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT);
+            dlp.gravity = Gravity.CENTER_VERTICAL;
+            if (cfg.dateAfterTime) dlp.setMarginStart(gap); else dlp.setMarginEnd(gap);
+            parent.addView(dateView, cfg.dateAfterTime ? ci + 1 : ci, dlp);
+        }
         applyStyle(clock, true);
     }
 
@@ -316,6 +343,15 @@ public final class Controller {
         if (p != clock.getParent() || !(p instanceof ViewGroup)) return false;
         ViewGroup g = (ViewGroup) p;
         int ci = g.indexOfChild(clock), li = g.indexOfChild(label);
+        if (dateView != null) {
+            if (dateView.getParent() != g) return false;
+            int di = g.indexOfChild(dateView);
+            if (cfg.dateAfterTime ? di != ci + 1 : di != ci - 1) return false;
+            // the temperature sits on the outer side of the date
+            if (di < ci) { if (li > di && li < ci) return false; } else if (li > ci && li < di) return false;
+            if (wantBefore(clock)) return li == (di < ci ? di - 1 : ci - 1);
+            return li == (di > ci ? di + 1 : ci + 1);
+        }
         return wantBefore(clock) ? li == ci - 1 : li == ci + 1;
     }
 
@@ -338,7 +374,7 @@ public final class Controller {
         }
         applyStyle(clock, false);
         backChip.style(clock);
-        mover.update(cfg, statusRoot, clock, label, batteryTaps.view(), backChip.view());
+        safeMove(cfg, statusRoot, clock);
         long now = SystemClock.uptimeMillis();
         if (now - lastBatteryCheck > 2000) { lastBatteryCheck = now; bindTaps(false); }
     }
@@ -574,6 +610,17 @@ public final class Controller {
         boolean show = clock.getVisibility() == View.VISIBLE && !TextUtils.isEmpty(lastText);
         int vis = show ? View.VISIBLE : View.GONE;
         if (label.getVisibility() != vis) label.setVisibility(vis);
+
+        if (dateView != null) {
+            if (force || dateView.getCurrentTextColor() != color) dateView.setTextColor(color);
+            float dsize = clock.getTextSize();
+            if (force || Math.abs(dateView.getTextSize() - dsize) > 0.5f) dateView.setTextSize(TypedValue.COMPLEX_UNIT_PX, dsize);
+            if (force || dateView.getTypeface() != clock.getTypeface()) dateView.setTypeface(clock.getTypeface());
+            if (force || dateView.getLetterSpacing() != clock.getLetterSpacing()) dateView.setLetterSpacing(clock.getLetterSpacing());
+            boolean dshow = clock.getVisibility() == View.VISIBLE && cfg.dateSeparate && !TextUtils.isEmpty(dateView.getText());
+            int dv = dshow ? View.VISIBLE : View.GONE;
+            if (dateView.getVisibility() != dv) dateView.setVisibility(dv);
+        }
     }
 
     // ----------------------------------------------------------- custom clock
@@ -606,6 +653,11 @@ public final class Controller {
         TextView clock = clockRef.get();
         if (clock == null) return;
         CharSequence mine = disabled ? null : customClockText();
+        if (dateView != null) {
+            CharSequence dt = disabled ? null : ClockFormat.dateText(cfg, new Date(), Locale.getDefault());
+            CharSequence want = dt == null ? "" : dt;
+            if (!TextUtils.equals(dateView.getText(), want)) dateView.setText(want);
+        }
         settingClock = true;
         try {
             if (mine != null) {
@@ -624,30 +676,6 @@ public final class Controller {
         } finally {
             settingClock = false;
         }
-    }
-
-    /**
-     * Called after Samsung's realignText(), which sets translationY so the text's glyph bounds are
-     * centred. Descenders in our text (p, g, y) would lift the whole clock; shift it back so the
-     * digits sit where Samsung puts a digits-only clock.
-     */
-    /** Debug: log where everything is (am broadcast ... TEST_ACTION --ei act -1). */
-    private void dumpState() {
-        StringBuilder sb = new StringBuilder("STATE");
-        for (WeakReference<TextView> w : clockCandidates) {
-            TextView c = w.get();
-            if (c == null) continue;
-            sb.append(c == clockRef.get() ? "\n *clock " : "\n  clock ").append(Integer.toHexString(System.identityHashCode(c)))
-                    .append(" parent=").append(c.getParent() instanceof View ? idName(((View) c.getParent()).getId()) : "-")
-                    .append(" shown=").append(c.isShown()).append(" attached=").append(c.isAttachedToWindow())
-                    .append(" color=").append(Integer.toHexString(c.getCurrentTextColor())).append(" text=").append(c.getText());
-        }
-        if (label != null) sb.append("\n  label parent=").append(label.getParent() instanceof View ? idName(((View) label.getParent()).getId()) : "-")
-                .append(" shown=").append(label.isShown()).append(" color=").append(Integer.toHexString(label.getCurrentTextColor())).append(" text=").append(label.getText());
-        View b = backChip.view();
-        if (b != null) sb.append("\n  chip bg=").append(b.getBackground() instanceof android.graphics.drawable.GradientDrawable ? ((android.graphics.drawable.GradientDrawable) b.getBackground()).getColor() + " a=" + b.getBackground().getAlpha() + " bounds=" + b.getBackground().getBounds() + " willDraw=" + !b.willNotDraw() : String.valueOf(b.getBackground())).append(" h=").append(b.getHeight()).append(" shown=").append(b.isShown()).append(" w=").append(b.getWidth())
-                .append(" color=").append(Integer.toHexString(((TextView) b).getCurrentTextColor())).append(" text=").append(((TextView) b).getText());
-        Log.i(sb.toString());
     }
 
     /**
@@ -858,6 +886,7 @@ public final class Controller {
         f.addAction(Config.ACTION_TEST);
         f.addAction(Config.ACTION_RESTART);
         f.addAction(Config.ACTION_TIP);
+        f.addAction(Config.ACTION_TOAST);
         // Only apps holding our signature permission (= the settings app) can send these.
         ctx.registerReceiver(controlReceiver, f, Config.PERM, main, Context.RECEIVER_EXPORTED);
     }
@@ -874,12 +903,25 @@ public final class Controller {
                     if (label != null) place();
                     bindTaps(true);
                     TextView ck = clockRef.get();
-                    mover.update(n, statusRoot, ck, label, batteryTaps.view(), backChip.view());
+                    safeMove(n, statusRoot, ck);
                     if (ck != null) backChip.attach(ck);
                     backChip.update();
                     main.post(shiftTick);
                     startPolling();
                     restartClockTick();
+                } else if (Config.ACTION_TOAST.equals(a)) {   // "3, 2, 1" before the assistant drives the screen (status bar toasts are never blocked)
+                    String t = i.getStringExtra("t");
+                    int n = Math.max(0, Math.min(5, i.getIntExtra("count", 0)));
+                    for (int k = n; k >= 0; k--) {
+                        final int at = k;
+                        main.postDelayed(() -> {
+                            String m = at > 0 ? (t != null ? t + " in " : "") + at + "\u2026" : t;
+                            if (lastToast != null) lastToast.cancel();   // one at a time, so each number shows on its own second
+                            lastToast = m == null ? null : android.widget.Toast.makeText(ctx, m, android.widget.Toast.LENGTH_SHORT);
+                            if (lastToast != null) lastToast.show();
+                        }, (n - k) * 1000L);
+                    }
+                    return;
                 } else if (Config.ACTION_TIP.equals(a)) {
                     TextView ck = clockRef.get();
                     if (ck != null && !tips.show(ck)) Log.i("tip: nothing to show / no room");
@@ -890,9 +932,6 @@ public final class Controller {
                     prefs.edit().putInt("guard_starts", 0).commit();
                     Log.i("restart requested by app");
                     main.postDelayed(() -> android.os.Process.killProcess(android.os.Process.myPid()), 300);
-                    return;
-                } else if (Config.ACTION_TEST.equals(a) && i.getIntExtra("act", 0) == -1) {
-                    dumpState();
                     return;
                 } else if (Config.ACTION_TEST.equals(a)) {
                     TextView clock = clockRef.get();
@@ -906,6 +945,24 @@ public final class Controller {
             } catch (Throwable t) { fail("control", t); }
         }
     };
+
+    private long moverPausedUntil;
+
+    /**
+     * The moving code is optional polish: if it throws, put everything back to Samsung's places and pause only that part for
+     * 30 s (counted as ONE error), so a problem there can never take the whole mod down.
+     */
+    private void safeMove(Config c, View root, TextView clock) {
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (now < moverPausedUntil) return;
+        try {
+            mover.update(c, root, clock, label, batteryTaps.view(), backChip.view(), dateView);
+        } catch (Throwable t) {
+            moverPausedUntil = now + 30_000;
+            try { mover.releaseAll(); } catch (Throwable ignored) {}
+            fail("mover", t);
+        }
+    }
 
     private void sendStatus() {
         Intent r = new Intent(Config.ACTION_PONG).setPackage(Config.PKG);
@@ -935,14 +992,23 @@ public final class Controller {
 
     // ---------------------------------------------------------------- errors
 
+    /** Tells the app / boot helper that the mod is alive (a timestamp) or not (0). */
+    private void gput(String key, long v) {
+        try { android.provider.Settings.Global.putLong(ctx.getContentResolver(), key, v); } catch (Throwable ignored) {}
+    }
+
     void fail(String where, Throwable t) {
         try {
             errors++;
+            long nowE = android.os.SystemClock.elapsedRealtime();
+            if (nowE - errWindowStart > ERROR_WINDOW_MS) { errWindowStart = nowE; windowErrors = 0; }
+            windowErrors++;
             lastError = where + ": " + t;
             Log.w("error #" + errors + " in " + lastError);
-            if (errors >= MAX_ERRORS && !disabled) {
+            if (windowErrors >= MAX_ERRORS && !disabled) {
                 disabled = true;
-                Log.w("too many errors - removing mod until SystemUI restarts");
+                Log.w("error storm (" + windowErrors + " in a minute) - removing mod until SystemUI restarts");
+                gput("sbmods_alive", 0L);
                 main.post(() -> {
                     try { refreshClock(); } catch (Throwable ignored) {} // restores stock clock
                     try { detach(); } catch (Throwable ignored) {}
