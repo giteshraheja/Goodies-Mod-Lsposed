@@ -24,10 +24,9 @@ import java.util.Random;
 import dev.gitesh.sbmods.Config;
 
 /**
- * Now and then, right after unlocking, scrolls one reminder of a gesture you set up
- * ("Double-tap clock → Flashlight") right-to-left through the left side of the status bar,
- * then disappears. The left side already stops before the camera hole, and the notification
- * icons there fade out while it plays, so nothing overlaps. Costs nothing between runs.
+ * Now and then, right after unlocking (or the screen coming on without a lock screen), the status bar turns
+ * into a black strip and one line scrolls across it in white: what's new after an update, or a reminder of a
+ * gesture you set up ("Double-tap the clock to …"). Then the normal status bar is back. Costs nothing between runs.
  */
 final class TipTicker {
     private static final String[] ITEM = {"the battery icon", "the clock", "the temperature", "the camera hole", "the Wi-Fi icon", "the mobile signal icon"};
@@ -61,8 +60,6 @@ final class TipTicker {
     private ValueAnimator anim;
     private TextView view;
     private View windowView;
-    private final java.util.ArrayList<View> faded = new java.util.ArrayList<>();
-    private final java.util.ArrayList<Float> fadedAlpha = new java.util.ArrayList<>();   // each one's own alpha (the back pill may be dimmed)
 
     TipTicker(Controller owner) { this.owner = owner; }
 
@@ -97,75 +94,53 @@ final class TipTicker {
         String tip = text != null ? text : pickTip(clock.getContext());
         if (tip == null) return false;
         Context ctx = clock.getContext();
-        int hostId = ctx.getResources().getIdentifier("status_bar_start_side_content", "id", Config.SYSUI);
-        int rowId = ctx.getResources().getIdentifier("status_bar_start_side_except_heads_up", "id", Config.SYSUI);
-        View hostV = hostId == 0 ? null : clock.getRootView().findViewById(hostId);
-        View row = rowId == 0 ? null : clock.getRootView().findViewById(rowId);
-        if (!(hostV instanceof FrameLayout) || !hostV.isShown() || hostV.getWidth() < 100) return false;
+        // The whole status bar becomes a black strip with the tip scrolling across in white: always readable,
+        // nothing behind it to fight with (live chip, back pill, moved items). Gone again when the tip ends.
+        int barId = ctx.getResources().getIdentifier("status_bar_contents", "id", Config.SYSUI);
+        View bar = barId == 0 ? null : clock.getRootView().findViewById(barId);
+        View root = clock.getRootView();
+        ViewGroup host = bar != null && bar.getParent() instanceof FrameLayout ? (ViewGroup) bar.getParent()
+                : root instanceof FrameLayout ? (ViewGroup) root : null;
+        if (host == null || !host.isShown() || host.getWidth() < 100 || host.getHeight() <= 0) return false;
         stop();
-        FrameLayout host = (FrameLayout) hostV;
 
+        float d = ctx.getResources().getDisplayMetrics().density;
         TextView t = new TextView(ctx);
         t.setTag("sbmods-tip");
         t.setSingleLine(true);
         t.setGravity(Gravity.CENTER_VERTICAL);
         t.setText(tip);
-        t.setTextColor(clock.getCurrentTextColor());
+        t.setTextColor(0xFFFFFFFF);
         t.setTypeface(clock.getTypeface());
-        t.setTextSize(TypedValue.COMPLEX_UNIT_PX, clock.getTextSize() * 0.85f);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_PX, clock.getTextSize() * 0.9f);
         t.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        // Our own clipped window: the left side of the bar, up to just before the camera hole (items moved to the
-        // right side, Wi-Fi, battery... are never run over).
-        float d = ctx.getResources().getDisplayMetrics().density;
-        int[] hostAt = new int[2];
-        host.getLocationOnScreen(hostAt);
-        int holeLeft = clock.getRootView().getWidth() / 2 - Math.round(6 * d);
-        try {
-            android.view.WindowInsets wi = clock.getRootWindowInsets();
-            android.view.DisplayCutout dc = wi == null ? null : wi.getDisplayCutout();
-            if (dc != null) for (android.graphics.Rect r : dc.getBoundingRects()) if (r.top <= 0 && !r.isEmpty()) { holeLeft = r.left; break; }
-        } catch (Throwable ignored) {}
-        int windowW = Math.max(Math.round(100 * d), holeLeft - Math.round(8 * d) - hostAt[0]);
+
         FrameLayout window = new FrameLayout(ctx);
         window.setTag("sbmods-tip");
+        window.setBackgroundColor(0xFF000000);
         window.setClipChildren(true);
-        window.setClipToPadding(true);
-        // Exact full text width: WRAP_CONTENT would be capped at the window width and cut the end off.
-        int fullW = (int) Math.ceil(t.getPaint().measureText(tip)) + t.getPaddingLeft() + t.getPaddingRight() + 4;
-        window.addView(t, new FrameLayout.LayoutParams(fullW,
-                ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START | Gravity.CENTER_VERTICAL));
-        host.addView(window, new FrameLayout.LayoutParams(windowW, ViewGroup.LayoutParams.MATCH_PARENT,
-                Gravity.START | Gravity.CENTER_VERTICAL));
-        window.setClipBounds(new android.graphics.Rect(0, 0, windowW, 10_000));
+        window.setTranslationZ(100 * d);   // above everything else in the bar
+        window.setClickable(true);         // taps on the strip don't reach the icons under it
+        int fullW = (int) Math.ceil(t.getPaint().measureText(tip)) + 4;
+        window.addView(t, new FrameLayout.LayoutParams(fullW, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START | Gravity.CENTER_VERTICAL));
+        host.addView(window, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         view = t;
         windowView = window;
+        window.setAlpha(0f);
+        window.animate().alpha(1f).setDuration(200).start();
 
-        // Fade everything else on the left out while the tip runs: Samsung's row, the back pill / live chip overlays,
-        // and the network speed if it was moved to the left.
-        faded.clear(); fadedAlpha.clear();
-        for (int i = 0; i < host.getChildCount(); i++) { View k = host.getChildAt(i); if (k != window && k.getVisibility() == View.VISIBLE) faded.add(k); }
-        int spId = ctx.getResources().getIdentifier("networkSpeed", "id", Config.SYSUI);
-        View sp = spId == 0 ? null : clock.getRootView().findViewById(spId);
-        if (sp != null && sp.isShown()) { int[] sa = new int[2]; sp.getLocationOnScreen(sa); if (sa[0] < holeLeft) faded.add(sp); }
-        for (View k : faded) { fadedAlpha.add(k.getAlpha()); k.animate().alpha(0f).setDuration(200).start(); }
-
-        float width = windowW;
+        float width = host.getWidth();
         float textW = t.getPaint().measureText(tip);
-        float speed = 36 * d; // px per second: slow enough to read comfortably
+        float speed = 48 * d; // px per second: comfortable to read across the full width
         long dur = (long) ((width + textW) / speed * 1000);
-        // Keep the reading speed even if animations are sped up / turned off in developer options.
         float scale = ValueAnimator.getDurationScale();
-        if (scale > 0) dur = (long) (dur / scale);
+        if (scale > 0) dur = (long) (dur / scale);   // same reading speed even with animations sped up in developer options
         t.setTranslationX(width);
         anim = ValueAnimator.ofFloat(width, -textW);
         anim.setInterpolator(new LinearInterpolator());
         anim.setDuration(dur);
         anim.setStartDelay(200);
-        anim.addUpdateListener(a -> {
-            t.setTranslationX((float) a.getAnimatedValue());
-            // the back pill and the live chip reset their own alpha when apps change: keep them hidden until the tip is done
-            if (a.getCurrentPlayTime() > 250) for (View k : faded) if (k.getAlpha() > 0.01f) { k.animate().cancel(); k.setAlpha(0f); }
-        });
+        anim.addUpdateListener(a -> t.setTranslationX((float) a.getAnimatedValue()));
         anim.addListener(new AnimatorListenerAdapter() {
             @Override public void onAnimationEnd(Animator a) { cleanup(); }
             @Override public void onAnimationCancel(Animator a) { cleanup(); }
@@ -185,9 +160,8 @@ final class TipTicker {
         view = null;
         View w = windowView;
         windowView = null;
-        if (w != null && w.getParent() instanceof ViewGroup) ((ViewGroup) w.getParent()).removeView(w);
-        for (int i = 0; i < faded.size(); i++) faded.get(i).animate().alpha(i < fadedAlpha.size() ? fadedAlpha.get(i) : 1f).setDuration(250).start();
-        faded.clear(); fadedAlpha.clear();
+        if (w != null && w.getParent() instanceof ViewGroup)
+            w.animate().alpha(0f).setDuration(200).withEndAction(() -> { if (w.getParent() instanceof ViewGroup) ((ViewGroup) w.getParent()).removeView(w); }).start();
     }
 
     /** Builds one reminder from what's actually configured, picked at random. */
