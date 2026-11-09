@@ -74,7 +74,7 @@ public final class SettingsActivity extends Activity {
     private static final Object[][] ACT_GROUPS = {
             {"Turn on or off", new int[]{Config.ACT_POWER_SAVER, Config.ACT_FLASHLIGHT, Config.ACT_WIFI,
                     Config.ACT_BLUETOOTH, Config.ACT_DND, Config.ACT_ROTATE, Config.ACT_DARK, Config.ACT_SOUND}},
-            {"Do something", new int[]{Config.ACT_MEDIA, Config.ACT_LOCK, Config.ACT_QS, Config.ACT_NOTIFS}},
+            {"Do something", new int[]{Config.ACT_MEDIA, Config.ACT_LOCK, Config.ACT_CLOSE_APPS, Config.ACT_QS, Config.ACT_NOTIFS}},
             {"Open", new int[]{Config.ACT_FINDER, Config.ACT_BATTERY_USAGE, Config.ACT_INTERNET, Config.ACT_CAMERA,
                     Config.ACT_ALARMS, Config.ACT_TIMER, Config.ACT_CALENDAR, Config.ACT_CALCULATOR,
                     Config.ACT_SETTINGS, Config.ACT_APP}},
@@ -103,6 +103,7 @@ public final class SettingsActivity extends Activity {
         ACT_LABEL[Config.ACT_INTERNET] = "Internet panel";
         ACT_LABEL[Config.ACT_APP] = "Open an app…";
         ACT_LABEL[Config.ACT_FINDER] = "Samsung Finder (search)";
+        ACT_LABEL[Config.ACT_CLOSE_APPS] = "Close background apps (needs the helper)";
     }
     private static final String[] ITEM_TITLES = {"Battery icon", "Clock", "Temperature", "Front camera hole", "Wi-Fi icon", "Mobile signal icon"};
     private static final String[] GESTURE_TITLES = {"Tap", "Double-tap", "Long-press"};

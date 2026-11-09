@@ -137,6 +137,24 @@ final class TapActions {
 
     // ================================================================ actions
 
+    /** Same as the RAM chip on the Overview screen: the root helper closes background apps and says how much RAM it freed. */
+    private static void closeApps(Context ctx) {
+        android.content.ContentResolver cr = ctx.getContentResolver();
+        Settings.Global.putString(cr, "sbmods_result", "");
+        Settings.Global.putString(cr, "sbmods_cmd", "ramclean");
+        toast(ctx, "Closing background apps\u2026");
+        final android.os.Handler h = new android.os.Handler(android.os.Looper.getMainLooper());
+        final long until = android.os.SystemClock.uptimeMillis() + 15000;
+        h.postDelayed(new Runnable() {
+            @Override public void run() {
+                String r = Settings.Global.getString(cr, "sbmods_result");
+                if (r != null && !r.isEmpty()) { toast(ctx, r); return; }
+                if (android.os.SystemClock.uptimeMillis() < until) { h.postDelayed(this, 400); return; }
+                toast(ctx, "No answer from the helper \u2013 turn it on in StatusBar Mods \u203a More");
+            }
+        }, 1500);
+    }
+
     /** Runs one action. Also used by the app's "Try it" button (Config.ACTION_TEST). */
     static void perform(Context ctx, int action, String app) {
         try {
@@ -165,6 +183,7 @@ final class TapActions {
                 case Config.ACT_INTERNET: open(ctx, new Intent(Settings.Panel.ACTION_INTERNET_CONNECTIVITY)); break;
                 case Config.ACT_APP: openApp(ctx, app); break;
                 case Config.ACT_FINDER: openFinder(ctx); break;
+                case Config.ACT_CLOSE_APPS: closeApps(ctx); break;
                 default: break;
             }
             Log.i("performed action " + action);
