@@ -16,8 +16,6 @@ import android.os.SystemClock;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.style.ForegroundColorSpan;
-import android.text.style.RelativeSizeSpan;
-import android.text.style.StyleSpan;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
@@ -47,6 +45,10 @@ final class PanelCards {
     abstract static class Card {
         final String id, title;
         final int page;
+        /** The live value on the card's header line (right side); a card that has one creates it in build() with valueView(). */
+        TextView val;
+        /** Shows / hides the help text under the card; set by the panel before build(). */
+        Runnable toggle;
         Card(String id) {
             int i = PanelLayout.indexOf(id);
             this.id = id; this.title = PanelLayout.TITLES[i]; this.page = PanelLayout.PAGES[i];
@@ -56,10 +58,40 @@ final class PanelCards {
         void live(Activity a, Perf.Snap s) {}
         /** Changes when what the card shows was changed from elsewhere (for example a chip long-press): the panel then rebuilds it. */
         String sig(Activity a) { return ""; }
+        /** A longer explanation, shown when the title is tapped (null = none). */
+        String help(Activity a) { return null; }
+        /** Small cards sit two to a row (quick-settings style) when two of them follow each other. */
+        boolean half() { return false; }
+        /** A toggle tile: the whole tile is the button, filled with the accent colour while on (long-press shows the help). */
+        boolean tapTile() { return false; }
+        boolean on(Activity a) { return false; }
+        void tap(Activity a) {}
+        /** True when the card draws its own title (a one-row card): the panel then adds no header line. */
+        boolean ownHeader() { return false; }
+
+        /** The title, with a small "ⓘ" when the card has help (tapping it shows the help). */
+        TextView titleView(Activity a) {
+            String h = null;
+            try { h = help(a); } catch (Throwable t) { Log.w("card " + id + " help: " + t); }
+            TextView t = tvm(a, h == null ? title : title + " \u24d8", 13, DIM);
+            if (h != null) t.setOnClickListener(safe(() -> { if (toggle != null) toggle.run(); }));
+            return t;
+        }
+
+        /** The value on the header line: one line, right-aligned. */
+        TextView valueView(Activity a) {
+            val = tv(a, "", 13, WHITE, false);
+            val.setFontFeatureSettings("tnum");   // digits of equal width: nothing jiggles every second
+            val.setGravity(Gravity.END);
+            val.setSingleLine(true);
+            val.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            return val;
+        }
     }
 
-    /** The registry, in default order. */
-    static final List<Card> ALL = java.util.Arrays.asList(new Modes(), new Cpu(), new Cores(), new Gpu(), new Graphics(), new Switches(), new Battery(), new Health(), new Memory(), new TopApps());
+    /** The registry, in default order (must match PanelLayout.DEFAULTS). */
+    static final List<Card> ALL = java.util.Arrays.asList(new Modes(), new Cpu(), new Gpu(), new Cores(), new Graphics(), new Switches(),
+            new PowerSave(), new Smooth(), new Battery(), new Health(), new Memory(), new TopApps());
 
     /** The visible cards of one page, in the owner's order. */
     static List<Card> visible(Context c, int page) {
@@ -67,6 +99,25 @@ final class PanelCards {
         for (String id : PanelLayout.order(Global.gstr(c, PanelLayout.SETTING), PanelLayout.DEFAULTS))
             for (Card k : ALL) if (k.id.equals(id) && k.page == page) out.add(k);
         return out;
+    }
+
+    /** The ids the All page shows: the cards used last, newest first, minus any the owner hid. */
+    static List<String> recentVisible(Context c) {
+        List<String> vis = PanelLayout.order(Global.gstr(c, PanelLayout.SETTING), PanelLayout.DEFAULTS);
+        List<String> out = new ArrayList<>();
+        for (String id : PanelLayout.recent(Global.gstr(c, PanelLayout.RECENT))) if (vis.contains(id)) out.add(id);
+        return out;
+    }
+
+    static Card byId(String id) {
+        for (Card k : ALL) if (k.id.equals(id)) return k;
+        return null;
+    }
+
+    /** The owner used a card: remember it for the All page (written only when it changes the list). */
+    static void used(Activity a, String cardId) {
+        try { if (PerfPanel.pBox != null) PerfPanel.pBox.performHapticFeedback(android.view.HapticFeedbackConstants.CONTEXT_CLICK); } catch (Throwable ignored) {}   // the same small tick as the stock quick panel
+        try { Global.gset(a, PanelLayout.RECENT, PanelLayout.touch(Global.gstr(a, PanelLayout.RECENT), cardId)); } catch (Throwable t) { Log.w("used " + cardId + ": " + t); }
     }
 
     static View safeBuild(Card k, Activity a) {
@@ -90,6 +141,16 @@ final class PanelCards {
         return t;
     }
 
+    /** Medium weight (not bold), for tile titles. */
+    static TextView tvm(Context c, CharSequence s, float sp, int color) {
+        TextView t = tv(c, s, sp, color, false);
+        t.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        return t;
+    }
+
+    /** Mode colours: Full green, Balanced cyan, Cool soft blue, Saver amber (the panel header and the selected segment use them). */
+    static final int[] MODE_COLORS = {RecentsChip.GREEN, RecentsChip.CYAN, 0xFF9DB4FF, RecentsChip.AMBER};
+
     /** A click handler that can never throw into the launcher. */
     static View.OnClickListener safe(Runnable r) {
         return v -> { try { r.run(); } catch (Throwable t) { Log.w("panel click: " + t); } };
@@ -107,7 +168,7 @@ final class PanelCards {
         return p;
     }
 
-    /** A row of segments in one rounded track; sel = -1 selects none. Labels may carry spans (a small second line). */
+    /** A row of segments in one rounded track; sel = -1 selects none. Labels are one line. */
     static LinearLayout seg(Activity a, CharSequence[] labels, int sel, IntUnaryOperator selColor, IntConsumer pick) {
         LinearLayout seg = new LinearLayout(a);
         GradientDrawable sb = new GradientDrawable();
@@ -120,7 +181,8 @@ final class PanelCards {
             boolean on = i == sel;
             TextView b = tv(a, labels[i], 14, on ? Color.BLACK : WHITE, on);
             b.setGravity(Gravity.CENTER);
-            b.setPadding(0, dp(a, 6), 0, dp(a, 6));
+            b.setSingleLine(true);
+            b.setMinHeight(dp(a, 34));   // 34 + the 3 dp track padding: a 40 dp target
             if (on) { GradientDrawable ob = new GradientDrawable(); ob.setColor(selColor.applyAsInt(i)); ob.setCornerRadius(dp(a, 15)); b.setBackground(ob); }
             b.setOnClickListener(safe(() -> pick.accept(idx)));
             seg.addView(b, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
@@ -132,7 +194,8 @@ final class PanelCards {
     static TextView button(Activity a, String label, Runnable click) {
         TextView b = tv(a, label, 14, Color.WHITE, true);
         b.setGravity(Gravity.CENTER);
-        b.setPadding(dp(a, 12), dp(a, 9), dp(a, 12), dp(a, 9));
+        b.setPadding(dp(a, 12), 0, dp(a, 12), 0);
+        b.setMinHeight(dp(a, 40));
         GradientDrawable g = new GradientDrawable();
         g.setColor(0x22FFFFFF);
         g.setCornerRadius(dp(a, 18));
@@ -141,84 +204,98 @@ final class PanelCards {
         return b;
     }
 
+    /** A toggle pill: filled cyan with black text when on, the usual translucent pill when off. */
+    static void pillStyle(TextView t, boolean on) {
+        GradientDrawable g = new GradientDrawable();
+        g.setColor(on ? RecentsChip.CYAN : 0x22FFFFFF);
+        g.setCornerRadius(dp(t.getContext(), 18));
+        t.setBackground(g);
+        t.setTextColor(on ? Color.BLACK : WHITE);
+    }
+
+    static TextView pill(Activity a, String label, boolean on, Runnable click) {
+        TextView t = tv(a, label, 12, WHITE, false);
+        t.setGravity(Gravity.CENTER);
+        t.setMaxLines(2);
+        t.setMinHeight(dp(a, 44));
+        t.setPadding(dp(a, 6), dp(a, 4), dp(a, 6), dp(a, 4));
+        pillStyle(t, on);
+        t.setOnClickListener(safe(click));
+        return t;
+    }
+
+    /** Open one of Samsung's own screens (the fallback when that one is missing, may be null), then close the panel. A failure is a message, never a crash. */
+    static void openScreen(Activity a, String cardId, Intent first, Intent fallback, String fail) {
+        used(a, cardId);
+        boolean ok = false;
+        try { a.startActivity(first); ok = true; } catch (Throwable t) { Log.w("open screen: " + t); }
+        if (!ok && fallback != null) try { a.startActivity(fallback); ok = true; } catch (Throwable t) { Log.w("open fallback: " + t); }
+        if (!ok) { android.widget.Toast.makeText(a, fail, android.widget.Toast.LENGTH_SHORT).show(); return; }
+        try { if (PerfPanel.panel != null) PerfPanel.panel.dismiss(); } catch (Throwable ignored) {}
+    }
+
     static int loadColor(int pct) { return pct >= 85 ? RecentsChip.RED : pct >= 60 ? RecentsChip.AMBER : RecentsChip.GREEN; }
 
-    /** "Now 1.9 GHz · allowed up to 2.4 GHz" (amber when something holds it back). */
-    static CharSequence liveLine(String now, int cap, int hw, boolean cpu) {
-        SpannableStringBuilder t = new SpannableStringBuilder("Now  ");
-        int st = t.length();
-        t.append(now);
-        t.setSpan(new ForegroundColorSpan(WHITE), st, t.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+    /** "34% · 1.9 GHz · max 2.4 GHz": the "max" part turns amber when something holds the speed below the hardware maximum. */
+    static CharSequence rateText(String first, String now, int cap, int hw, boolean cpu) {
+        SpannableStringBuilder t = new SpannableStringBuilder(first);
+        t.append("  \u00b7  ").append(now);
         if (cap > 0 && hw > 0) {
-            t.append("  ·  ");
+            t.append("  \u00b7  ");
             int s2 = t.length();
             boolean held = cap < hw * 0.97f;
-            t.append(held ? "allowed up to " : "max ").append(cpu ? Perf.ghz(cap) : cap + " MHz");
+            t.append("max ").append(cpu ? Perf.ghz(cap) : cap + " MHz");
             if (held) t.setSpan(new ForegroundColorSpan(RecentsChip.AMBER), s2, t.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
         return t;
     }
 
-    /** The limit choices of the CPU or GPU, each showing the speed it allows. Behaviour as it always was, cool-down included. */
+    /** The limit choices of the CPU or GPU as one row of one-line labels. Behaviour as it always was, cool-down included. */
     static View limitRow(Activity a, String which) {
-        boolean cpu = which.equals("cpu");
-        Perf.Snap s = Perf.read();
-        int hw = cpu ? s.cpuHw : s.gpuHw;
         int cur = RecentsChip.effPct(a, which, Global.gint(a, "sbmods_" + which + "_pct", 0), Global.gint(a, "sbmods_cool", 0) == 1);   // what is really in force
-        CharSequence[] labels = new CharSequence[RecentsChip.PCTS.length];
-        for (int i = 0; i < labels.length; i++) {
-            int pct = RecentsChip.PCTS[i];
-            boolean on = pct == cur || (i == 0 && cur == 0);
-            int mhz = Perf.pick(cpu ? Perf.cpuSteps : Perf.gpuSteps, hw, pct);
-            SpannableStringBuilder t = new SpannableStringBuilder(RecentsChip.PCT_NAMES[i]);
-            if (mhz > 0) {
-                int st = t.length();
-                t.append("\n").append(cpu ? String.format(Locale.US, "%.1f", mhz / 1000f) : String.valueOf(mhz));
-                t.setSpan(new RelativeSizeSpan(0.78f), st, t.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-                t.setSpan(new ForegroundColorSpan(on ? 0xCC000000 : DIM), st, t.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-            }
-            labels[i] = t;
-        }
         int sel = -1;
-        for (int i = 0; i < labels.length; i++) if (RecentsChip.PCTS[i] == cur || (i == 0 && cur == 0)) sel = i;
-        LinearLayout box = new LinearLayout(a);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.addView(seg(a, labels, sel, i -> i == 0 ? RecentsChip.GREEN : RecentsChip.CYAN, i -> {
+        for (int i = 0; i < RecentsChip.PCTS.length; i++) if (RecentsChip.PCTS[i] == cur || (i == 0 && cur == 0)) sel = i;
+        return seg(a, RecentsChip.PCT_NAMES, sel, i -> i == 0 ? RecentsChip.GREEN : RecentsChip.CYAN, i -> {
             int pct = RecentsChip.PCTS[i];
             if (pct > 0) Global.gset(a, "sbmods_" + which + "_pick", String.valueOf(pct));
             boolean cooling = Global.gint(a, "sbmods_cool", 0) == 1;
             // cooling: a level just sets the cool-down level (ends with it); Full = this one at full speed while cooling (100)
             Global.gset(a, "sbmods_" + which + "_pct", cooling ? (pct > 0 ? "0" : "100") : String.valueOf(pct));
+            used(a, which);
             PerfPanel.changed(a);
-        }));
-        TextView unit = tv(a, cpu ? "Speeds in GHz (fastest core)" : "Speeds in MHz", 11, 0x77FFFFFF, false);
-        unit.setPadding(dp(a, 4), dp(a, 4), 0, 0);
-        box.addView(unit);
-        return box;
+        });
+    }
+
+    /** What each limit level allows, for the card's help. */
+    private static String limitHelp(Activity a, String which) {
+        boolean cpu = which.equals("cpu");
+        Perf.Snap s = Perf.read();
+        int hw = cpu ? s.cpuHw : s.gpuHw;
+        StringBuilder t = new StringBuilder();
+        for (int i = 1; i < RecentsChip.PCTS.length; i++) {
+            int mhz = Perf.pick(cpu ? Perf.cpuSteps : Perf.gpuSteps, hw, RecentsChip.PCTS[i]);
+            if (mhz <= 0) continue;
+            t.append(t.length() > 0 ? ", " : "").append(RecentsChip.PCT_NAMES[i]).append(" = ").append(cpu ? Perf.ghz(mhz) : mhz + " MHz");
+        }
+        return "A limit caps how fast the " + (cpu ? "CPU (fastest core)" : "GPU") + " may run, so it stays cooler and saves power."
+                + (t.length() > 0 ? "\n" + t : "");
     }
 
     private static String limitSig(Activity a, String which) {
         return RecentsChip.effPct(a, which, Global.gint(a, "sbmods_" + which + "_pct", 0), Global.gint(a, "sbmods_cool", 0) == 1) + "";
     }
 
-    /** Big number with a small caption beside it, then a bar. */
-    private static TextView[] bigRow(Activity a, LinearLayout col, String caption, BarView bar) {
-        LinearLayout r = new LinearLayout(a);
-        r.setGravity(Gravity.BOTTOM);
-        TextView big = tv(a, "—", 30, WHITE, true);
-        TextView cap = tv(a, caption, 13, DIM, false);
-        cap.setPadding(dp(a, 8), 0, 0, dp(a, 5));
-        r.addView(big);
-        r.addView(cap);
-        col.addView(r);
-        col.addView(bar, lp(-1, dp(a, 6), 0, dp(a, 6), 0, dp(a, 8)));
-        return new TextView[]{big, cap};
-    }
-
     private static LinearLayout column(Activity a) {
         LinearLayout c = new LinearLayout(a);
         c.setOrientation(LinearLayout.VERTICAL);
         return c;
+    }
+
+    /** One-line text that ends with an ellipsis instead of wrapping. */
+    private static TextView oneLine(TextView t) {
+        t.setSingleLine(true);
+        t.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        return t;
     }
 
     // ------------------------------------------------------------------ battery facts shared by the header and the report
@@ -255,6 +332,7 @@ final class PanelCards {
         if (PanelMath.MODE_CPU[m] > 0) Global.gset(a, "sbmods_cpu_pick", String.valueOf(PanelMath.MODE_CPU[m]));   // so a long-press on a chip returns to this level
         if (PanelMath.MODE_GPU[m] > 0) Global.gset(a, "sbmods_gpu_pick", String.valueOf(PanelMath.MODE_GPU[m]));
         Global.gset(a, "sbmods_cores", PanelMath.MODE_CORES[m]);
+        used(a, "modes");
         PerfPanel.changed(a);
     }
 
@@ -267,20 +345,16 @@ final class PanelCards {
         @Override View build(Activity a) {
             LinearLayout col = column(a);
             int m = currentMode(a);
-            col.addView(seg(a, PanelMath.MODE_NAMES, m, i -> i == 0 ? RecentsChip.GREEN : RecentsChip.CYAN, i -> applyMode(a, i)));
-            String say = m >= 0 ? PanelMath.MODE_TEXT[m]
-                    : Global.gint(a, "sbmods_cool", 0) == 1 ? "Cool-down is on. Pick a mode to turn it off." : "Your own mix of the settings below.";
-            LinearLayout r = new LinearLayout(a);
-            r.setGravity(Gravity.CENTER_VERTICAL);
-            r.setPadding(dp(a, 4), dp(a, 8), 0, 0);
-            if (m < 0) {
-                TextView custom = tv(a, "Custom", 12, RecentsChip.AMBER, true);
-                custom.setPadding(0, 0, dp(a, 8), 0);
-                r.addView(custom);
-            }
-            r.addView(tv(a, say, 13, DIM, false), new LinearLayout.LayoutParams(0, -2, 1));
-            col.addView(r);
+            TextView v = valueView(a);
+            if (m >= 0) { v.setText(PanelMath.MODE_NAMES[m]); }
+            else { v.setText(Global.gint(a, "sbmods_cool", 0) == 1 ? "Cool-down" : "Custom"); v.setTextColor(RecentsChip.AMBER); }
+            col.addView(seg(a, PanelMath.MODE_NAMES, m, i -> MODE_COLORS[i], i -> applyMode(a, i)));
             return col;
+        }
+        @Override String help(Activity a) {
+            StringBuilder t = new StringBuilder();
+            for (String s : PanelMath.MODE_TEXT) t.append(t.length() > 0 ? "\n" : "").append(s);
+            return t + "\nCustom: your own mix of the settings below. Cool-down: pick a mode to turn it off.";
         }
         @Override String sig(Activity a) { return currentMode(a) + "/" + Global.gint(a, "sbmods_cool", 0); }
     }
@@ -288,25 +362,22 @@ final class PanelCards {
     // ------------------------------------------------------------------ 2. CPU
 
     static final class Cpu extends Card {
-        private TextView big;
         private BarView bar;
-        private TextView line;
         Cpu() { super("cpu"); }
         @Override View build(Activity a) {
             LinearLayout col = column(a);
+            valueView(a);
             bar = new BarView(a, false);
-            big = bigRow(a, col, "total load", bar)[0];
-            line = tv(a, "", 13, DIM, false);
-            col.addView(line, lp(-2, -2, 0, 0, 0, dp(a, 10)));
+            col.addView(bar, lp(-1, dp(a, 4), 0, dp(a, 1), 0, dp(a, 7)));
             col.addView(limitRow(a, "cpu"));
             return col;
         }
         @Override void live(Activity a, Perf.Snap s) {
             int load = Global.gint(a, "sbmods_cpu_load", -1);
-            big.setText(load >= 0 ? load + "%" : "—");
-            bar.set(Math.max(0, load), loadColor(load));
-            line.setText(liveLine(s.cpuCur > 0 ? Perf.ghz(s.cpuCur) : "—", s.cpuCap, s.cpuHw, true));
+            if (bar != null) bar.set(Math.max(0, load), loadColor(load));
+            if (val != null) val.setText(rateText(load >= 0 ? load + "%" : "—", s.cpuCur > 0 ? Perf.ghz(s.cpuCur) : "—", s.cpuCap, s.cpuHw, true));
         }
+        @Override String help(Activity a) { return limitHelp(a, "cpu"); }
         @Override String sig(Activity a) { return limitSig(a, "cpu"); }
     }
 
@@ -316,63 +387,63 @@ final class PanelCards {
         private final BarView[] bars = new BarView[16];
         private final TextView[] speed = new TextView[16];
         private final View[] tiles = new View[16];
-        private TextView stepLabel, minus, plus;
+        private TextView minus, plus;
         Cores() { super("cores"); }
 
         private static int mid() { return Perf.groups.length == 3 ? Perf.groups[1].length : 0; }
 
         @Override View build(Activity a) {
-            LinearLayout col = column(a);
+            java.util.Arrays.fill(bars, null); java.util.Arrays.fill(speed, null); java.util.Arrays.fill(tiles, null);
+            minus = null; plus = null;
+            valueView(a);
+            // one row: the per-core bars (small / mid / fast cores, a gap between the groups) and, at the right end, the - and + buttons
             LinearLayout row = new LinearLayout(a);
-            String[] names = Perf.groups.length == 3 ? new String[]{"Small", "Mid", "Fast"} : null;
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            LinearLayout bw = new LinearLayout(a);
             for (int g = 0; g < Perf.groups.length; g++) {
                 int[] cpus = Perf.groups[g];
-                LinearLayout grp = column(a);
-                LinearLayout tr = new LinearLayout(a);
+                LinearLayout grp = new LinearLayout(a);
                 for (int cpu : cpus) {
                     if (cpu < 0 || cpu >= 16) continue;
                     LinearLayout tile = column(a);
                     tile.setGravity(Gravity.CENTER_HORIZONTAL);
                     bars[cpu] = new BarView(a, true);
-                    tile.addView(bars[cpu], new LinearLayout.LayoutParams(dp(a, 12), dp(a, 46)));
-                    speed[cpu] = tv(a, "—", 10, DIM, false);
+                    tile.addView(bars[cpu], new LinearLayout.LayoutParams(dp(a, 12), dp(a, 26)));
+                    speed[cpu] = tv(a, "—", 9, DIM, false);
+                    speed[cpu].setFontFeatureSettings("tnum");
                     speed[cpu].setGravity(Gravity.CENTER);
-                    tile.addView(speed[cpu], lp(-2, -2, 0, dp(a, 3), 0, 0));
+                    speed[cpu].setSingleLine(true);
+                    tile.addView(speed[cpu], lp(-2, -2, 0, dp(a, 1), 0, 0));
                     tiles[cpu] = tile;
-                    tr.addView(tile, new LinearLayout.LayoutParams(0, -2, 1));
+                    grp.addView(tile, new LinearLayout.LayoutParams(0, -2, 1));
                 }
-                grp.addView(tr);
-                if (names != null) {
-                    TextView lab = tv(a, names[g], 10, 0x77FFFFFF, false);
-                    lab.setGravity(Gravity.CENTER);
-                    grp.addView(lab, lp(-1, -2, 0, dp(a, 2), 0, 0));
-                }
-                row.addView(grp, lp(0, -2, g == 0 ? 0 : dp(a, 10), 0, 0, 0, cpus.length));
+                bw.addView(grp, lp(0, -2, g == 0 ? 0 : dp(a, 10), 0, 0, 0, Math.max(1, cpus.length)));
             }
-            col.addView(row);
+            row.addView(bw, new LinearLayout.LayoutParams(0, -2, 1));
             if (mid() > 0) {
-                LinearLayout st = new LinearLayout(a);
-                st.setGravity(Gravity.CENTER_VERTICAL);
-                st.setPadding(0, dp(a, 12), 0, 0);
-                stepLabel = tv(a, "", 14, WHITE, false);
-                st.addView(stepLabel, new LinearLayout.LayoutParams(0, -2, 1));
                 minus = stepButton(a, "−", -1);
                 plus = stepButton(a, "+", 1);
-                st.addView(minus, lp(dp(a, 40), dp(a, 36), 0, 0, dp(a, 8), 0));
-                st.addView(plus, new LinearLayout.LayoutParams(dp(a, 40), dp(a, 36)));
-                col.addView(st);
-                col.addView(tv(a, "Resting cores save power. They wake by themselves if the phone gets busy, after the limit time, or on restart.", 12, 0x77FFFFFF, false), lp(-1, -2, 0, dp(a, 6), 0, 0));
+                row.addView(minus, lp(dp(a, 40), dp(a, 40), dp(a, 12), 0, dp(a, 8), 0));
+                row.addView(plus, new LinearLayout.LayoutParams(dp(a, 40), dp(a, 40)));
             }
-            return col;
+            return row;
         }
 
         private TextView stepButton(Activity a, String sign, int delta) {
-            return button(a, sign, () -> {
+            TextView b = button(a, sign, () -> {
                 int n = Math.max(1, Math.min(mid(), PanelMath.midAwake(Global.gstr(a, "sbmods_cores")) + delta));
                 Global.gset(a, "sbmods_cores", PanelMath.coresFor(n));
+                used(a, "cores");
                 PerfPanel.changed(a);
                 live(a, Perf.read());
             });
+            b.setPadding(0, 0, 0, 0);
+            b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+            return b;
+        }
+
+        @Override String help(Activity a) {
+            return mid() > 0 ? "Resting cores save power. They wake by themselves if the phone gets busy, after the limit time, or on restart." : null;
         }
 
         @Override void live(Activity a, Perf.Snap s) {
@@ -391,9 +462,9 @@ final class PanelCards {
                 for (int i = 0; i < m.length; i++) m[i] = Perf.groups[1][i];
                 java.util.Arrays.sort(m, (x, y) -> Integer.compare(x < 16 ? load[x] : 0, y < 16 ? load[y] : 0));
                 for (int i = 0; i < mid() - awake; i++) if (m[i] < 16) rest[m[i]] = true;
-                stepLabel.setText("Mid cores awake: " + awake);
-                minus.setAlpha(awake <= 1 ? 0.35f : 1f);
-                plus.setAlpha(awake >= mid() ? 0.35f : 1f);
+                if (val != null) val.setText("Mid cores awake: " + awake);
+                if (minus != null) minus.setAlpha(awake <= 1 ? 0.35f : 1f);
+                if (plus != null) plus.setAlpha(awake >= mid() ? 0.35f : 1f);
             }
             for (int g = 0; g < Perf.groups.length; g++) for (int cpu : Perf.groups[g]) {
                 if (cpu < 0 || cpu >= 16 || bars[cpu] == null) continue;
@@ -409,100 +480,151 @@ final class PanelCards {
     // ------------------------------------------------------------------ 4. GPU
 
     static final class Gpu extends Card {
-        private TextView big, line;
         private BarView bar;
         Gpu() { super("gpu"); }
         @Override View build(Activity a) {
             LinearLayout col = column(a);
+            valueView(a);
             bar = new BarView(a, false);
-            big = bigRow(a, col, "busy (10 s average)", bar)[0];
-            line = tv(a, "", 13, DIM, false);
-            col.addView(line, lp(-2, -2, 0, 0, 0, dp(a, 10)));
+            col.addView(bar, lp(-1, dp(a, 4), 0, dp(a, 1), 0, dp(a, 7)));
             col.addView(limitRow(a, "gpu"));
             return col;
         }
         @Override void live(Activity a, Perf.Snap s) {
             int busy = RecentsChip.gpuAvg(-2);
-            big.setText(busy >= 0 ? busy + "%" : "—");
-            bar.set(Math.max(0, busy), loadColor(busy));
-            line.setText(liveLine(s.gpuCur > 0 ? s.gpuCur + " MHz" : "—", s.gpuCap, s.gpuHw, false));
+            if (bar != null) bar.set(Math.max(0, busy), loadColor(busy));
+            if (val != null) val.setText(rateText(busy >= 0 ? busy + "% busy" : "—", s.gpuCur > 0 ? s.gpuCur + " MHz" : "—", s.gpuCap, s.gpuHw, false));
         }
+        @Override String help(Activity a) { return "Busy is the average of the last 10 seconds.\n" + limitHelp(a, "gpu"); }
         @Override String sig(Activity a) { return limitSig(a, "gpu"); }
     }
 
-    // ------------------------------------------------------------------ 5. switches
+    // ------------------------------------------------------------------ 5. options
 
     static final class Switches extends Card {
         Switches() { super("switches"); }
         @Override View build(Activity a) {
-            LinearLayout col = column(a);
-            col.addView(toggle(a, "Power saving while the CPU is limited", "sbmods_cpu_ps"));
+            LinearLayout row = new LinearLayout(a);
             int at = Global.gint(a, "sbmods_cool_at", 360);
-            col.addView(toggle(a, "Cool-down: use the levels above until " + at / 10 + "°C, then stop", "sbmods_cool"));
-            LinearLayout foot = new LinearLayout(a);
-            foot.setGravity(Gravity.CENTER_VERTICAL);
-            foot.setPadding(0, dp(a, 10), 0, 0);
-            int min = Global.gint(a, "sbmods_limit_min", 15);
-            foot.addView(tv(a, "Limits end by themselves after " + (min >= 60 ? min / 60 + " h" : min + " min") + " and never survive a restart.", 12, DIM, false), new LinearLayout.LayoutParams(0, -2, 1));
-            TextView reset = tv(a, "Full speed", 14, RecentsChip.CYAN, true);
-            reset.setPadding(dp(a, 12), dp(a, 8), 0, dp(a, 8));
-            reset.setOnClickListener(safe(() -> {
+            row.addView(toggle(a, "Power saving with limit", "sbmods_cpu_ps"), lp(0, -2, 0, 0, dp(a, 6), 0, 1));
+            row.addView(toggle(a, "Cool-down to " + at / 10 + "°C", "sbmods_cool"), lp(0, -2, 0, 0, dp(a, 6), 0, 1));
+            TextView reset = pill(a, "Full speed", false, () -> {
                 for (String k : new String[]{"sbmods_cpu_pct", "sbmods_gpu_pct", "sbmods_cool", "sbmods_cores"}) Global.gset(a, k, "0");
+                used(a, "switches");
                 PerfPanel.changed(a);
-            }));
-            foot.addView(reset);
-            col.addView(foot);
-            return col;
+            });
+            reset.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
+            row.addView(reset, new LinearLayout.LayoutParams(0, -2, 1));
+            return row;
         }
 
-        private static View toggle(Activity a, String label, String key) {
-            LinearLayout r = new LinearLayout(a);
-            r.setGravity(Gravity.CENTER_VERTICAL);
-            r.setPadding(0, dp(a, 6), 0, dp(a, 6));
-            r.addView(tv(a, label, 14, WHITE, false), new LinearLayout.LayoutParams(0, -2, 1));
-            android.widget.Switch sw = new android.widget.Switch(a);
-            sw.setChecked(Global.gint(a, key, 0) == 1);
-            sw.setOnCheckedChangeListener((b, v) -> {
-                try {
-                    Global.gset(a, key, v ? "1" : "0");
-                    PerfPanel.pChangedAt = SystemClock.uptimeMillis();
-                    RecentsChip.main.postDelayed(() -> RecentsChip.refresh(a), 1500);
-                } catch (Throwable t) { Log.w("toggle: " + t); }
+        @Override String help(Activity a) {
+            int min = Global.gint(a, "sbmods_limit_min", 15);
+            return "Power saving with limit: also saves power while the CPU is limited.\n"
+                    + "Cool-down: use the levels above until the phone is back to " + Global.gint(a, "sbmods_cool_at", 360) / 10 + "°C, then stop.\n"
+                    + "Full speed: removes every limit.\n"
+                    + "Limits end by themselves after " + (min >= 60 ? min / 60 + " h" : min + " min") + " and never survive a restart.";
+        }
+
+        @Override String sig(Activity a) { return Global.gint(a, "sbmods_cpu_ps", 0) + "/" + Global.gint(a, "sbmods_cool", 0) + "/" + Global.gint(a, "sbmods_cool_at", 360); }
+
+        private static TextView toggle(Activity a, String label, String key) {
+            TextView[] self = new TextView[1];
+            self[0] = pill(a, label, Global.gint(a, key, 0) == 1, () -> {
+                boolean v = Global.gint(a, key, 0) != 1;
+                Global.gset(a, key, v ? "1" : "0");
+                pillStyle(self[0], v);
+                used(a, "switches");
+                PerfPanel.pChangedAt = SystemClock.uptimeMillis();
+                RecentsChip.main.postDelayed(() -> { try { RecentsChip.refresh(a); } catch (Throwable t) { Log.w("toggle refresh: " + t); } }, 1500);
             });
-            r.addView(sw);
-            r.setOnClickListener(safe(sw::toggle));
-            return r;
+            return self[0];
         }
     }
 
-    // ------------------------------------------------------------------ 6. battery report
+    // ------------------------------------------------------------------ 6. power saving (the phone's own switch)
+
+    /** The text of a toggle tile: title 14 sp medium, state 12 sp; black on the accent fill while on. */
+    private static View tileText(Activity a, Card k, boolean on, String state) {
+        LinearLayout col = column(a);
+        col.setGravity(Gravity.CENTER_VERTICAL);
+        col.addView(tvm(a, k.title, 14, on ? Color.BLACK : WHITE));
+        col.addView(oneLine(tv(a, state, 12, on ? 0xCC000000 : DIM, false)));
+        return col;
+    }
+
+    static final class PowerSave extends Card {
+        PowerSave() { super("powersave"); }
+        @Override boolean ownHeader() { return true; }
+        @Override boolean half() { return true; }
+        @Override boolean tapTile() { return true; }
+        @Override boolean on(Activity a) { return Global.gint(a, "low_power", 0) == 1; }
+        @Override void tap(Activity a) {
+            Global.gset(a, "low_power", on(a) ? "0" : "1");   // the phone's own power saving, so quick settings and the battery screen agree
+            used(a, "powersave");
+        }
+        @Override View build(Activity a) { boolean on = on(a); return tileText(a, this, on, on ? "On" : "Off"); }
+        @Override String help(Activity a) { return "The phone's own power saving, the same switch as in quick settings."; }
+        @Override String sig(Activity a) { return String.valueOf(Global.gint(a, "low_power", 0)); }
+    }
+
+    // ------------------------------------------------------------------ 7. screen smoothness (Samsung's own setting)
+
+    static final class Smooth extends Card {
+        Smooth() { super("smooth"); }
+        @Override boolean ownHeader() { return true; }
+        @Override boolean half() { return true; }
+        @Override boolean tapTile() { return true; }
+        @Override boolean on(Activity a) { return Global.sint(a, "refresh_rate_mode", 1) != 0; }   // 0 = Standard (60 Hz), 1 = Adaptive (up to 120 Hz), 2 = High
+        @Override void tap(Activity a) {
+            boolean smooth = !on(a);
+            if (!Global.sput(a, "refresh_rate_mode", smooth ? "1" : "0")) return;
+            used(a, "smooth");
+        }
+        @Override View build(Activity a) {
+            int v = Global.sint(a, "refresh_rate_mode", 1);
+            return tileText(a, this, v != 0, v == 0 ? "Standard · 60" : v == 2 ? "Smooth · 120" : "Smooth · up to 120");
+        }
+        @Override String help(Activity a) { return "Standard uses less battery. Smooth lets the screen refresh up to 120 times a second."; }
+        @Override String sig(Activity a) { return String.valueOf(Global.sint(a, "refresh_rate_mode", 1)); }
+    }
+
+    // ------------------------------------------------------------------ 8. battery report
 
     static final class Battery extends Card {
-        private TextView big, onOff, rateOn, rateOff, verdict, watts, err;
+        private TextView onT, offT, verdict, err;
         private static long reqAt, sentAt;
         private static long[] lastGood;
         Battery() { super("battery"); }
         @Override View build(Activity a) {
             reqAt = 0; sentAt = 0;   // asks again as soon as the page opens
             LinearLayout col = column(a);
-            big = tv(a, "—", 22, WHITE, true);
-            col.addView(big);
-            onOff = tv(a, "", 13, DIM, false);
-            col.addView(onOff, lp(-2, -2, 0, dp(a, 4), 0, 0));
-            rateOn = tv(a, "", 14, WHITE, false);
-            col.addView(rateOn, lp(-2, -2, 0, dp(a, 10), 0, 0));
-            rateOff = tv(a, "", 14, WHITE, false);
-            col.addView(rateOff, lp(-2, -2, 0, dp(a, 2), 0, 0));
-            verdict = tv(a, "", 14, WHITE, true);
-            col.addView(verdict, lp(-2, -2, 0, dp(a, 6), 0, 0));
-            watts = tv(a, "", 14, DIM, false);
-            col.addView(watts, lp(-2, -2, 0, dp(a, 6), 0, 0));
+            valueView(a).setText("—");
+            onT = tv(a, "", 13, WHITE, false);
+            onT.setFontFeatureSettings("tnum");
+            col.addView(onT, lp(-2, -2, 0, dp(a, 1), 0, 0));
+            offT = tv(a, "", 13, WHITE, false);
+            offT.setFontFeatureSettings("tnum");
+            col.addView(offT, lp(-2, -2, 0, dp(a, 1), 0, 0));
+            verdict = tv(a, "", 13, WHITE, true);
+            col.addView(verdict, lp(-2, -2, 0, dp(a, 1), 0, 0));
             err = tv(a, "No answer from the helper – turn it on in StatusBar Mods › More.", 13, RecentsChip.AMBER, false);
             err.setVisibility(View.GONE);
-            col.addView(err, lp(-2, -2, 0, dp(a, 6), 0, 0));
+            col.addView(err, lp(-2, -2, 0, dp(a, 2), 0, 0));
+            col.addView(button(a, "Battery usage ›", () -> openScreen(a, "battery",
+                    new Intent("com.samsung.android.sm.ACTION_BATTERY").setPackage("com.samsung.android.lool").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    new Intent(Intent.ACTION_POWER_USAGE_SUMMARY).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), "Battery settings aren't available")),
+                    lp(-1, -2, 0, dp(a, 8), 0, 0));
             return col;
         }
+        private static String screen(String what, long sec, double rate) {
+            String d = sec < 0 ? null : PanelMath.duration(PanelMath.minutes(sec));
+            String r = rate < 0 ? null : String.format(Locale.US, "%.1f%% per hour", rate);
+            if (d == null && r == null) return what + ": not enough data yet";
+            return what + (d == null ? "" : " " + d) + (r == null ? "" : "  ·  " + r);
+        }
         @Override void live(Activity a, Perf.Snap s) {
+            if (val == null || onT == null) return;
             long now = SystemClock.uptimeMillis();
             if (now - reqAt >= 60000) {
                 reqAt = now;
@@ -512,19 +634,16 @@ final class PanelCards {
             if (b != null) lastGood = b;
             b = lastGood;
             err.setVisibility(b == null && sentAt > 0 && now - sentAt > 12000 ? View.VISIBLE : View.GONE);
-            String pw = Power.text();
-            watts.setText(pw == null ? "" : "Power now: " + pw);
-            if (b == null) { big.setText(Power.charging ? "Charging" : "—"); onOff.setText(""); rateOn.setText(""); rateOff.setText(""); verdict.setText(""); return; }
-            big.setText(Power.charging ? "Charging" : Power.status == BatteryManager.BATTERY_STATUS_FULL ? "Fully charged" : b[0] >= 0 ? "About " + PanelMath.duration(b[0]) + " left" : "—");
-            onOff.setText(b[1] < 0 || b[2] < 0 ? "" : "Since the last full charge: screen on " + PanelMath.duration(PanelMath.minutes(b[1])) + " · screen off " + PanelMath.duration(PanelMath.minutes(b[2])));
-            double on = PanelMath.screenOnRate(b), off = PanelMath.screenOffRate(b);
-            rateOn.setText(on < 0 ? "Screen on: not enough data yet" : String.format(Locale.US, "Screen on: about %.1f%% of the battery per hour", on));
-            rateOff.setText(off < 0 ? "Screen off: not enough data yet" : String.format(Locale.US, "Screen off: about %.1f%% of the battery per hour", off));
-            int v = PanelMath.standbyVerdict(off);
+            if (b == null) { val.setText(Power.charging ? "Charging" : "—"); onT.setText(""); offT.setText(""); verdict.setText(""); return; }
+            val.setText(Power.charging ? "Charging" : Power.status == BatteryManager.BATTERY_STATUS_FULL ? "Fully charged" : b[0] >= 0 ? "About " + PanelMath.duration(b[0]) + " left" : "—");
+            onT.setText(screen("Screen on", b[1], PanelMath.screenOnRate(b)));
+            offT.setText(screen("Screen off", b[2], PanelMath.screenOffRate(b)));
+            int v = PanelMath.standbyVerdict(PanelMath.screenOffRate(b));
             verdict.setVisibility(v < 0 ? View.GONE : View.VISIBLE);
             verdict.setText(v == 0 ? "Standby drain is normal" : v == 1 ? "Standby drain is a bit high" : "Standby drain is high – something keeps the phone awake");
             verdict.setTextColor(v == 0 ? RecentsChip.GREEN : v == 1 ? RecentsChip.AMBER : RecentsChip.RED);
         }
+        @Override String help(Activity a) { return "Since the last full charge. Power draw now is shown at the top of the panel."; }
     }
 
     // ------------------------------------------------------------------ graphics (Vulkan) and battery health
@@ -547,27 +666,38 @@ final class PanelCards {
         private String asked;
         private CharSequence askedName;
         Graphics() { super("graphics"); }
+        @Override boolean ownHeader() { return true; }
         @Override View build(Activity a) {
-            LinearLayout col = column(a);
+            LinearLayout row = new LinearLayout(a);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            LinearLayout left = column(a);
+            left.addView(titleView(a));
+            line = tv(a, "", 12, WHITE, false);
+            line.setMaxLines(2);
+            line.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            left.addView(line);
+            row.addView(left, lp(0, -2, 0, 0, dp(a, 10), 0, 1));
             final boolean vk = "vulkan".equals(Global.gstr(a, "sbmods_gfx"));
-            col.addView(seg(a, new CharSequence[]{"Normal", "Vulkan"}, vk ? 1 : 0, i -> i == 0 ? RecentsChip.GREEN : RecentsChip.CYAN, i -> {
+            row.addView(seg(a, new CharSequence[]{"Normal", "Vulkan"}, vk ? 1 : 0, i -> i == 0 ? RecentsChip.GREEN : RecentsChip.CYAN, i -> {
                 if ((i == 1) == vk) return;
+                used(a, "graphics");
                 PanelCmd.post(a, i == 1 ? "gfx:vulkan" : "gfx:opengl", null);
                 android.widget.Toast.makeText(a, i == 1 ? "Vulkan: apps use it the next time they open" : "Normal drawing: apps switch the next time they open", android.widget.Toast.LENGTH_SHORT).show();
-            }), lp(-1, -2, 0, dp(a, 4), 0, 0));
-            line = tv(a, "", 13, WHITE, false);
-            col.addView(line, lp(-1, -2, 0, dp(a, 8), 0, 0));
-            col.addView(tv(a, "Vulkan is a newer way for apps to draw the screen. An app switches the next time it opens, and a restart of the phone goes back to normal. "
-                    + "Calling is never touched; if Wi-Fi calling drops after switching, the phone goes back to normal by itself.", 12, 0x88FFFFFF, false), lp(-1, -2, 0, dp(a, 4), 0, 0));
+            }), new LinearLayout.LayoutParams(dp(a, 170), -2));
             asked = lastApp(a);
             askedName = asked;
             if (asked != null) {
                 try { PackageManager pm = a.getPackageManager(); askedName = pm.getApplicationInfo(asked, 0).loadLabel(pm); } catch (Throwable ignored) {}
                 PanelCmd.post(a, "appgfx:" + asked, () -> Global.gset(a, "sbmods_appgfx", "-"));
             }
-            return col;
+            return row;
+        }
+        @Override String help(Activity a) {
+            return "Vulkan is a newer way for apps to draw the screen. An app switches the next time it opens, and a restart of the phone goes back to normal. "
+                    + "Calling is never touched; if Wi-Fi calling drops after switching, the phone goes back to normal by itself.";
         }
         @Override void live(Activity a, Perf.Snap s) {
+            if (line == null) return;
             if (asked == null) { line.setVisibility(View.GONE); return; }
             String r = Global.gstr(a, "sbmods_appgfx");
             String how = r != null && r.startsWith(asked + ":") ? r.substring(asked.length() + 1) : "";
@@ -587,64 +717,74 @@ final class PanelCards {
         @Override View build(Activity a) {
             reqAt = 0;
             LinearLayout col = column(a);
-            line = tv(a, "Checking…", 14, WHITE, false);
-            col.addView(line);
+            valueView(a).setText("Checking…");
+            line = tv(a, "", 13, WHITE, false);
+            col.addView(line, lp(-2, -2, 0, dp(a, 1), 0, 0));
+            col.addView(button(a, "Battery protection ›", () -> openScreen(a, "health",
+                    new Intent("com.samsung.android.sm.ACTION_BATTERY_PROTECTION").setPackage("com.samsung.android.lool").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    null, "Battery protection isn't available")), lp(-1, -2, 0, dp(a, 8), 0, 0));
             return col;
         }
+        @Override String help(Activity a) { return "How much charge the battery holds now compared with when it was new. The charge limit is set in Samsung's own battery protection screen."; }
         @Override void live(Activity a, Perf.Snap s) {
+            if (val == null || line == null) return;
             long now = SystemClock.uptimeMillis();
             if (reqAt == 0 || now - reqAt >= 60000) { reqAt = now; PanelCmd.post(a, "health", null); }
             String r = Global.gstr(a, "sbmods_health");
             if (r == null) return;
             String[] p = r.split("\\|");
             if (p.length < 3) return;
+            val.setText(!p[0].equals("-1") ? "Holds about " + p[0] + "%" : "");
             StringBuilder t = new StringBuilder();
-            if (!p[0].equals("-1")) t.append("Holds about ").append(p[0]).append("% of what it did when new");
-            if (!p[1].equals("-1")) t.append(t.length() > 0 ? "\n" : "").append("Charged ").append(p[1]).append(" times so far");
-            if (!p[2].equals("-1") && !p[2].equals("100")) t.append(t.length() > 0 ? "\n" : "").append("Charging stops at ").append(p[2]).append("%");
-            line.setText(t.length() > 0 ? t : "The phone doesn't report battery health");
+            if (!p[1].equals("-1")) t.append("Charged ").append(p[1]).append(" times");
+            if (!p[2].equals("-1") && !p[2].equals("100")) t.append(t.length() > 0 ? "  ·  charging" : "Charging").append(" stops at ").append(p[2]).append("%");
+            line.setText(t.length() > 0 || !p[0].equals("-1") ? t : "The phone doesn't report battery health");
         }
     }
 
-    // ------------------------------------------------------------------ 7. memory
+    // ------------------------------------------------------------------ 9. memory
 
     static final class Memory extends Card {
         private TextView ramT, swapT;
         private BarView ramB, swapB;
         Memory() { super("memory"); }
+        @Override boolean ownHeader() { return true; }
         @Override View build(Activity a) {
             LinearLayout col = column(a);
             ramB = new BarView(a, false); swapB = new BarView(a, false);
-            ramT = memRow(a, col, "Memory in use", ramB);
-            swapT = memRow(a, col, "Swap in use (spill-over memory)", swapB);
+            LinearLayout row = new LinearLayout(a);
+            ramT = memCol(a, row, "Memory", ramB, dp(a, 6));
+            swapT = memCol(a, row, "Swap", swapB, dp(a, 6));
+            col.addView(row);
             LinearLayout btns = new LinearLayout(a);
-            TextView close = button(a, "Close apps", () -> RecentsChip.command(a, "ramclean", "Closing background apps…", 4000));
-            TextView deep = button(a, "Deep clean", () -> RecentsChip.command(a, "deepclean", "Deep cleaning memory…", 6000));
-            btns.addView(close, lp(0, -2, 0, dp(a, 4), dp(a, 8), 0, 1));
-            btns.addView(deep, lp(0, -2, 0, dp(a, 4), 0, 0, 1));
+            TextView close = button(a, "Close apps", () -> { used(a, "memory"); RecentsChip.command(a, "ramclean", "Closing background apps…", 4000); });
+            TextView deep = button(a, "Deep clean", () -> { used(a, "memory"); RecentsChip.command(a, "deepclean", "Deep cleaning memory…", 6000); });
+            btns.addView(close, lp(0, -2, 0, dp(a, 8), dp(a, 8), 0, 1));
+            btns.addView(deep, lp(0, -2, 0, dp(a, 8), 0, 0, 1));
             col.addView(btns);
             return col;
         }
-        private static TextView memRow(Activity a, LinearLayout col, String label, BarView bar) {
-            LinearLayout r = new LinearLayout(a);
-            r.addView(tv(a, label, 14, WHITE, false), new LinearLayout.LayoutParams(0, -2, 1));
-            TextView v = tv(a, "—", 14, WHITE, true);
-            r.addView(v);
-            col.addView(r, lp(-1, -2, 0, dp(a, 6), 0, 0));
-            col.addView(bar, lp(-1, dp(a, 6), 0, dp(a, 5), 0, dp(a, 4)));
+        private static TextView memCol(Activity a, LinearLayout row, String label, BarView bar, int gap) {
+            LinearLayout c = column(a);
+            TextView v = oneLine(tvm(a, label + " —", 13, WHITE));
+            v.setFontFeatureSettings("tnum");
+            c.addView(v);
+            c.addView(bar, lp(-1, dp(a, 5), 0, dp(a, 5), 0, 0));
+            row.addView(c, lp(0, -2, 0, 0, row.getChildCount() == 0 ? gap * 2 : 0, 0, 1));
             return v;
         }
         @Override void live(Activity a, Perf.Snap s) {
+            if (ramT == null) return;
             RecentsChip.Mem m = RecentsChip.readMem();
-            int ram = (int) Math.round((m.totalMb - m.availMb) * 100.0 / m.totalMb);
-            ramT.setText(ram + "%");
+            int ram = m.totalMb > 0 ? (int) Math.round((m.totalMb - m.availMb) * 100.0 / m.totalMb) : 0;
+            ramT.setText("Memory " + ram + "%");
             ramB.set(ram, ram >= 90 ? RecentsChip.RED : ram >= 80 ? RecentsChip.AMBER : RecentsChip.GREEN);
-            swapT.setText(m.swapPct + "%");
+            swapT.setText("Swap " + m.swapPct + "%");
             swapB.set(m.swapPct, m.swapPct >= 90 ? RecentsChip.RED : m.swapPct >= 60 ? RecentsChip.AMBER : RecentsChip.GREEN);
         }
     }
 
-    // ------------------------------------------------------------------ 8. busiest apps
+    // ------------------------------------------------------------------ 10. busiest apps
 
     static final class TopApps extends Card {
         private LinearLayout rows;
@@ -662,6 +802,7 @@ final class PanelCards {
             return col;
         }
         @Override void live(Activity a, Perf.Snap s) {
+            if (rows == null || status == null) return;
             long now = SystemClock.uptimeMillis();
             if (now - reqAt >= 6000) {
                 reqAt = now;
@@ -705,13 +846,11 @@ final class PanelCards {
             } catch (Throwable ignored) {}   // an app we cannot look up shows its package name
             LinearLayout r = new LinearLayout(a);
             r.setGravity(Gravity.CENTER_VERTICAL);
-            r.setPadding(0, dp(a, 6), 0, dp(a, 6));
+            r.setMinimumHeight(dp(a, 40));
             ImageView iv = new ImageView(a);
             if (icon != null) iv.setImageDrawable(icon);
-            r.addView(iv, lp(dp(a, 32), dp(a, 32), 0, 0, dp(a, 12), 0));
-            TextView name = tv(a, label, 14, WHITE, false);
-            name.setSingleLine(true);
-            name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            r.addView(iv, lp(dp(a, 28), dp(a, 28), 0, 0, dp(a, 12), 0));
+            TextView name = oneLine(tv(a, label, 14, WHITE, false));
             r.addView(name, new LinearLayout.LayoutParams(0, -2, 1));
             r.addView(tv(a, pct + "%", 14, WHITE, true));
             boolean protectedApp = pkg.equals(Entry.LAUNCHER) || pkg.equals("com.android.systemui") || pkg.equals(a.getPackageName())
@@ -720,6 +859,7 @@ final class PanelCards {
                 TextView stop = tv(a, "Stop", 14, RecentsChip.CYAN, true);
                 stop.setPadding(dp(a, 14), dp(a, 8), 0, dp(a, 8));
                 stop.setOnClickListener(safe(() -> {
+                    used(a, "topapps");
                     PanelCmd.stop(a, pkg);
                     reqAt = SystemClock.uptimeMillis() - 2000;   // look again soon after
                 }));

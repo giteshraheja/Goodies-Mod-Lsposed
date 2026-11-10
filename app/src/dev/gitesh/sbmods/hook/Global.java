@@ -27,4 +27,13 @@ final class Global {
         if (val.equals(cur)) return true;
         return gput(c, key, val);
     }
+
+    /** Settings.Secure (the phone's own switches, such as Samsung's refresh_rate_mode); same guarded style. */
+    static int sint(Context c, String key, int def) {
+        try { return Settings.Secure.getInt(c.getContentResolver(), key, def); } catch (Throwable t) { return def; }
+    }
+
+    static boolean sput(Context c, String key, String val) {
+        try { return Settings.Secure.putString(c.getContentResolver(), key, val); } catch (Throwable t) { Log.w("secure " + key + ": " + t); return false; }
+    }
 }

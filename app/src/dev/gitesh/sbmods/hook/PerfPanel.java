@@ -40,9 +40,13 @@ final class PerfPanel {
 
     static android.app.Dialog panel;
     static long pChangedAt;
-    private static int page;   // last page used, kept for the next time the panel opens
+    private static int page = PanelLayout.PAGE_SPEED;   // the open page: read from the setting when the panel opens, written when the owner switches
+    private static List<String> allOrder;   // the cards the All page showed when it was built: kept while it is open, so nothing moves under the finger
+    private static String helpOpen;   // id of the card whose help is open (one at a time)
+    private static final List<TextView> helps = new ArrayList<>();
     private static Activity pAct;
-    private static LinearLayout pBox, pSwitch;
+    static LinearLayout pBox;
+    private static LinearLayout pSwitch;
     private static ScrollView pScroll;
     private static TextView pHead, pWarn;
     private static final List<PanelCards.Card> shown = new ArrayList<>();
@@ -59,24 +63,41 @@ final class PerfPanel {
     private static void show(Activity a) {
         LinearLayout col = new LinearLayout(a);
         col.setOrientation(LinearLayout.VERTICAL);
-        col.setPadding(dp(a, 20), dp(a, 18), dp(a, 20), dp(a, 12));
+        col.setPadding(dp(a, 14), dp(a, 10), dp(a, 14), dp(a, 12));
         GradientDrawable bg = new GradientDrawable();
         bg.setCornerRadius(dp(a, 28));
         bg.setStroke(1, 0x22FFFFFF);
         col.setBackground(bg);
 
+        // the usual bottom-sheet handle (only a cue, no gesture)
+        View grab = new View(a);
+        GradientDrawable gb = new GradientDrawable();
+        gb.setColor(0x55FFFFFF);
+        gb.setCornerRadius(dp(a, 2));
+        grab.setBackground(gb);
+        LinearLayout.LayoutParams gp = new LinearLayout.LayoutParams(dp(a, 36), dp(a, 4));
+        gp.gravity = Gravity.CENTER_HORIZONTAL;
+        gp.bottomMargin = dp(a, 8);
+        col.addView(grab, gp);
+
         // header: title left; battery temperature, power draw and (when a limit is on) its end on the right
         LinearLayout head = new LinearLayout(a);
         head.setGravity(Gravity.CENTER_VERTICAL);
-        head.addView(tv(a, "Performance", 20, Color.WHITE, true), new LinearLayout.LayoutParams(-2, -2));   // the title never wraps: the facts on the right take what is left
+        head.addView(PanelCards.tvm(a, "Performance", 20, Color.WHITE), new LinearLayout.LayoutParams(-2, -2));   // the title never wraps: the facts on the right take what is left
         pHead = tv(a, "", 13, 0xCCFFFFFF, false);
         pHead.setGravity(Gravity.END);
+        pHead.setMaxLines(2);
+        pHead.setFontFeatureSettings("tnum");
         pHead.setPadding(dp(a, 10), 0, 0, 0);
         head.addView(pHead, new LinearLayout.LayoutParams(0, -2, 1));
         col.addView(head);
 
+        int saved = Global.gint(a, PanelLayout.TAB, PanelLayout.PAGE_SPEED);   // the page that was open last
+        page = saved < 0 || saved >= PanelLayout.PAGE_NAMES.length ? PanelLayout.PAGE_SPEED : saved;
+        allOrder = null; helpOpen = null;
+
         pSwitch = new LinearLayout(a);
-        pSwitch.setPadding(0, dp(a, 12), 0, dp(a, 4));
+        pSwitch.setPadding(0, dp(a, 10), 0, dp(a, 8));
         col.addView(pSwitch);
         buildSwitch(a);
 
@@ -85,11 +106,14 @@ final class PerfPanel {
         pWarn.setVisibility(View.GONE);
         col.addView(pWarn);
 
-        final int max = Math.round(a.getResources().getDisplayMetrics().heightPixels * 0.7f);
+        // the whole sheet never exceeds about 88 % of the screen: the card area gets what the header and tabs leave
+        final int cap = Math.round(a.getResources().getDisplayMetrics().heightPixels * 0.88f);
         pScroll = new ScrollView(a) {
             private int keep;   // tallest page seen: the sheet never shrinks, or the page buttons would jump away from under the finger
             @Override protected void onMeasure(int w, int h) {
-                super.onMeasure(w, MeasureSpec.makeMeasureSpec(max, MeasureSpec.AT_MOST));
+                int used = col.getPaddingTop() + col.getPaddingBottom() + dp(a, 12);   // the sheet's own padding and the gap under it
+                for (int i = 0; i < col.getChildCount(); i++) { View c = col.getChildAt(i); if (c != this && c.getVisibility() != View.GONE) used += c.getMeasuredHeight(); }   // siblings above are measured already
+                super.onMeasure(w, MeasureSpec.makeMeasureSpec(Math.max(dp(a, 120), cap - used), MeasureSpec.AT_MOST));
                 keep = Math.max(keep, getMeasuredHeight());
                 if (getMeasuredHeight() < keep) setMeasuredDimension(getMeasuredWidth(), keep);
             }
@@ -170,42 +194,117 @@ final class PerfPanel {
         pSwitch.addView(PanelCards.seg(a, PanelLayout.PAGE_NAMES, page, i -> RecentsChip.CYAN, i -> {
             if (i == page) return;
             page = i;
+            allOrder = null; helpOpen = null;   // the All page is rebuilt with the newest order
+            Global.gset(a, PanelLayout.TAB, String.valueOf(i));
             buildSwitch(a);
             rebuildCards(a);   // only the card area changes
+            try { pBox.setAlpha(0f); pBox.animate().alpha(1f).setDuration(120).start(); } catch (Throwable t) { Log.w("fade: " + t); }
         }), new LinearLayout.LayoutParams(-1, -2));
     }
 
-    /** Fill the card area with the visible cards of the current page. */
+    /** Rebuild the card area now (a card changed something that its own view cannot show). */
+    static void rebuild(Activity a) { if (showing()) rebuildCards(a); }
+
+    /** The cards of the current page. The All page keeps the order it was built with until the page is left or the panel reopens. */
+    private static List<PanelCards.Card> pageCards(Activity a) {
+        if (page != PanelLayout.PAGE_ALL) return PanelCards.visible(a, page);
+        if (allOrder == null) allOrder = PanelCards.recentVisible(a);
+        List<PanelCards.Card> out = new ArrayList<>();
+        for (String id : allOrder) { PanelCards.Card k = PanelCards.byId(id); if (k != null) out.add(k); }
+        return out;
+    }
+
+    /** One card as a glass tile: header line (title left, live value right), the card, and its help (hidden until the title is tapped). Null if it failed to build. */
+    private static LinearLayout tile(Activity a, PanelCards.Card k) {
+        k.val = null;
+        k.toggle = () -> {
+            helpOpen = k.id.equals(helpOpen) ? null : k.id;
+            for (int i = 0; i < shown.size() && i < helps.size(); i++) if (helps.get(i) != null) helps.get(i).setVisibility(shown.get(i).id.equals(helpOpen) ? View.VISIBLE : View.GONE);
+        };
+        View content = PanelCards.safeBuild(k, a);
+        if (content == null) return null;
+        boolean on = false;
+        if (k.tapTile()) try { on = k.on(a); } catch (Throwable t) { Log.w("card " + k.id + " on: " + t); }
+        LinearLayout t = new LinearLayout(a);
+        t.setOrientation(LinearLayout.VERTICAL);
+        t.setPadding(dp(a, 12), dp(a, 10), dp(a, 12), dp(a, 10));
+        GradientDrawable g = new GradientDrawable();
+        g.setColor(on ? RecentsChip.CYAN : 0x14FFFFFF);
+        g.setCornerRadius(dp(a, 20));
+        g.setStroke(1, 0x1FFFFFFF);
+        t.setBackground(g);
+        if (k.tapTile()) {
+            t.setMinimumHeight(dp(a, 64));
+            t.setGravity(Gravity.CENTER_VERTICAL);
+            t.setOnClickListener(PanelCards.safe(() -> { k.tap(a); rebuild(a); }));
+            t.setOnLongClickListener(v -> { try { k.toggle.run(); } catch (Throwable x) { Log.w("help: " + x); } return true; });
+        }
+        String h = null;
+        try { h = k.help(a); } catch (Throwable x) { Log.w("card " + k.id + " help: " + x); }
+        if (!k.ownHeader()) {
+            LinearLayout row = new LinearLayout(a);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(0, 0, 0, dp(a, 6));
+            TextView title = k.titleView(a);
+            title.setPadding(0, 0, dp(a, 8), 0);
+            row.addView(title, new LinearLayout.LayoutParams(-2, -2));
+            if (k.val != null) row.addView(k.val, new LinearLayout.LayoutParams(0, -2, 1));
+            if (h != null) row.setOnClickListener(PanelCards.safe(k.toggle));
+            t.addView(row, new LinearLayout.LayoutParams(-1, -2));
+        }
+        t.addView(content, new LinearLayout.LayoutParams(-1, -2));
+        TextView hv = null;
+        if (h != null) {
+            hv = tv(a, h, 12, on ? 0xCC000000 : 0x99FFFFFF, false);
+            hv.setPadding(0, dp(a, 8), 0, 0);
+            hv.setVisibility(k.id.equals(helpOpen) ? View.VISIBLE : View.GONE);
+            t.addView(hv, new LinearLayout.LayoutParams(-1, -2));
+        }
+        shown.add(k);
+        helps.add(hv);
+        String sg = "";
+        try { sg = k.sig(a); } catch (Throwable x) { Log.w("card " + k.id + " sig: " + x); }
+        sigs.add(sg);
+        return t;
+    }
+
+    /** Fill the card area with the cards of the current page; two small cards in a row sit side by side. */
     private static void rebuildCards(Activity a) {
         if (pBox == null || rebuilding) return;
         rebuilding = true;
         try {
             int y = pScroll.getScrollY();
             pBox.removeAllViews();
-            shown.clear(); sigs.clear();
+            shown.clear(); sigs.clear(); helps.clear();
             Perf.read();   // make sure the core groups are known before cards use them
-            for (PanelCards.Card k : PanelCards.visible(a, page)) {
-                View content = PanelCards.safeBuild(k, a);
-                if (content == null) continue;
-                if (pBox.getChildCount() > 0) {
-                    View line = new View(a);
-                    line.setBackgroundColor(0x14FFFFFF);
-                    pBox.addView(line, new LinearLayout.LayoutParams(-1, 1));
-                }
-                LinearLayout frame = new LinearLayout(a);
-                frame.setOrientation(LinearLayout.VERTICAL);
-                frame.setPadding(0, dp(a, 14), 0, dp(a, 14));
-                TextView title = tv(a, k.title, 13, 0x99FFFFFF, false);
-                title.setPadding(0, 0, 0, dp(a, 8));
-                frame.addView(title);
-                frame.addView(content);
-                pBox.addView(frame, new LinearLayout.LayoutParams(-1, -2));
-                shown.add(k);
-                String sg = "";
-                try { sg = k.sig(a); } catch (Throwable t) { Log.w("card " + k.id + " sig: " + t); }
-                sigs.add(sg);
+            List<PanelCards.Card> cards = pageCards(a);
+            for (int i = 0; i < cards.size(); i++) {
+                PanelCards.Card k = cards.get(i);
+                boolean pair = k.half() && i + 1 < cards.size() && cards.get(i + 1).half();
+                LinearLayout t1 = tile(a, k), t2 = pair ? tile(a, cards.get(i + 1)) : null;
+                if (pair) i++;
+                int top = pBox.getChildCount() > 0 ? dp(a, 8) : 0;
+                if (t1 != null && t2 != null) {
+                    LinearLayout row = new LinearLayout(a);
+                    row.addView(t1, PanelCards.lp(0, -1, 0, 0, dp(a, 4), 0, 1));
+                    row.addView(t2, PanelCards.lp(0, -1, dp(a, 4), 0, 0, 0, 1));
+                    pBox.addView(row, PanelCards.lp(-1, -2, 0, top, 0, 0));
+                } else if (t1 != null || t2 != null) pBox.addView(t1 != null ? t1 : t2, PanelCards.lp(-1, -2, 0, top, 0, 0));
             }
-            if (shown.isEmpty()) pBox.addView(tv(a, "No cards on this page. Turn some on in StatusBar Mods.", 14, 0x99FFFFFF, false), new LinearLayout.LayoutParams(-1, -2));
+            if (shown.isEmpty()) {
+                if (page == PanelLayout.PAGE_ALL) {
+                    LinearLayout empty = new LinearLayout(a);
+                    empty.setOrientation(LinearLayout.VERTICAL);
+                    empty.setGravity(Gravity.CENTER_HORIZONTAL);
+                    empty.setPadding(dp(a, 16), dp(a, 28), dp(a, 16), dp(a, 28));
+                    TextView l1 = tv(a, "Nothing here yet", 15, Color.WHITE, false);
+                    TextView l2 = tv(a, "Whatever you change on the other pages shows up here, newest first.", 13, 0x99FFFFFF, false);
+                    l2.setGravity(Gravity.CENTER);
+                    empty.addView(l1);
+                    empty.addView(l2, PanelCards.lp(-2, -2, 0, dp(a, 6), 0, 0));
+                    pBox.addView(empty, new LinearLayout.LayoutParams(-1, -2));
+                } else pBox.addView(tv(a, "No cards on this page. Turn some on in StatusBar Mods.", 14, 0x99FFFFFF, false), new LinearLayout.LayoutParams(-1, -2));
+            }
             pScroll.post(() -> pScroll.scrollTo(0, y));
         } finally { rebuilding = false; }
         liveAll(a, Perf.read());
@@ -230,7 +329,12 @@ final class PerfPanel {
     }
 
     private static void header(Activity a) {
-        SpannableStringBuilder t = new SpannableStringBuilder(PanelCards.Power.tempC + "°C");
+        SpannableStringBuilder t = new SpannableStringBuilder();
+        int m = PanelCards.currentMode(a);   // the mode's colour and name lead the line (amber when it is your own mix or cool-down)
+        int mc = m >= 0 ? PanelCards.MODE_COLORS[m] : RecentsChip.AMBER;
+        t.append("\u25cf");
+        t.setSpan(new ForegroundColorSpan(mc), 0, t.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        t.append(" ").append(m >= 0 ? PanelMath.MODE_NAMES[m] : Global.gint(a, "sbmods_cool", 0) == 1 ? "Cool-down" : "Custom").append("  ·  ").append(PanelCards.Power.tempC + "°C");
         String w = PanelCards.Power.text();
         if (w != null) t.append("  ·  ").append(w);
         long until = 0;
