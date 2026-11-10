@@ -380,59 +380,46 @@ public final class SettingsActivity extends Activity {
 
     private void buildLayout() {
         group("Samsung's layout");
+        cardReset((c, d) -> c.plan = new ZoneLayout.Plan());
         infoRow(movedText(), null);
-        if (anyMoved()) {
-            TextView back = new TextView(this);   // the one filled button on this screen
-            back.setText("Put everything back in Samsung's place");
-            back.setGravity(Gravity.CENTER);
-            back.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
-            back.setTypeface(Ui.font(500));
-            back.setTextColor(cOnAccent);
-            back.setBackground(round(cAccent, dp(Ui.R_BUTTON), 0, 0));
-            back.setOnClickListener(v -> {
-                cfg.plan = new ZoneLayout.Plan();
-                apply();
-                refresh();
-            });
-            LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(-1, dp(Ui.TAP));
-            bp.setMargins(0, dp(4), 0, dp(12));
-            cur.addView(back, bp);
-        }
-        endGroup(null);
-
-        group("arrange", "How to arrange the bar", "Drag an item in the preview, or tap it", false);
-        infoRow("Drag and drop in the preview",
+        divider();
+        infoRow("How to arrange the bar",
                 "Press an item in the preview at the top and drag it along the bar. It settles at the nearest edge, beside the camera, or next to another item. "
                 + "Drop it on the grey tray to send it back to Samsung's place. You can also just tap an item to pick its place from a list.\n\n"
-                + "You can move the clock, the date (turn on \u201cDate as its own item\u201d in the Clock tab), the temperature, the battery, the network speed and the back button.");
+                + "You can move the clock, the date (turn on “Date as its own item” in the Clock tab), the temperature, the battery, the network speed and the back button.");
         endGroup(null);
 
-        group("space", "Space", (cfg.edgeMode == 0 ? "Samsung's" : cfg.edgeMode == 1 ? "Tight" : cfg.edgeDp + " dp") + " edges \u00b7 "
-                + (cfg.itemGap < 0 ? "Samsung's spacing" : "gap " + cfg.itemGap + " dp"), true);
+        group("space", "Space", null, true);
+        cardReset((c, d) -> { c.edgeMode = d.edgeMode; c.edgeDp = d.edgeDp; c.itemGap = d.itemGap; });
         segmentedBlock("Space at the screen edges", new String[]{"Samsung's", "Tight", "Custom"}, cfg.edgeMode,
                 v -> { cfg.edgeMode = v; apply(); refresh(); });
         if (cfg.edgeMode == 2) {
             divider();
             slider("Distance from the screen edge", 0, 24, cfg.edgeDp, v -> v + " dp", v -> { cfg.edgeDp = v; posView.invalidate(); }, 4);
         }
-        divider();
-        slider("Space between items", -1, 16, cfg.itemGap, v -> v < 0 ? "Samsung's" : v + " dp",
-                v -> { cfg.itemGap = v; posView.invalidate(); }, -1);
-        endGroup("Less space leaves more room for icons. \u201cTight\u201d and \u201cCustom\u201d let the status bar reach the curved edges of your screen.");
+        if (advanced("space")) {
+            divider();
+            slider("Space between items", -1, 16, cfg.itemGap, v -> v < 0 ? "Samsung's" : v + " dp",
+                    v -> { cfg.itemGap = v; posView.invalidate(); }, -1);
+        }
+        endGroup("Less space leaves more room for icons. “Tight” and “Custom” let the status bar reach the curved edges of your screen.");
 
-        group("notif", "Notification icons", cfg.notifMax == 0 ? "Samsung's (3 icons)" : cfg.notifMax + " icons", false);
-        slider("Icons before the \u201c\u2022\u201d dot", 0, 12, cfg.notifMax, v -> v == 0 ? "Samsung's (3)" : v + " icons",
+        group("notif", "Notification icons", null, true);
+        cardReset((c, d) -> c.notifMax = d.notifMax);
+        slider("Icons before the “•” dot", 0, 12, cfg.notifMax, v -> v == 0 ? "Samsung's (3)" : v + " icons",
                 v -> cfg.notifMax = v, 0);
         endGroup("Samsung shows 3 app icons, then a dot for the rest. It applies after the next status bar restart.");
 
         buildStatusIcons();
 
-        group("locks", "Recents: kept-open apps", cfg.lockMax == 0 ? "Samsung's (3 apps)" : cfg.lockMax + " apps", false);
+        group("locks", "Recents: kept-open apps", null, true);
+        cardReset((c, d) -> c.lockMax = d.lockMax);
         slider("Apps you can keep open", 0, 12, cfg.lockMax, v -> v == 0 ? "Samsung's (3)" : v + " apps",
                 v -> cfg.lockMax = v, 0);
         endGroup("Samsung allows 3 locked apps in the recent apps screen. Apps you keep open use memory.");
 
         group("Connection icon");
+        cardReset((c, d) -> c.mergeNet = d.mergeNet);
         switchRow("One icon for Wi-Fi and mobile data", "While Wi-Fi is connected only the Wi-Fi icon shows. When it drops, the mobile signal icon comes back by itself.",
                 cfg.mergeNet, v -> { cfg.mergeNet = v; apply(); });
         endGroup(null);
@@ -505,40 +492,37 @@ public final class SettingsActivity extends Activity {
     }
 
     private void buildStatusIcons() {
-        // The root read only starts when the card is open (a closed card builds into a throw-away layout).
-        if (isOpen("icons", false) && hiddenIcons == null && !hiddenIconsNoRoot && !hiddenIconsLoading) loadHiddenIcons();
-        String sum = "Choose which icons show";
-        if (hiddenIcons != null) {
-            int n = 0;
-            for (String[] ic : ICONS) for (int k = 1; k < ic.length; k++) if (java.util.Arrays.asList(hiddenIcons.split(",")).contains(ic[k])) { n++; break; }
-            sum = n == 0 ? "All shown" : n + " hidden";
-        }
-        group("icons", "Status icons", sum, false);
-        if (hiddenIcons == null) {
-            infoRow(hiddenIconsNoRoot ? "Needs root to read which icons are hidden" : "Checking…", null);
-        } else {
-            final String cur0 = hiddenIcons;
-            List<String> have = new ArrayList<>();
-            for (String e : cur0.split(",")) have.add(e.trim());
-            for (int i = 0; i < ICONS.length; i++) {
-                if (i > 0) divider();
-                final String[] slots = java.util.Arrays.copyOfRange(ICONS[i], 1, ICONS[i].length);
-                boolean shown = true;
-                for (String sl : slots) if (have.contains(sl)) shown = false;
-                switchRow(ICONS[i][0], null, shown, v -> {
-                    final String next = mergeHidden(hiddenIcons, slots, !v);
-                    new Thread(() -> {
-                        boolean ok = Helper.putSecure("icon_blacklist", next);
-                        runOnUiThread(() -> {
-                            if (ok) hiddenIcons = next;
-                            else Toast.makeText(this, "Couldn't change that \u2013 is root allowed?", Toast.LENGTH_LONG).show();
-                            refresh();
-                        });
-                    }).start();
-                });
+        group("icons", "Status icons", null, false);
+        if (advanced("icons", "Choose which icons show")) {
+            // The root read only starts when the list is open.
+            if (hiddenIcons == null && !hiddenIconsNoRoot && !hiddenIconsLoading) loadHiddenIcons();
+            divider();
+            if (hiddenIcons == null) {
+                infoRow(hiddenIconsNoRoot ? "Needs root to read which icons are hidden" : "Checking…", null);
+            } else {
+                final String cur0 = hiddenIcons;
+                List<String> have = new ArrayList<>();
+                for (String e : cur0.split(",")) have.add(e.trim());
+                for (int i = 0; i < ICONS.length; i++) {
+                    if (i > 0) divider();
+                    final String[] slots = java.util.Arrays.copyOfRange(ICONS[i], 1, ICONS[i].length);
+                    boolean shown = true;
+                    for (String sl : slots) if (have.contains(sl)) shown = false;
+                    switchRow(ICONS[i][0], null, shown, v -> {
+                        final String next = mergeHidden(hiddenIcons, slots, !v);
+                        new Thread(() -> {
+                            boolean ok = Helper.putSecure("icon_blacklist", next);
+                            runOnUiThread(() -> {
+                                if (ok) hiddenIcons = next;
+                                else Toast.makeText(this, "Couldn't change that – is root allowed?", Toast.LENGTH_LONG).show();
+                                refresh();
+                            });
+                        }).start();
+                    });
+                }
             }
         }
-        endGroup("Hidden icons still work \u2013 only the picture in the status bar goes away. Changes show up within a few seconds.");
+        endGroup("Hidden icons still work – only the picture in the status bar goes away. Changes show up within a few seconds.");
     }
 
     private boolean elementOn(int element) {
@@ -594,8 +578,8 @@ public final class SettingsActivity extends Activity {
         boolean sys24 = DateFormat.is24HourFormat(this);
         boolean amOn = cfg.ampm != Config.AMPM_HIDDEN && !ClockFormat.is24h(cfg, sys24);
 
-        group("clktime", "Time", (cfg.hourMode == Config.HOUR_12 ? "12-hour" : cfg.hourMode == Config.HOUR_24 ? "24-hour" : "Phone's format")
-                + (cfg.seconds ? " \u00b7 seconds" : ""), true);
+        group("clktime", "Time", null, true);
+        cardReset((c, d) -> { c.hourMode = d.hourMode; c.ampm = d.ampm; c.ampmLower = d.ampmLower; c.seconds = d.seconds; c.leadingZero = d.leadingZero; });
         segmentedBlock("Hour format", new String[]{"Phone's setting", "12-hour", "24-hour"}, cfg.hourMode,
                 v -> { cfg.hourMode = v; apply(); refresh(); });
         divider();
@@ -609,18 +593,24 @@ public final class SettingsActivity extends Activity {
         if (amOn) {
             segmentedInline(new String[]{"Normal size", "Small"}, cfg.ampm == Config.AMPM_SMALL ? 1 : 0,
                     v -> { cfg.ampm = v == 1 ? Config.AMPM_SMALL : Config.AMPM_NORMAL; apply(); refresh(); });
-            switchRow("Lowercase am / pm", "“pm” instead of “PM”", cfg.ampmLower, v -> { cfg.ampmLower = v; apply(); refresh(); });
         }
         divider();
         switchRow("Show seconds", "Updates every second", cfg.seconds, v -> { cfg.seconds = v; apply(); refresh(); });
-        divider();
-        switchRow("Leading zero", "Shows 09:05 instead of 9:05", cfg.leadingZero, v -> { cfg.leadingZero = v; apply(); refresh(); });
+        if (advanced("clktime")) {
+            if (amOn) {
+                divider();
+                switchRow("Lowercase am / pm", "“pm” instead of “PM”", cfg.ampmLower, v -> { cfg.ampmLower = v; apply(); refresh(); });
+            }
+            divider();
+            switchRow("Leading zero", "Shows 09:05 instead of 9:05", cfg.leadingZero, v -> { cfg.leadingZero = v; apply(); refresh(); });
+        }
         endGroup(null);
 
         final int[] dayVals = {Config.WEEKDAY_NONE, Config.WEEKDAY_TWO, Config.WEEKDAY_SHORT, Config.WEEKDAY_FULL};
         boolean hasDay = cfg.weekday != Config.WEEKDAY_NONE, hasDate = cfg.date > 0;
-        group("clkdate", "Day and date", hasDay || hasDate ? (hasDay ? sample(cfg.weekday, 0) : "") + (hasDay && hasDate ? " " : "")
-                + (hasDate ? sample(-1, cfg.date) : "") : "Not shown", false);
+        group("clkdate", "Day and date", null, true);
+        cardReset((c, d) -> { c.weekday = d.weekday; c.date = d.date; c.year = d.year; c.dateFirst = d.dateFirst; c.dateSeparate = d.dateSeparate;
+            c.dateAfterTime = d.dateAfterTime; c.dateSizePct = d.dateSizePct; c.gapDayDate = d.gapDayDate; c.gapDateTime = d.gapDateTime; });
         segmentedBlock("Day of the week", new String[]{"Hide", "Su", "Sun", "Sunday"}, idx(dayVals, cfg.weekday),
                 v -> { cfg.weekday = dayVals[v]; apply(); refresh(); });
         divider();
@@ -629,13 +619,13 @@ public final class SettingsActivity extends Activity {
             divider();
             segmentedBlock("Year", new String[]{"Hide", "26", "2026"}, cfg.year, v -> { cfg.year = v; apply(); refresh(); });
         }
-        if (hasDay && hasDate) {
-            divider();
-            String dayEx = sample(cfg.weekday, 0), dateEx = sample(-1, cfg.date);
-            segmentedBlock("Order", new String[]{dayEx + " " + dateEx, dateEx + " " + dayEx}, cfg.dateFirst ? 1 : 0,
-                    v -> { cfg.dateFirst = v == 1; apply(); refresh(); });
-        }
-        if (hasDay || hasDate) {
+        if ((hasDay || hasDate) && advanced("clkdate")) {
+            if (hasDay && hasDate) {
+                divider();
+                String dayEx = sample(cfg.weekday, 0), dateEx = sample(-1, cfg.date);
+                segmentedBlock("Order", new String[]{dayEx + " " + dateEx, dateEx + " " + dayEx}, cfg.dateFirst ? 1 : 0,
+                        v -> { cfg.dateFirst = v == 1; apply(); refresh(); });
+            }
             divider();
             switchRow("Date as its own item", "Lets you place the day and date anywhere, apart from the time (Layout tab)", cfg.dateSeparate,
                     v -> { cfg.dateSeparate = v; apply(); refresh(); });
@@ -645,32 +635,32 @@ public final class SettingsActivity extends Activity {
                     v -> { cfg.dateAfterTime = v == 1; apply(); refresh(); });
             divider();
             slider("Size of day and date", 50, 120, cfg.dateSizePct, v -> v + "%", v -> cfg.dateSizePct = v, 100);
-        }
-        endGroup(hasDay || hasDate ? null : "Pick a day or a date to show it next to the time.");
-
-        if (hasDay || hasDate) {
-            group("clkspace", "Spacing", "Between day, date and time", false);
             if (hasDay && hasDate) {
-                slider("Between day and date", 0, 300, cfg.gapDayDate, v -> v == 0 ? "None" : v + "%", v -> cfg.gapDayDate = v, 100);
                 divider();
+                slider("Space between day and date", 0, 300, cfg.gapDayDate, v -> v == 0 ? "None" : v + "%", v -> cfg.gapDayDate = v, 100);
             }
-            slider("Between " + (hasDay && hasDate ? "day / date" : hasDay ? "day" : "date") + " and time", 0, 300, cfg.gapDateTime,
+            divider();
+            slider("Space between " + (hasDay && hasDate ? "day / date" : hasDay ? "day" : "date") + " and time", 0, 300, cfg.gapDateTime,
                     v -> v == 0 ? "None" : v + "%", v -> cfg.gapDateTime = v, 100);
-            endGroup("100% is a normal space. Set 0 to close the gap completely.");
         }
+        endGroup(hasDay || hasDate ? "100% is a normal space. Set 0 to close the gap completely." : "Pick a day or a date to show it next to the time.");
     }
 
     private void buildClockPattern() {
         group("Your pattern");
+        cardReset((c, d) -> c.pattern = d.pattern);
         patternEditor();
         endGroup("The preview above updates as you type.\n\n"
                 + "h  hour 1-12\nH  hour 0-23\nmm  minutes\nss  seconds\na  AM / PM\nEEE  Sun\nEEEE  Sunday\nd  day 1\ndd  day 01\nMMM  Nov\nMMMM  November\n"
-                + "yy  26\nyyyy  2026\n'text'  shows your own text\n\nExamples:\nEEE d MMM h:mm a\nHH:mm:ss\n'\u23f0' h:mm");
-        group("clkampm", "AM / PM", cfg.ampm == Config.AMPM_HIDDEN ? "Hidden" : cfg.ampm == Config.AMPM_SMALL ? "Small" : "Normal size", false);
+                + "yy  26\nyyyy  2026\n'text'  shows your own text\n\nExamples:\nEEE d MMM h:mm a\nHH:mm:ss\n'⏰' h:mm");
+        group("clkampm", "AM / PM", null, true);
+        cardReset((c, d) -> { c.ampm = d.ampm; c.ampmLower = d.ampmLower; });
         segmentedBlock("Show AM / PM", new String[]{"Hide", "Normal size", "Small"}, cfg.ampm,
                 v -> { cfg.ampm = v; apply(); refresh(); });
-        divider();
-        switchRow("Lowercase am / pm", "“pm” instead of “PM”", cfg.ampmLower, v -> { cfg.ampmLower = v; apply(); });
+        if (advanced("clkampm")) {
+            divider();
+            switchRow("Lowercase am / pm", "“pm” instead of “PM”", cfg.ampmLower, v -> { cfg.ampmLower = v; apply(); });
+        }
         endGroup(null);
     }
 
@@ -719,6 +709,7 @@ public final class SettingsActivity extends Activity {
 
     private void buildTemp() {
         group("Temperature");
+        cardReset((c, d) -> c.tempEnabled = d.tempEnabled);
         switchRow("Show the phone's temperature", "A small number next to the clock", cfg.tempEnabled,
                 v -> { cfg.tempEnabled = v; apply(); refresh(); });
         endGroup(null);
@@ -727,21 +718,24 @@ public final class SettingsActivity extends Activity {
         int si = cfg.sensor == Config.SENSOR_CPU ? 1 : cfg.sensor == Config.SENSOR_BATTERY ? 2 : 0;
         final int[] sv = {Config.SENSOR_SKIN, Config.SENSOR_CPU, Config.SENSOR_BATTERY};
 
-        group("tmpwhat", "What it shows", (si == 1 ? "Chip" : si == 2 ? "Battery" : "Phone body") + " \u00b7 "
-                + (cfg.suffix == 0 ? "34" : cfg.suffix == 1 ? "34\u00b0" : "34\u00b0C"), true);
+        group("tmpwhat", "What it shows", null, true);
+        cardReset((c, d) -> { c.sensor = d.sensor; c.suffix = d.suffix; c.decimal = d.decimal; c.showAbove = d.showAbove; });
         choiceRow("Measure the", new String[]{"Phone body (recommended)", "Chip (CPU)", "Battery"}, si,
                 v -> { cfg.sensor = sv[v]; apply(); refresh(); });
         divider();
         segmentedBlock("Format", new String[]{"34", "34°", "34°C"}, cfg.suffix, v -> { cfg.suffix = v; apply(); refresh(); });
-        divider();
-        switchRow("Show one decimal", "34.2 instead of 34", cfg.decimal, v -> { cfg.decimal = v; apply(); refresh(); });
-        divider();
-        slider("Only show when warmer than", 0, 60, cfg.showAbove, v -> v == 0 ? "Always show" : v + " °C", v -> cfg.showAbove = v, 0);
+        if (advanced("tmpwhat")) {
+            divider();
+            switchRow("Show one decimal", "34.2 instead of 34", cfg.decimal, v -> { cfg.decimal = v; apply(); refresh(); });
+            divider();
+            slider("Only show when warmer than", 0, 60, cfg.showAbove, v -> v == 0 ? "Always show" : v + " °C", v -> cfg.showAbove = v, 0);
+        }
         endGroup(null);
 
-        group("tmpheat", "Heat warning", cfg.warnAt > 0 ? "Colour change from " + cfg.warnAt + " \u00b0C" : "Off", false);
+        group("tmpheat", "Heat warning", null, true);
+        cardReset((c, d) -> { c.warnAt = d.warnAt; c.warnColor = d.warnColor; });
         slider("Change colour from", 0, 60, cfg.warnAt, v -> v == 0 ? "Off" : v + " °C", v -> cfg.warnAt = v, 42);
-        if (cfg.warnAt > 0) {
+        if (cfg.warnAt > 0 && advanced("tmpheat")) {
             colorDots();
             divider();
             switchRow("Preview the warning", "Shows the preview as if the phone were hot", simulateHot,
@@ -749,23 +743,28 @@ public final class SettingsActivity extends Activity {
         }
         endGroup("The number turns this colour when the phone gets that warm.");
 
-        group("tmplook", "Look and position", "Size " + cfg.sizePct + "% of the clock", false);
+        group("tmplook", "Look and position", null, true);
+        cardReset((c, d) -> { c.sizePct = d.sizePct; c.labelPos = d.labelPos; c.gapDp = d.gapDp; });
         slider("Size", 50, 150, cfg.sizePct, v -> v + "% of the clock", v -> cfg.sizePct = v, 100);
-        divider();
-        segmentedBlock("Next to the clock", new String[]{"Automatic", "After it", "Before it"}, cfg.labelPos,
-                v -> { cfg.labelPos = v; apply(); refresh(); });
-        divider();
-        slider("Space between temperature and clock", 0, 16, cfg.gapDp, v -> v + " dp", v -> cfg.gapDp = v, 4);
+        if (advanced("tmplook")) {
+            divider();
+            segmentedBlock("Next to the clock", new String[]{"Automatic", "After it", "Before it"}, cfg.labelPos,
+                    v -> { cfg.labelPos = v; apply(); refresh(); });
+            divider();
+            slider("Space between temperature and clock", 0, 16, cfg.gapDp, v -> v + " dp", v -> cfg.gapDp = v, 4);
+        }
         endGroup("To put the temperature somewhere else, use the Layout tab.");
 
-        group("tmpsave", "Battery saving", "Refresh every " + (cfg.intervalSec >= 60 ? "minute" : cfg.intervalSec + " s")
-                + (cfg.pauseScreenOff ? " \u00b7 pauses when the screen is off" : ""), false);
+        group("tmpsave", "Battery saving", null, true);
+        cardReset((c, d) -> { c.intervalSec = d.intervalSec; c.pauseScreenOff = d.pauseScreenOff; });
         final int[] secs = {1, 2, 5, 10, 15, 30, 60};
         choiceRow("Refresh every", new String[]{"1 second", "2 seconds", "5 seconds", "10 seconds", "15 seconds", "30 seconds", "1 minute"},
                 idx(secs, cfg.intervalSec), v -> { cfg.intervalSec = secs[v]; apply(); refresh(); });
-        divider();
-        switchRow("Pause while the screen is off", "Saves a little battery", cfg.pauseScreenOff,
-                v -> { cfg.pauseScreenOff = v; apply(); refresh(); });
+        if (advanced("tmpsave")) {
+            divider();
+            switchRow("Pause while the screen is off", "Saves a little battery", cfg.pauseScreenOff,
+                    v -> { cfg.pauseScreenOff = v; apply(); refresh(); });
+        }
         endGroup(null);
     }
 
@@ -820,23 +819,28 @@ public final class SettingsActivity extends Activity {
 
     private void buildBack() {
         group("Back button");
-        switchRow("Show a back button", "Shows the app you used before. Tap it to jump back to that app.", cfg.backEnabled,
+        cardReset((c, d) -> c.backEnabled = d.backEnabled);
+        switchRow("Show a back button", "Shows the app you used before. Tap it to jump back to that app. It appears at the left of the status bar and only updates when you switch apps, so it costs no battery. "
+                + "You can move it with the Layout tab; it stays hidden on the home screen and the lock screen.", cfg.backEnabled,
                 v -> { cfg.backEnabled = v; apply(); refresh(); });
-        endGroup(cfg.backEnabled ? "You can move it with the Layout tab. It stays hidden on the home screen and the lock screen."
-                : "It appears at the left of the status bar and only updates when you switch apps, so it costs no battery.");
+        endGroup(null);
         if (!cfg.backEnabled) return;
 
-        group("backlook", "Look", (cfg.backStyle == 1 ? "Capsule" : "Classic") + " \u00b7 size " + cfg.backSizePct + "%", true);
+        group("backlook", "Back button look", null, true);
+        cardReset((c, d) -> { c.backStyle = d.backStyle; c.backSizePct = d.backSizePct; c.backChars = d.backChars; });
         segmentedBlock("Style", new String[]{"Capsule", "Classic"}, cfg.backStyle == 1 ? 0 : 1,
                 v -> { cfg.backStyle = v == 0 ? 1 : 0; apply(); refresh(); });
         divider();
         slider("Size", 70, 140, cfg.backSizePct, v -> v + "%", v -> cfg.backSizePct = v, 100);
-        divider();
-        slider("Letters of the app name", 3, 14, cfg.backChars, v -> v + " letters", v -> cfg.backChars = v, 7);
+        if (advanced("backlook")) {
+            divider();
+            slider("Letters of the app name", 3, 14, cfg.backChars, v -> v + " letters", v -> cfg.backChars = v, 7);
+        }
         endGroup(cfg.backStyle == 1 ? "“Capsule” copies One UI's live activity look: the app's icon in a pill of the app's colour."
                 : "“Classic” is a simple soft pill with an arrow.");
 
-        group("backfade", "When it appears", cfg.backFadeSec <= 0 ? "Never fades" : "Fades after " + cfg.backFadeSec + " s", false);
+        group("backfade", "When it appears", null, true);
+        cardReset((c, d) -> c.backFadeSec = d.backFadeSec);
         segmentedBlock("Fade to plain text after", new String[]{"Never", "5 s", "10 s", "30 s"},
                 cfg.backFadeSec <= 0 ? 0 : cfg.backFadeSec <= 5 ? 1 : cfg.backFadeSec <= 10 ? 2 : 3,
                 v -> { cfg.backFadeSec = new int[]{0, 5, 10, 30}[v]; apply(); });
@@ -844,7 +848,8 @@ public final class SettingsActivity extends Activity {
 
         final String[] liveNames = {"Keep both side by side", "Back button as plain text", "Hide the back button",
                 "Stack (flick to swap)", "Merge (a small back tab on the live activity)"};
-        group("backlive", "Live activities", liveNames[Math.max(0, Math.min(cfg.backLive, liveNames.length - 1))], false);
+        group("backlive", "Live activities", null, true);
+        cardReset((c, d) -> c.backLive = d.backLive);
         choiceRow("While one is showing", liveNames, cfg.backLive,
                 v -> { cfg.backLive = v; apply(); refresh(); });
         endGroup("Music and other live activities share the left side with this button. More about Stack and Merge is in the cheat sheet (System tab).");
@@ -854,26 +859,36 @@ public final class SettingsActivity extends Activity {
 
     private void buildGestures() {
         group("Status bar");
-        switchRow("Double-tap to turn the screen off", "Double-tap any empty spot in the status bar to lock the screen", cfg.dtSleep,
+        cardReset((c, d) -> c.dtSleep = d.dtSleep);
+        switchRow("Double-tap to turn the screen off", "Double-tap any empty spot in the status bar to lock the screen. Swiping down still opens the notification panel as usual. Items such as the clock keep their own tap actions below.", cfg.dtSleep,
                 v -> { cfg.dtSleep = v; apply(); });
-        endGroup("Swiping down still opens the notification panel as usual. Items such as the clock keep their own tap actions below.");
+        endGroup(null);
         for (int item = 0; item < ITEM_TITLES.length; item++) {
-            group("gest" + item, ITEM_TITLES[item], gestureSummary(item), false);
-            for (int g = 0; g < 3; g++) {
-                if (g > 0) divider();
-                gestureRow(item * 3 + g);
+            final int it = item;
+            group("gest" + item, ITEM_TITLES[item], null, true);
+            cardReset((c, d) -> { for (int g = 0; g < 3; g++) { int sl = it * 3 + g; c.setAction(sl, d.action(sl)); c.apps[sl] = d.apps[sl]; } });
+            gestureRow(item * 3);
+            divider();
+            gestureRow(item * 3 + 2);
+            if (advanced("gest" + item)) {
+                divider();
+                gestureRow(item * 3 + 1);
             }
-            endGroup(item == 3 ? "Tap the front camera hole in the status bar. Samsung Finder opens by default." : null);
+            endGroup(item == 3 ? "Tap the front camera hole in the status bar. Samsung Finder opens by default. "
+                    + "Double-tap makes a single tap wait a moment, so only use it if you need it." : "Double-tap makes a single tap wait a moment, so only use it if you need it.");
         }
         group("Feedback");
-        switchRow("Vibrate on tap", "A small buzz when an action runs", cfg.tapHaptic, v -> { cfg.tapHaptic = v; apply(); });
-        divider();
-        segmentedBlock("Remind me what I set up", new String[]{"Never", "Sometimes", "Often"}, cfg.tipsMode,
-                v -> { cfg.tipsMode = v; apply(); });
-        divider();
-        actionRow("Show a reminder now", "A tip scrolls across the left of the status bar", cAccent,
-                v -> send(new Intent(Config.ACTION_TIP)));
-        endGroup("Double-tap makes a single tap wait a moment, so only use it if you need it. Nothing opens over the lock screen.");
+        cardReset((c, d) -> { c.tapHaptic = d.tapHaptic; c.tipsMode = d.tipsMode; });
+        switchRow("Vibrate on tap", "A small buzz when an action runs. Nothing opens over the lock screen.", cfg.tapHaptic, v -> { cfg.tapHaptic = v; apply(); });
+        if (advanced("feedback")) {
+            divider();
+            segmentedBlock("Remind me what I set up", new String[]{"Never", "Sometimes", "Often"}, cfg.tipsMode,
+                    v -> { cfg.tipsMode = v; apply(); });
+            divider();
+            actionRow("Show a reminder now", "A tip scrolls across the left of the status bar", cAccent,
+                    v -> send(new Intent(Config.ACTION_TIP)));
+        }
+        endGroup(null);
     }
 
     /** "Tap: Samsung Finder \u00b7 Long-press: Close background apps", or "Nothing set". */
@@ -1092,47 +1107,47 @@ public final class SettingsActivity extends Activity {
         final List<String> all = PanelLayout.everything(setting, PanelLayout.DEFAULTS, hidden);
         int total = PanelLayout.DEFAULTS.length;
 
-        group("panelcards", "Panel cards", (total - hidden.size()) + " of " + total + " cards shown"
-                + (setting == null || setting.isEmpty() ? " \u00b7 standard order" : " \u00b7 your order"), true);
+        group("panelcards", "Panel cards", null, true);
+        cardResetAction(() -> putGl(PanelLayout.SETTING, ""));
         for (int page = PanelLayout.PAGE_SPEED; page < PanelLayout.PAGE_NAMES.length; page++) {
-            TextView hd = new TextView(this);
-            hd.setText(PanelLayout.PAGE_NAMES[page]);
-            hd.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_VALUE);
-            hd.setTypeface(Ui.font(500));
-            hd.setTextColor(cSub);
-            hd.setPadding(dp(20), dp(14), dp(16), dp(2));
+            TextView hd = Ui.text(this, PanelLayout.PAGE_NAMES[page], Ui.T_VALUE, cSub, 600);
+            hd.setPadding(0, dp(page == PanelLayout.PAGE_SPEED ? 0 : Ui.S3), 0, dp(2));
             cur.addView(hd);
             List<String> ids = new ArrayList<>();
             for (String id : all) if (PanelLayout.PAGES[PanelLayout.indexOf(id)] == page) ids.add(id);
-            for (int i = 0; i < ids.size(); i++) panelRow(all, hidden, ids, i);
+            for (int i = 0; i < ids.size(); i++) {
+                if (i > 0) divider();
+                panelRow(all, hidden, ids, i);
+            }
         }
-        divider();
-        actionRow("Back to the standard cards", "Shows every card again, in the standard order", cAccent, v -> putGl(PanelLayout.SETTING, ""));
-        endGroup("Switch a card off to hide it, or use the arrows to move it up or down within its page.");
+        endGroup((total - hidden.size()) + " of " + total + " cards shown" + (setting == null || setting.isEmpty() ? ", standard order" : ", your order")
+                + ".\n\nSwitch a card off to hide it. Press and hold the handle on the left of a card and drag it up or down to move it within its page. "
+                + "Reset shows every card again in the standard order.");
 
-        group("aboutpanel", "About the panel", "Four pages: All, Speed, Battery, Memory", false);
+        group("aboutpanel", "About the panel", null, true);
         infoRow("The Performance panel", "It opens from the CPU or GPU chip on the recent apps screen and has four pages: All, Speed, Battery and Memory.\n\n"
                 + "All = the five cards you used last. "
                 + "Speed = modes, CPU and GPU limits, resting cores, Vulkan graphics, options. "
                 + "Battery = power saving switch, screen smoothness (120 / 60 Hz), battery report, battery health with a shortcut to Samsung's battery protection. "
                 + "Memory = memory and swap, clean-up buttons, busiest apps with Stop.\n\n"
                 + "The panel opens on the page you used last.");
-        endGroup(null);
-
-        group("allpage", "The All page", "Collects the five cards you used last", false);
-        infoRow("What it is", "The panel's \u201cAll\u201d page collects the five cards you used last, so your favourites are one tap away.");
+        divider();
+        infoRow("The All page", "The panel's “All” page collects the five cards you used last, so your favourites are one tap away.");
         divider();
         actionRow("Empty the All page", "Starts the list again from nothing", cAccent, v -> putGl(PanelLayout.RECENT, ""));
         endGroup(null);
-
     }
 
     /** The root helper, the CPU / GPU speed limits and the Overview chips (System tab). */
     private void buildHelperSpeed() {
-        if (helperRunning == null && isOpen("helper", false)) checkHelper();   // root check only while the card is open
-        group("helper", "Root helper", helperRunning == null ? "Open to check if it is running" : helperRunning ? "Running" : "Not running", false);
+        group("helper", "Root helper", null, true);
+        cardResetAction(() -> { prefs.edit().putBoolean("helperAtBoot", false).apply(); refresh(); });
+        statusRow("Status", helperRunning == null ? "Not checked yet. Checking needs root." : helperRunning ? "Running" : "Not running");
+        divider();
+        actionRow("Check again", null, cAccent, v -> { helperRunning = null; checkHelper(); });
+        divider();
         switchRow("Run the helper", "Closing apps and speed limits need root, so this small helper does them for the Overview screen. Allow root for this app when asked. "
-                        + (helperRunning == null ? "Checking…" : helperRunning ? "It is running." : "It is not running – the RAM, swap and speed buttons won't do anything."),
+                        + (helperRunning == null ? "It has not been checked yet." : helperRunning ? "It is running." : "It is not running – the RAM, swap and speed buttons won't do anything."),
                 helperRunning != null && helperRunning, v -> {
                     new Thread(() -> {
                         boolean ok = v ? Helper.start(this) : Helper.stopAndRestore();
@@ -1145,17 +1160,20 @@ public final class SettingsActivity extends Activity {
                         });
                     }).start();
                 });
-        divider();
-        switchRow("Start it when the phone starts", "Only if the status bar mod is on. Speed limits never survive a restart.",
-                prefs.getBoolean("helperAtBoot", false), v -> prefs.edit().putBoolean("helperAtBoot", v).apply());
+        if (advanced("helper")) {
+            divider();
+            switchRow("Start it when the phone starts", "Only if the status bar mod is on. Speed limits never survive a restart.",
+                    prefs.getBoolean("helperAtBoot", false), v -> prefs.edit().putBoolean("helperAtBoot", v).apply());
+        }
         endGroup("Idle, it only checks once a second whether you pressed something; it doesn't keep the phone awake.");
 
         // ---- speed limits
         final int[] pcts = {85, 70, 55, 40};
         final String[] pctNames = {"85% – barely noticeable", "70% – cooler, still smooth", "55% – battery saver", "40% – lowest (slow)"};
         int cpuPick = gl("sbmods_cpu_pick", 55), gpuPick = gl("sbmods_gpu_pick", 55);
-        group("speed", "CPU and GPU speed", "Quick limits: CPU " + cpuPick + "% \u00b7 GPU " + gpuPick + "%", false);
-        statusRow("Right now", groupOpen ? speedNow() : "");
+        group("speed", "CPU and GPU speed", null, true);
+        cardResetAction(() -> putGl("sbmods_cpu_pick", "55", "sbmods_gpu_pick", "55", "sbmods_cpu_ps", "0", "sbmods_limit_min", "15", "sbmods_cool_at", "360"));
+        statusRow("Right now", speedNow());
         divider();
         int ci = 2, gi = 2;
         for (int i = 0; i < pcts.length; i++) { if (pcts[i] == cpuPick) ci = i; if (pcts[i] == gpuPick) gi = i; }
@@ -1163,26 +1181,29 @@ public final class SettingsActivity extends Activity {
         divider();
         choiceRow("GPU quick limit", pctNames, gi, i -> putGl("sbmods_gpu_pick", String.valueOf(pcts[i])));
         divider();
-        switchRow("Power saving while the CPU is limited", "Also turns on Samsung's power saving mode for as long as the CPU limit is on.",
-                gl("sbmods_cpu_ps", 0) == 1, v -> putGl("sbmods_cpu_ps", v ? "1" : "0"));
-        divider();
-        final int[] mins = {15, 30, 60, 120};
-        int mi = 0;
-        for (int i = 0; i < mins.length; i++) if (mins[i] == gl("sbmods_limit_min", 15)) mi = i;
-        choiceRow("Limits end by themselves after", new String[]{"15 minutes", "30 minutes", "1 hour", "2 hours"}, mi, i -> putGl("sbmods_limit_min", String.valueOf(mins[i])));
-        divider();
-        final int[] temps = {340, 350, 360, 370, 380};
-        int ti = 2;
-        for (int i = 0; i < temps.length; i++) if (temps[i] == gl("sbmods_cool_at", 360)) ti = i;
-        choiceRow("Cool-down stops at", new String[]{"34°C", "35°C", "36°C", "37°C", "38°C"}, ti, i -> putGl("sbmods_cool_at", String.valueOf(temps[i])));
-        divider();
         actionRow("Full speed now", "Ends any CPU / GPU limit and cool-down. Samsung's own heat protection always stays on.", cAccent, v ->
                 putGl("sbmods_cpu_pct", "0", "sbmods_gpu_pct", "0", "sbmods_cool", "0"));
+        if (advanced("speed")) {
+            divider();
+            switchRow("Power saving while the CPU is limited", "Also turns on Samsung's power saving mode for as long as the CPU limit is on.",
+                    gl("sbmods_cpu_ps", 0) == 1, v -> putGl("sbmods_cpu_ps", v ? "1" : "0"));
+            divider();
+            final int[] mins = {15, 30, 60, 120};
+            int mi = 0;
+            for (int i = 0; i < mins.length; i++) if (mins[i] == gl("sbmods_limit_min", 15)) mi = i;
+            choiceRow("Limits end by themselves after", new String[]{"15 minutes", "30 minutes", "1 hour", "2 hours"}, mi, i -> putGl("sbmods_limit_min", String.valueOf(mins[i])));
+            divider();
+            final int[] temps = {340, 350, 360, 370, 380};
+            int ti = 2;
+            for (int i = 0; i < temps.length; i++) if (temps[i] == gl("sbmods_cool_at", 360)) ti = i;
+            choiceRow("Cool-down stops at", new String[]{"34°C", "35°C", "36°C", "37°C", "38°C"}, ti, i -> putGl("sbmods_cool_at", String.valueOf(temps[i])));
+        }
         endGroup("A limit is a share of the chip's real maximum, and only speeds the phone lists are used. "
                 + "Samsung lowers the maximum by itself when the phone is warm – that's the “heat limit” you may see; this app never removes it. "
                 + "The quick limit is what a long-press on the CPU / GPU chip turns on; the Performance panel (tap) lets you pick any level.");
 
         group("Overview screen");
+        cardResetAction(() -> putGl("sbmods_recents_chip", "1"));
         switchRow("Show the chips", "RAM, swap and temperature at the top; CPU and GPU at the bottom of the recent apps screen.",
                 gl("sbmods_recents_chip", 1) != 0, v -> putGl("sbmods_recents_chip", v ? "1" : "0"));
         endGroup(null);
@@ -1190,40 +1211,101 @@ public final class SettingsActivity extends Activity {
 
     // ---------------------------------------------------------------- More tab
 
-    /** One card of the Performance panel: its name, move up / down inside its page, and a shown / hidden switch. */
     private static final String[] PANEL_ICONS = {"bolt", "cpu", "gauge", "cpu", "layers", "sys", "leaf", "gauge", "batt", "shield", "mem", "apps"};
 
+    /** One card of the Performance panel: a drag handle, its name and a shown / hidden switch. */
     private void panelRow(final List<String> all, final Set<String> hidden, final List<String> ids, final int i) {
         final String id = ids.get(i);
+        final int n = ids.size();
         Ui.Switch sw = new Ui.Switch(this, pal);
         LinearLayout r = rowShell(v -> sw.toggle());
-        r.addView(labelBlock(PANEL_ICONS[PanelLayout.indexOf(id)], PanelLayout.TITLES[PanelLayout.indexOf(id)], null, cText, dp(48 * 2 + 64)), new LinearLayout.LayoutParams(0, -2, 1));
-        LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(dp(48), dp(48));
-        bl.setMarginStart(dp(8));
-        r.addView(moveButton("\u25B2", i > 0 ? ids.get(i - 1) : null, all, hidden, id), bl);
-        LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(dp(48), dp(48));
-        sl.setMarginStart(dp(8));
-        r.addView(moveButton("\u25BC", i < ids.size() - 1 ? ids.get(i + 1) : null, all, hidden, id), sl);
+        // the drag handle: press, move up or down by whole rows, let go
+        FrameLayout grip = new FrameLayout(this);
+        ImageView gi = Ui.icon(this, "grip", cSub, 22);
+        ((FrameLayout.LayoutParams) gi.getLayoutParams()).gravity = Gravity.CENTER;
+        grip.addView(gi);
+        grip.setContentDescription("Move " + PanelLayout.TITLES[PanelLayout.indexOf(id)]);
+        grip.setOnTouchListener(new View.OnTouchListener() {
+            float downY;
+            @Override public boolean onTouch(View v, android.view.MotionEvent e) {
+                float pitch = r.getHeight() + dp(0.7f);
+                switch (e.getActionMasked()) {
+                    case android.view.MotionEvent.ACTION_DOWN:
+                        downY = e.getRawY();
+                        r.setElevation(dp(6));
+                        r.setBackground(round(pal.accSoft, dp(Ui.R_ICON), 0, 0));
+                        v.getParent().requestDisallowInterceptTouchEvent(true);
+                        return true;
+                    case android.view.MotionEvent.ACTION_MOVE: {
+                        float dy = Math.max(-i * pitch, Math.min((n - 1 - i) * pitch, e.getRawY() - downY));
+                        r.setTranslationY(dy);
+                        return true;
+                    }
+                    case android.view.MotionEvent.ACTION_UP:
+                    case android.view.MotionEvent.ACTION_CANCEL: {
+                        float dy = r.getTranslationY();
+                        r.setTranslationY(0);
+                        r.setElevation(0);
+                        r.setBackground(ripple(0));
+                        int target = Math.max(0, Math.min(n - 1, i + Math.round(dy / pitch)));
+                        if (e.getActionMasked() == android.view.MotionEvent.ACTION_UP && target != i) moveCard(all, hidden, ids, id, target);
+                        return true;
+                    }
+                }
+                return false;
+            }
+        });
+        // the same move for TalkBack and keyboards: two actions on the handle
+        grip.setAccessibilityDelegate(new View.AccessibilityDelegate() {
+            @Override public void onInitializeAccessibilityNodeInfo(View host, android.view.accessibility.AccessibilityNodeInfo info) {
+                super.onInitializeAccessibilityNodeInfo(host, info);
+                if (i > 0) info.addAction(new android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction(ACT_MOVE_UP, "Move up"));
+                if (i < n - 1) info.addAction(new android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction(ACT_MOVE_DOWN, "Move down"));
+            }
+            @Override public boolean performAccessibilityAction(View host, int action, Bundle args) {
+                if (action == ACT_MOVE_UP && i > 0) { moveCard(all, hidden, ids, id, i - 1); return true; }
+                if (action == ACT_MOVE_DOWN && i < n - 1) { moveCard(all, hidden, ids, id, i + 1); return true; }
+                return super.performAccessibilityAction(host, action, args);
+            }
+        });
+        LinearLayout.LayoutParams gp = new LinearLayout.LayoutParams(dp(40), dp(Ui.TAP));
+        gp.setMarginStart(dp(-8));
+        r.addView(grip, gp);
+        r.addView(labelBlock(PANEL_ICONS[PanelLayout.indexOf(id)], PanelLayout.TITLES[PanelLayout.indexOf(id)], null, cText, dp(56 + 40)), new LinearLayout.LayoutParams(0, -2, 1));
         sw.setChecked(!hidden.contains(id));
+        sw.setContentDescription(PanelLayout.TITLES[PanelLayout.indexOf(id)]);
         sw.setOnChange(v -> {
             if (v) hidden.remove(id); else hidden.add(id);
             putGl(PanelLayout.SETTING, PanelLayout.write(all, hidden));
         });
-        r.addView(sw, new LinearLayout.LayoutParams(dp(56), dp(48)));
+        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(dp(56), dp(Ui.TAP));
+        sp.setMarginEnd(dp(-4));
+        r.addView(sw, sp);
     }
 
-    /** A small up / down button; without a neighbour on the same page it looks and acts disabled. */
-    private TextView moveButton(String label, final String neighbour, final List<String> all, final Set<String> hidden, final String id) {
-        TextView b = textButton(label, neighbour == null ? null : v -> {
-            Collections.swap(all, all.indexOf(id), all.indexOf(neighbour));
-            putGl(PanelLayout.SETTING, PanelLayout.write(all, hidden));
-        });
-        b.setGravity(Gravity.CENTER);
-        b.setPadding(0, 0, 0, 0);
-        b.setContentDescription(label.equals("\u25B2") ? "Move up" : "Move down");
-        if (neighbour == null) { b.setAlpha(0.3f); b.setClickable(false); }
-        return b;
+    private static final int ACT_MOVE_UP = 0x7f0b0001, ACT_MOVE_DOWN = 0x7f0b0002;
+
+    /** Moves a card to a new place among the cards of its page; the other pages keep their places. */
+    private void moveCard(List<String> all, Set<String> hidden, List<String> ids, String id, int target) {
+        List<String> order = new ArrayList<>(ids);
+        order.remove(id);
+        order.add(target, id);
+        int k = 0;
+        for (int j = 0; j < all.size(); j++) if (ids.contains(all.get(j))) all.set(j, order.get(k++));
+        putGl(PanelLayout.SETTING, PanelLayout.write(all, hidden));
     }
+
+    /** Everything back to the starting values: the status bar options, the panel's cards, and which "Advanced" rows are open. */
+    private void restoreDefaults() {
+        cfg = new Config();
+        apply();
+        SharedPreferences.Editor ed = prefs.edit();
+        for (String k : prefs.getAll().keySet()) if (k.startsWith("adv_") || k.startsWith("open_")) ed.remove(k);
+        ed.apply();
+        buildPreviewArea();
+        putGl(PanelLayout.SETTING, "", PANEL_RESET_KEY, "");
+    }
+    private static final String PANEL_RESET_KEY = "sbmods_cards";   // stage 4 adds the tile sizes and the All page option here
 
     private void buildMore() {
         group("cheat", "Cheat sheet: what taps do", "In the app, on the status bar, on the Overview screen", false);
@@ -1269,17 +1351,12 @@ public final class SettingsActivity extends Activity {
         endGroup("After you restart the phone without root, the status bar goes back to Samsung's own.");
 
         group("Start over");
-        actionRow("Reset all settings", "Every option goes back to how it was at the start", cErr, v ->
+        actionRow("Restore defaults", "Every option goes back to how it was at the start, and the Performance panel shows all its cards again", cErr, v ->
                 new AlertDialog.Builder(this)
-                        .setTitle("Reset all settings?")
-                        .setMessage("Every option goes back to its starting value. You can't undo this.")
+                        .setTitle("Restore defaults?")
+                        .setMessage("Every option in this app goes back to its starting value, and the Performance panel goes back to its standard cards and order. You can't undo this.")
                         .setNegativeButton("Cancel", null)
-                        .setPositiveButton("Reset", (d, w) -> {
-                            cfg = new Config();
-                            apply();
-                            buildPreviewArea();
-                            refresh();
-                        }).show());
+                        .setPositiveButton("Restore", (d, w) -> restoreDefaults()).show());
         endGroup(modVersion.isEmpty() ? "StatusBar Mods for the Galaxy S23 Ultra"
                 : "StatusBar Mods  v" + modVersion + "  ·  for the Galaxy S23 Ultra");
     }
@@ -1438,31 +1515,25 @@ public final class SettingsActivity extends Activity {
         return Ui.ripple(pal, content, round(Color.WHITE, 0, 0, 0));
     }
 
-    private boolean groupOpen = true;     // is the card being built shown? (a closed one builds into `sink`)
-    private LinearLayout sink;            // detached throw-away layout: closed cards' rows go here and are never shown
+    private boolean groupOpen = true;     // kept for endGroup: cards are always open now (less-used options sit behind an "Advanced" row)
+    private LinearLayout sink;
     private View infoSlot;                // the card header's info button (hidden until endGroup gets a help text)
+    private View resetSlot;               // the card header's Reset button (hidden until cardReset / cardResetAction)
     private String cardTitle;
 
-    /** Open / closed state of a collapsible card (remembered); key == null means always open. */
-    private boolean isOpen(String key, boolean openByDefault) {
-        return key == null || prefs.getBoolean("open_" + key, openByDefault);
-    }
-
-    /** A card that is always open. Rows go inside until endGroup(). */
+    /** A card with its title inside. */
     private void group(String title) {
         group(null, title, null, true);
     }
 
     /**
-     * A solid rounded card with its title inside (14 sp, grey). key == null: always open. Otherwise the header also has a
-     * one-line summary while closed and a chevron; tapping it opens / closes the card and the state is remembered.
-     * A closed card builds its rows into a detached layout, so the row code runs unchanged but nothing is shown.
-     * What used to be a long caption under a card is now its info "i" (see endGroup).
+     * A solid rounded card with its title inside (14 sp, grey). Its header has an info "i" (the long caption that used
+     * to sit under a card, see endGroup) and a Reset button (see cardReset). `key` / `summary` / `openByDefault` are
+     * kept for the callers; cards no longer collapse - the less-used options sit behind an "Advanced" row (see advanced).
      */
     private void group(String key, String title, String summary, boolean openByDefault) {
-        groupOpen = isOpen(key, openByDefault);
+        groupOpen = true;
         cardTitle = title;
-        infoSlot = null;
         LinearLayout c = new LinearLayout(this);
         c.setOrientation(LinearLayout.VERTICAL);
         c.setBackground(Ui.card(this, pal));
@@ -1470,49 +1541,60 @@ public final class SettingsActivity extends Activity {
         c.setPadding(dp(Ui.S4), 0, dp(Ui.S4), dp(4));
         page.addView(c, cardParams());
 
-        final boolean open = groupOpen;
         LinearLayout hdr = new LinearLayout(this);
         hdr.setGravity(Gravity.CENTER_VERTICAL);
         hdr.setMinimumHeight(dp(44));
-        if (key != null) {
-            hdr.setBackground(ripple(0));
-            hdr.setStateDescription(open ? "Open" : "Closed");
-            hdr.setOnClickListener(v -> {
-                prefs.edit().putBoolean("open_" + key, !open).apply();
-                refresh();
-            });
-        }
-        LinearLayout col = new LinearLayout(this);
-        col.setOrientation(LinearLayout.VERTICAL);
-        col.addView(Ui.text(this, title == null ? "" : title, Ui.T_SECTION, cSub, 600));
-        if (!open && summary != null && !summary.isEmpty()) {
-            TextView sm = Ui.text(this, summary, Ui.T_CAPTION, cSub, 400);
-            sm.setSingleLine(true);
-            sm.setEllipsize(android.text.TextUtils.TruncateAt.END);
-            col.addView(sm);
-        }
-        hdr.addView(col, new LinearLayout.LayoutParams(0, -2, 1));
+        hdr.addView(Ui.text(this, title == null ? "" : title, Ui.T_SECTION, cSub, 600), new LinearLayout.LayoutParams(-2, -2));
         infoSlot = Ui.infoButton(this, pal, title == null ? "this card" : title, null);
         infoSlot.setVisibility(View.GONE);
         hdr.addView(infoSlot, new LinearLayout.LayoutParams(dp(Ui.TAP), dp(44)));
-        if (key != null) {
-            View chev = Ui.icon(this, open ? "chevd" : "chev", cSub, 20);
-            if (open) chev.setRotation(180);
-            LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(dp(20), dp(20));
-            cp.setMarginEnd(dp(4));
-            hdr.addView(chev, cp);
-        }
+        hdr.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1));
+        LinearLayout reset = new LinearLayout(this);
+        reset.setGravity(Gravity.CENTER_VERTICAL);
+        reset.setPadding(dp(10), 0, dp(10), 0);
+        reset.setBackground(ripple2(null, dp(20)));
+        reset.addView(Ui.icon(this, "reset", pal.accInk, 16));
+        TextView rt = Ui.text(this, "Reset", Ui.T_SECTION, pal.accInk, 600);
+        rt.setPadding(dp(4), 0, 0, 0);
+        reset.addView(rt);
+        reset.setContentDescription("Reset " + (title == null ? "this card" : title));
+        reset.setVisibility(View.GONE);
+        resetSlot = reset;
+        LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(-2, dp(Ui.TAP));
+        rp.setMargins(0, dp(-2), dp(-10), dp(-2));
+        hdr.addView(reset, rp);
         c.addView(hdr, new LinearLayout.LayoutParams(-1, -2));
-        if (open) {
-            LinearLayout body = new LinearLayout(this);
-            body.setOrientation(LinearLayout.VERTICAL);
-            c.addView(body, new LinearLayout.LayoutParams(-1, -2));
-            cur = body;
-        } else {
-            if (sink == null) sink = new LinearLayout(this);
-            sink.removeAllViews();
-            cur = sink;
-        }
+        LinearLayout body = new LinearLayout(this);
+        body.setOrientation(LinearLayout.VERTICAL);
+        c.addView(body, new LinearLayout.LayoutParams(-1, -2));
+        cur = body;
+    }
+
+    /** This card's Reset button: sets the options of this card (and only these) back to their starting values. `fn` copies them from a fresh Config (second argument). */
+    private void cardReset(java.util.function.BiConsumer<Config, Config> fn) {
+        cardResetAction(() -> { fn.accept(cfg, new Config()); apply(); refresh(); });
+    }
+
+    private void cardResetAction(Runnable r) {
+        if (resetSlot == null) return;
+        resetSlot.setVisibility(View.VISIBLE);
+        resetSlot.setOnClickListener(v -> r.run());
+    }
+
+    /** A row "Advanced" (or `label`) that opens or closes the less-used options below it; the state is remembered per card. Returns true when open. */
+    private boolean advanced(String key) { return advanced(key, "Advanced"); }
+
+    private boolean advanced(String key, String label) {
+        final boolean open = prefs.getBoolean("adv_" + key, false);
+        if (cur.getChildCount() > 0) divider();
+        LinearLayout r = rowShell(v -> { prefs.edit().putBoolean("adv_" + key, !open).apply(); refresh(); });
+        r.addView(labelBlock("sys", label, null, cText, dp(28)), new LinearLayout.LayoutParams(0, -2, 1));
+        ImageView chev = Ui.icon(this, "chev", cSub, 20);
+        if (open) chev.setRotation(90);
+        r.addView(chev, new LinearLayout.LayoutParams(dp(20), dp(20)));
+        r.setStateDescription(open ? "Open" : "Closed");
+        r.setContentDescription(label);
+        return open;
     }
 
     private LinearLayout.LayoutParams cardParams() {
