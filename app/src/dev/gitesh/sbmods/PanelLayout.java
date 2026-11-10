@@ -19,10 +19,10 @@ public final class PanelLayout {
     public static final String SETTING = "sbmods_cards";
 
     /** Default order. The page of each card is in PAGES, its plain-English name in TITLES (same positions). */
-    public static final String[] DEFAULTS = {"modes", "cpu", "cores", "gpu", "switches", "battery", "memory", "topapps"};
-    public static final String[] TITLES = {"Mode", "CPU", "Cores", "GPU", "Options", "Battery report", "Memory", "Using the most power right now"};
+    public static final String[] DEFAULTS = {"modes", "cpu", "cores", "gpu", "graphics", "switches", "battery", "health", "memory", "topapps"};
+    public static final String[] TITLES = {"Mode", "CPU", "Cores", "GPU", "Graphics", "Options", "Battery report", "Battery health", "Memory", "Using the most power right now"};
     /** 0 = Performance, 1 = Battery, 2 = Memory. */
-    public static final int[] PAGES = {0, 0, 0, 0, 0, 1, 2, 2};
+    public static final int[] PAGES = {0, 0, 0, 0, 0, 0, 1, 1, 2, 2};
     public static final String[] PAGE_NAMES = {"Performance", "Battery", "Memory"};
 
     /**

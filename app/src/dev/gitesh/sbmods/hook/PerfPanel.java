@@ -68,10 +68,11 @@ final class PerfPanel {
         // header: title left; battery temperature, power draw and (when a limit is on) its end on the right
         LinearLayout head = new LinearLayout(a);
         head.setGravity(Gravity.CENTER_VERTICAL);
-        head.addView(tv(a, "Performance", 20, Color.WHITE, true), new LinearLayout.LayoutParams(0, -2, 1));
+        head.addView(tv(a, "Performance", 20, Color.WHITE, true), new LinearLayout.LayoutParams(-2, -2));   // the title never wraps: the facts on the right take what is left
         pHead = tv(a, "", 13, 0xCCFFFFFF, false);
         pHead.setGravity(Gravity.END);
-        head.addView(pHead, new LinearLayout.LayoutParams(-2, -2));
+        pHead.setPadding(dp(a, 10), 0, 0, 0);
+        head.addView(pHead, new LinearLayout.LayoutParams(0, -2, 1));
         col.addView(head);
 
         pSwitch = new LinearLayout(a);
@@ -86,7 +87,12 @@ final class PerfPanel {
 
         final int max = Math.round(a.getResources().getDisplayMetrics().heightPixels * 0.7f);
         pScroll = new ScrollView(a) {
-            @Override protected void onMeasure(int w, int h) { super.onMeasure(w, MeasureSpec.makeMeasureSpec(max, MeasureSpec.AT_MOST)); }
+            private int keep;   // tallest page seen: the sheet never shrinks, or the page buttons would jump away from under the finger
+            @Override protected void onMeasure(int w, int h) {
+                super.onMeasure(w, MeasureSpec.makeMeasureSpec(max, MeasureSpec.AT_MOST));
+                keep = Math.max(keep, getMeasuredHeight());
+                if (getMeasuredHeight() < keep) setMeasuredDimension(getMeasuredWidth(), keep);
+            }
         };
         pScroll.setVerticalScrollBarEnabled(false);
         pBox = new LinearLayout(a);
@@ -233,7 +239,7 @@ final class PerfPanel {
         if (min > 0) {
             t.append("  ·  ");
             int st = t.length();
-            t.append("limit ends in ").append(PanelMath.duration(min));
+            t.append("limit ").append(PanelMath.duration(min));
             t.setSpan(new ForegroundColorSpan(RecentsChip.CYAN), st, t.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
         pHead.setText(t);

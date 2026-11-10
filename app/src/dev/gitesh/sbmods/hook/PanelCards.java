@@ -59,7 +59,7 @@ final class PanelCards {
     }
 
     /** The registry, in default order. */
-    static final List<Card> ALL = java.util.Arrays.asList(new Modes(), new Cpu(), new Cores(), new Gpu(), new Switches(), new Battery(), new Memory(), new TopApps());
+    static final List<Card> ALL = java.util.Arrays.asList(new Modes(), new Cpu(), new Cores(), new Gpu(), new Graphics(), new Switches(), new Battery(), new Health(), new Memory(), new TopApps());
 
     /** The visible cards of one page, in the owner's order. */
     static List<Card> visible(Context c, int page) {
@@ -527,6 +527,85 @@ final class PanelCards {
         }
     }
 
+    // ------------------------------------------------------------------ graphics (Vulkan) and battery health
+
+    /** The app used last (not the home screen), or null. */
+    static String lastApp(Activity a) {
+        try {
+            android.app.ActivityManager am = a.getSystemService(android.app.ActivityManager.class);
+            for (android.app.ActivityManager.RecentTaskInfo t : am.getRecentTasks(4, 0)) {
+                android.content.ComponentName cn = t.baseIntent == null ? null : t.baseIntent.getComponent();
+                if (cn != null && !cn.getPackageName().equals(Entry.LAUNCHER)) return cn.getPackageName();
+            }
+        } catch (Throwable t) { Log.w("last app: " + t); }
+        return null;
+    }
+
+    /** Normal drawing or Vulkan for apps, and what the last app really uses. The helper never restarts anything and guards Wi-Fi calling. */
+    static final class Graphics extends Card {
+        private TextView line;
+        private String asked;
+        private CharSequence askedName;
+        Graphics() { super("graphics"); }
+        @Override View build(Activity a) {
+            LinearLayout col = column(a);
+            final boolean vk = "vulkan".equals(Global.gstr(a, "sbmods_gfx"));
+            col.addView(seg(a, new CharSequence[]{"Normal", "Vulkan"}, vk ? 1 : 0, i -> i == 0 ? RecentsChip.GREEN : RecentsChip.CYAN, i -> {
+                if ((i == 1) == vk) return;
+                PanelCmd.post(a, i == 1 ? "gfx:vulkan" : "gfx:opengl", null);
+                android.widget.Toast.makeText(a, i == 1 ? "Vulkan: apps use it the next time they open" : "Normal drawing: apps switch the next time they open", android.widget.Toast.LENGTH_SHORT).show();
+            }), lp(-1, -2, 0, dp(a, 4), 0, 0));
+            line = tv(a, "", 13, WHITE, false);
+            col.addView(line, lp(-1, -2, 0, dp(a, 8), 0, 0));
+            col.addView(tv(a, "Vulkan is a newer way for apps to draw the screen. An app switches the next time it opens, and a restart of the phone goes back to normal. "
+                    + "Calling is never touched; if Wi-Fi calling drops after switching, the phone goes back to normal by itself.", 12, 0x88FFFFFF, false), lp(-1, -2, 0, dp(a, 4), 0, 0));
+            asked = lastApp(a);
+            askedName = asked;
+            if (asked != null) {
+                try { PackageManager pm = a.getPackageManager(); askedName = pm.getApplicationInfo(asked, 0).loadLabel(pm); } catch (Throwable ignored) {}
+                PanelCmd.post(a, "appgfx:" + asked, () -> Global.gset(a, "sbmods_appgfx", "-"));
+            }
+            return col;
+        }
+        @Override void live(Activity a, Perf.Snap s) {
+            if (asked == null) { line.setVisibility(View.GONE); return; }
+            String r = Global.gstr(a, "sbmods_appgfx");
+            String how = r != null && r.startsWith(asked + ":") ? r.substring(asked.length() + 1) : "";
+            line.setText(how.equals("vulkan") ? askedName + " is drawing with Vulkan right now"
+                    : how.equals("opengl") ? askedName + " is drawing the normal way right now"
+                    : how.equals("unknown") ? askedName + ": can't tell (it is asleep)" : "Checking " + askedName + "…");
+            line.setTextColor(how.equals("vulkan") ? RecentsChip.CYAN : how.equals("opengl") ? WHITE : DIM);
+        }
+        @Override String sig(Activity a) { return String.valueOf(Global.gstr(a, "sbmods_gfx")); }
+    }
+
+    /** How worn the battery is, from the phone's own counters (asked once a minute while the page shows). */
+    static final class Health extends Card {
+        private TextView line;
+        private long reqAt;
+        Health() { super("health"); }
+        @Override View build(Activity a) {
+            reqAt = 0;
+            LinearLayout col = column(a);
+            line = tv(a, "Checking…", 14, WHITE, false);
+            col.addView(line);
+            return col;
+        }
+        @Override void live(Activity a, Perf.Snap s) {
+            long now = SystemClock.uptimeMillis();
+            if (reqAt == 0 || now - reqAt >= 60000) { reqAt = now; PanelCmd.post(a, "health", null); }
+            String r = Global.gstr(a, "sbmods_health");
+            if (r == null) return;
+            String[] p = r.split("\\|");
+            if (p.length < 3) return;
+            StringBuilder t = new StringBuilder();
+            if (!p[0].equals("-1")) t.append("Holds about ").append(p[0]).append("% of what it did when new");
+            if (!p[1].equals("-1")) t.append(t.length() > 0 ? "\n" : "").append("Charged ").append(p[1]).append(" times so far");
+            if (!p[2].equals("-1") && !p[2].equals("100")) t.append(t.length() > 0 ? "\n" : "").append("Charging stops at ").append(p[2]).append("%");
+            line.setText(t.length() > 0 ? t : "The phone doesn't report battery health");
+        }
+    }
+
     // ------------------------------------------------------------------ 7. memory
 
     static final class Memory extends Card {
@@ -539,7 +618,7 @@ final class PanelCards {
             ramT = memRow(a, col, "Memory in use", ramB);
             swapT = memRow(a, col, "Swap in use (spill-over memory)", swapB);
             LinearLayout btns = new LinearLayout(a);
-            TextView close = button(a, "Close background apps", () -> RecentsChip.command(a, "ramclean", "Closing background apps…", 4000));
+            TextView close = button(a, "Close apps", () -> RecentsChip.command(a, "ramclean", "Closing background apps…", 4000));
             TextView deep = button(a, "Deep clean", () -> RecentsChip.command(a, "deepclean", "Deep cleaning memory…", 6000));
             btns.addView(close, lp(0, -2, 0, dp(a, 4), dp(a, 8), 0, 1));
             btns.addView(deep, lp(0, -2, 0, dp(a, 4), 0, 0, 1));
@@ -635,7 +714,8 @@ final class PanelCards {
             name.setEllipsize(android.text.TextUtils.TruncateAt.END);
             r.addView(name, new LinearLayout.LayoutParams(0, -2, 1));
             r.addView(tv(a, pct + "%", 14, WHITE, true));
-            boolean protectedApp = pkg.equals(Entry.LAUNCHER) || pkg.equals("com.android.systemui") || pkg.equals(a.getPackageName());
+            boolean protectedApp = pkg.equals(Entry.LAUNCHER) || pkg.equals("com.android.systemui") || pkg.equals(a.getPackageName())
+                    || pkg.startsWith("com.google.android.gms") || pkg.startsWith("com.android.providers.") || pkg.equals("android") || pkg.equals("dev.gitesh.sbmods") || pkg.equals("com.termux");   // the helper refuses these too
             if (!protectedApp) {
                 TextView stop = tv(a, "Stop", 14, RecentsChip.CYAN, true);
                 stop.setPadding(dp(a, 14), dp(a, 8), 0, dp(a, 8));

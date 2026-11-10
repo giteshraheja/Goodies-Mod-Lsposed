@@ -110,7 +110,11 @@ final class BackChip {
             c.setAlpha(1f);
             if (Math.abs(c.getTranslationX() - tx) > 0.5f) c.setTranslationX(tx);
             if (Math.abs(c.getTranslationY() - ty) > 0.5f) c.setTranslationY(ty);
-            float push = Math.max(0, c.getWidth() - overlap) + extraPad;   // + room for things placed right after the button (network speed)
+            // + room for things placed right after the button (network speed). extraPad ends at that item's right edge + one gap
+            // measured from "button + gap", but the icons here start at the button itself: add the missing gap or they touch the speed text
+            Config cfg = owner.config();
+            float gap = (cfg.itemGap >= 0 ? cfg.itemGap : 6) * d;
+            float push = Math.max(0, c.getWidth() - overlap) + (extraPad > 0.5f ? extraPad + gap : 0);
             if (nb != null && Math.abs(nb.getTranslationX() - push) > 0.5f) nb.setTranslationX(push);
             mergeApplied = true;
         } else if (mergeApplied) {

@@ -1033,7 +1033,10 @@ public final class SettingsActivity extends Activity {
         infoRow("Overview screen (recent apps)",
                 "RAM: tap = close background apps. Swap: tap = deep clean. Temp: tap = cool-down on / off. Long-press any of them = Device care.\n"
                 + "CPU (bottom right) and GPU (bottom left) show the live speed and what holds it back (full speed, Samsung's heat limit, or your limit). "
-                + "Tap = Performance panel, long-press = quick limit on / off.");
+                + "Tap = Performance panel, long-press = quick limit on / off.\n"
+                + "Performance panel: three pages. Performance = one-tap modes (Full, Balanced, Cool, Saver), CPU and GPU limits, resting cores, Vulkan graphics. "
+                + "Battery = time left, screen-on and screen-off time, standby drain, battery health. "
+                + "Memory = memory in use, clean-up buttons, and the apps working hardest with a Stop button.");
         endGroup(null);
 
         // ---- the helper
