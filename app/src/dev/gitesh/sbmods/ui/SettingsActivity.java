@@ -1138,7 +1138,7 @@ public final class SettingsActivity extends Activity {
         actionRow("Empty the All page", "Starts the list again from nothing", cAccent, v -> putGl(PanelLayout.RECENT, ""));
         endGroup(null);
 
-                if (helperRunning == null && isOpen("helper", false)) checkHelper();   // root check only while the card is open
+        if (helperRunning == null && isOpen("helper", false)) checkHelper();   // root check only while the card is open
         group("helper", "Root helper", helperRunning == null ? "Open to check if it is running" : helperRunning ? "Running" : "Not running", false);
         switchRow("Run the helper", "Closing apps and speed limits need root, so this small helper does them for the Overview screen. Allow root for this app when asked. "
                         + (helperRunning == null ? "Checking…" : helperRunning ? "It is running." : "It is not running – the RAM, swap and speed buttons won't do anything."),
