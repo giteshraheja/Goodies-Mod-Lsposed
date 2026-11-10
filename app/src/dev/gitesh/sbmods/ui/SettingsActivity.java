@@ -1729,7 +1729,9 @@ public final class SettingsActivity extends Activity {
         if (help != null) {
             final String tt = title, hh = help;
             View i = Ui.infoButton(this, pal, title, v -> showInfo(tt, hh));
-            b.addView(i, new LinearLayout.LayoutParams(dp(Ui.TAP), dp(Ui.TAP)));
+            LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(dp(Ui.TAP), dp(Ui.TAP));
+            ilp.setMarginStart(dp(-6));   // glyph sits right after the label text
+            b.addView(i, ilp);
         }
         return b;
     }

@@ -456,7 +456,7 @@ public final class Ui {
 
     public static View infoButton(Context c, int color, String about, View.OnClickListener l) {
         FrameLayout f = new FrameLayout(c);
-        ImageView i = icon(c, "info", color, 19);
+        ImageView i = icon(c, "info", color, 20);
         ((FrameLayout.LayoutParams) i.getLayoutParams()).gravity = Gravity.CENTER;
         f.addView(i);
         f.setContentDescription("About " + about);
