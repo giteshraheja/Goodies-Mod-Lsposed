@@ -899,6 +899,35 @@ public final class Controller {
 
     // ----------------------------------------------------------- control API
 
+    /** Debugging aid: writes the status bar's view tree (position, width, shift, alpha, visibility, cut) to the "dbg_tree" pref. */
+    private void dumpTree() {
+        try {
+            View root = statusRoot;
+            if (root == null) return;
+            int id = root.getResources().getIdentifier("status_bar_contents", "id", Config.SYSUI);
+            View top = id == 0 ? null : root.findViewById(id);
+            StringBuilder sb = new StringBuilder();
+            dumpInto(top != null ? top : root, 0, sb);
+            prefs.edit().putString("dbg_tree", sb.toString()).commit();
+        } catch (Throwable t) { Log.w("dump: " + t); }
+    }
+
+    private void dumpInto(View v, int depth, StringBuilder sb) {
+        if (depth > 14 || sb.length() > 60000) return;
+        int[] l = new int[2];
+        v.getLocationOnScreen(l);
+        String name = "";
+        try { if (v.getId() > 0) name = v.getResources().getResourceEntryName(v.getId()); } catch (Throwable ignored) {}
+        for (int k = 0; k < depth; k++) sb.append(' ');
+        sb.append(v.getClass().getSimpleName()).append(' ').append(name).append(" x=").append(l[0]).append(" w=").append(v.getWidth())
+                .append(" tx=").append(Math.round(v.getTranslationX())).append(" a=").append(v.getAlpha()).append(" vis=").append(v.getVisibility());
+        if (v.getScaleX() != 1f) sb.append(" sx=").append(v.getScaleX());
+        if (v.getClipBounds() != null) sb.append(" clip=").append(v.getClipBounds().toShortString());
+        if (v instanceof TextView) sb.append(" \"").append(((TextView) v).getText()).append('"');
+        sb.append('\n');
+        if (v instanceof android.view.ViewGroup) { android.view.ViewGroup g = (android.view.ViewGroup) v; for (int k = 0; k < g.getChildCount(); k++) dumpInto(g.getChildAt(k), depth + 1, sb); }
+    }
+
     private void registerControlReceiver() {
         IntentFilter f = new IntentFilter();
         f.addAction(Config.ACTION_APPLY);
@@ -931,6 +960,7 @@ public final class Controller {
                     startPolling();
                     restartClockTick();
                 } else if (Config.ACTION_TOAST.equals(a)) {   // "3, 2, 1" before the assistant drives the screen (status bar toasts are never blocked)
+                    if (i.getBooleanExtra("dump", false)) { dumpTree(); return; }   // debugging aid: where every status bar item really is
                     String t = i.getStringExtra("t");
                     int n = Math.max(0, Math.min(5, i.getIntExtra("count", 0)));
                     for (int k = n; k >= 0; k--) {
