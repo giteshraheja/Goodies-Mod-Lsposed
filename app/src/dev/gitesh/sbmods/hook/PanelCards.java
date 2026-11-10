@@ -505,16 +505,17 @@ final class PanelCards {
         Switches() { super("switches"); }
         @Override View build(Activity a) {
             LinearLayout row = new LinearLayout(a);
+            row.setBaselineAligned(false);   // one- and two-line buttons side by side: lining up their text pushed the short one up and the tall ones out of the card
             int at = Global.gint(a, "sbmods_cool_at", 360);
-            row.addView(toggle(a, "Power saving with limit", "sbmods_cpu_ps"), lp(0, -2, 0, 0, dp(a, 6), 0, 1));
-            row.addView(toggle(a, "Cool-down to " + at / 10 + "°C", "sbmods_cool"), lp(0, -2, 0, 0, dp(a, 6), 0, 1));
+            row.addView(toggle(a, "Power saving with limit", "sbmods_cpu_ps"), lp(0, -1, 0, 0, dp(a, 6), 0, 1));
+            row.addView(toggle(a, "Cool-down to " + at / 10 + "°C", "sbmods_cool"), lp(0, -1, 0, 0, dp(a, 6), 0, 1));
             TextView reset = pill(a, "Full speed", false, () -> {
                 for (String k : new String[]{"sbmods_cpu_pct", "sbmods_gpu_pct", "sbmods_cool", "sbmods_cores"}) Global.gset(a, k, "0");
                 used(a, "switches");
                 PerfPanel.changed(a);
             });
             reset.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
-            row.addView(reset, new LinearLayout.LayoutParams(0, -2, 1));
+            row.addView(reset, new LinearLayout.LayoutParams(0, -1, 1));
             return row;
         }
 

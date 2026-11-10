@@ -85,11 +85,12 @@ final class PerfPanel {
         head.setGravity(Gravity.CENTER_VERTICAL);
         head.addView(PanelCards.tvm(a, "Performance", 20, Color.WHITE), new LinearLayout.LayoutParams(-2, -2));   // the title never wraps: the facts on the right take what is left
         pHead = tv(a, "", 13, 0xCCFFFFFF, false);
-        pHead.setGravity(Gravity.END);
-        pHead.setMaxLines(2);
+        pHead.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+        pHead.setMaxLines(1);   // one line always: a long line (Cool-down, hours left) shrinks a little instead of wrapping
+        pHead.setAutoSizeTextTypeUniformWithConfiguration(10, 13, 1, android.util.TypedValue.COMPLEX_UNIT_SP);
         pHead.setFontFeatureSettings("tnum");
         pHead.setPadding(dp(a, 10), 0, 0, 0);
-        head.addView(pHead, new LinearLayout.LayoutParams(0, -2, 1));
+        head.addView(pHead, new LinearLayout.LayoutParams(0, -1, 1));   // as tall as the title, not its own text: a shrunk line can then grow back to 13sp
         col.addView(head);
 
         int saved = Global.gint(a, PanelLayout.TAB, PanelLayout.PAGE_SPEED);   // the page that was open last
@@ -106,12 +107,20 @@ final class PerfPanel {
         pWarn.setVisibility(View.GONE);
         col.addView(pWarn);
 
-        // the whole sheet never exceeds about 88 % of the screen: the card area gets what the header and tabs leave
-        final int cap = Math.round(a.getResources().getDisplayMetrics().heightPixels * 0.88f);
+        // the whole sheet may use the screen between the status bar and the navigation bar (less a small gap on top):
+        // the card area gets what the header and tabs leave. A fixed share of the screen cut the last card of the Speed page.
+        int room = Math.round(a.getResources().getDisplayMetrics().heightPixels * 0.88f);
+        try {
+            android.view.WindowMetrics m = a.getWindowManager().getCurrentWindowMetrics();
+            android.graphics.Insets in = m.getWindowInsets().getInsetsIgnoringVisibility(
+                    android.view.WindowInsets.Type.systemBars() | android.view.WindowInsets.Type.displayCutout());
+            room = m.getBounds().height() - in.top - in.bottom - dp(a, 8);
+        } catch (Throwable t) { Log.w("panel room: " + t); }
+        final int cap = room;
         pScroll = new ScrollView(a) {
             private int keep;   // tallest page seen: the sheet never shrinks, or the page buttons would jump away from under the finger
             @Override protected void onMeasure(int w, int h) {
-                int used = col.getPaddingTop() + col.getPaddingBottom() + dp(a, 12);   // the sheet's own padding and the gap under it
+                int used = col.getPaddingTop() + col.getPaddingBottom() + dp(a, 12) + dp(a, 8);   // the sheet's own padding, the gap under it and the handle's margin
                 for (int i = 0; i < col.getChildCount(); i++) { View c = col.getChildAt(i); if (c != this && c.getVisibility() != View.GONE) used += c.getMeasuredHeight(); }   // siblings above are measured already
                 super.onMeasure(w, MeasureSpec.makeMeasureSpec(Math.max(dp(a, 120), cap - used), MeasureSpec.AT_MOST));
                 keep = Math.max(keep, getMeasuredHeight());
@@ -343,7 +352,7 @@ final class PerfPanel {
         if (min > 0) {
             t.append(" · ");
             int st = t.length();
-            t.append("limit ").append(PanelMath.duration(min));
+            t.append(PanelMath.duration(min));   // just the time left, in the limit colour: the word "limit" pushed the line past 384dp
             t.setSpan(new ForegroundColorSpan(RecentsChip.CYAN), st, t.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
         pHead.setText(t);
