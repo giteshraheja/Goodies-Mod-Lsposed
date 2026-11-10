@@ -32,7 +32,7 @@ import static dev.gitesh.sbmods.hook.PanelCards.tv;
 
 /**
  * The Performance popup: a frosted sheet at the bottom of the Overview screen with a header, a page switcher
- * (Performance / Battery / Memory) and the cards of the current page (see PanelCards). Shown inside the launcher's
+ * (All / Speed / Battery / Memory) and the cards of the current page (see PanelCards). Shown inside the launcher's
  * process, so everything here is guarded: a failing card is skipped, never a crash.
  */
 final class PerfPanel {
@@ -101,7 +101,7 @@ final class PerfPanel {
         col.addView(pSwitch);
         buildSwitch(a);
 
-        pWarn = tv(a, "The limit isn't being applied: the root helper seems to be off. Turn it on in StatusBar Mods › More.", 13, RecentsChip.RED, false);
+        pWarn = tv(a, "The limit isn't being applied: the root helper seems to be off. Turn it on in StatusBar Mods › Overview.", 13, RecentsChip.RED, false);
         pWarn.setPadding(0, dp(a, 6), 0, 0);
         pWarn.setVisibility(View.GONE);
         col.addView(pWarn);
@@ -334,14 +334,14 @@ final class PerfPanel {
         int mc = m >= 0 ? PanelCards.MODE_COLORS[m] : RecentsChip.AMBER;
         t.append("\u25cf");
         t.setSpan(new ForegroundColorSpan(mc), 0, t.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        t.append(" ").append(m >= 0 ? PanelMath.MODE_NAMES[m] : Global.gint(a, "sbmods_cool", 0) == 1 ? "Cool-down" : "Custom").append("  ·  ").append(PanelCards.Power.tempC + "°C");
+        t.append(" ").append(m >= 0 ? PanelMath.MODE_NAMES[m] : Global.gint(a, "sbmods_cool", 0) == 1 ? "Cool-down" : "Custom").append(" · ").append(PanelCards.Power.tempC + "°C");
         String w = PanelCards.Power.text();
-        if (w != null) t.append("  ·  ").append(w);
+        if (w != null) t.append(" · ").append(w);
         long until = 0;
         try { String u = Global.gstr(a, "sbmods_until"); if (u != null && !u.isEmpty()) until = Long.parseLong(u.trim()); } catch (NumberFormatException ignored) {}
         long min = PanelMath.limitMinutes(until, System.currentTimeMillis() / 1000);
         if (min > 0) {
-            t.append("  ·  ");
+            t.append(" · ");
             int st = t.length();
             t.append("limit ").append(PanelMath.duration(min));
             t.setSpan(new ForegroundColorSpan(RecentsChip.CYAN), st, t.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);

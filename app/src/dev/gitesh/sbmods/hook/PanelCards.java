@@ -346,7 +346,7 @@ final class PanelCards {
             LinearLayout col = column(a);
             int m = currentMode(a);
             TextView v = valueView(a);
-            if (m >= 0) { v.setText(PanelMath.MODE_NAMES[m]); }
+            if (m >= 0) v.setText("");   // the panel's header already names the mode
             else { v.setText(Global.gint(a, "sbmods_cool", 0) == 1 ? "Cool-down" : "Custom"); v.setTextColor(RecentsChip.AMBER); }
             col.addView(seg(a, PanelMath.MODE_NAMES, m, i -> MODE_COLORS[i], i -> applyMode(a, i)));
             return col;
@@ -608,7 +608,7 @@ final class PanelCards {
             col.addView(offT, lp(-2, -2, 0, dp(a, 1), 0, 0));
             verdict = tv(a, "", 13, WHITE, true);
             col.addView(verdict, lp(-2, -2, 0, dp(a, 1), 0, 0));
-            err = tv(a, "No answer from the helper – turn it on in StatusBar Mods › More.", 13, RecentsChip.AMBER, false);
+            err = tv(a, "No answer from the helper – turn it on in StatusBar Mods › Overview.", 13, RecentsChip.AMBER, false);
             err.setVisibility(View.GONE);
             col.addView(err, lp(-2, -2, 0, dp(a, 2), 0, 0));
             col.addView(button(a, "Battery usage ›", () -> openScreen(a, "battery",
@@ -812,7 +812,7 @@ final class PanelCards {
             if (raw == null || raw.equals("-")) {
                 if (shownRaw == null) {
                     boolean late = sentAt > 0 && now - sentAt > 12000;
-                    status.setText(late ? "No answer from the helper – turn it on in StatusBar Mods › More." : "Looking…");
+                    status.setText(late ? "No answer from the helper – turn it on in StatusBar Mods › Overview." : "Looking…");
                     status.setTextColor(late ? RecentsChip.AMBER : DIM);
                 }
                 return;
