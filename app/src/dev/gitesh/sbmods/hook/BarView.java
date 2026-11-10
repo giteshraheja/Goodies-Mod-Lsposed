@@ -20,8 +20,8 @@ final class BarView extends View {
     BarView(Context c, boolean vertical) {
         super(c);
         this.vertical = vertical;
-        track.setColor(0x22FFFFFF);
-        fill.setColor(RecentsChip.GREEN);
+        track.setColor(PanelCards.track());
+        fill.setColor(dev.gitesh.sbmods.Ui.cur.ok);
     }
 
     /** pct is clamped to 0..100. The first value appears at once, later ones glide. */

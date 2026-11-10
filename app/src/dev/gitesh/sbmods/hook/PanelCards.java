@@ -31,6 +31,7 @@ import java.util.function.IntConsumer;
 import java.util.function.IntUnaryOperator;
 
 import dev.gitesh.sbmods.PanelLayout;
+import dev.gitesh.sbmods.Ui;
 
 /**
  * The cards of the Performance panel. A card builds its own view, and updates it on every refresh while the panel shows.
@@ -40,7 +41,20 @@ import dev.gitesh.sbmods.PanelLayout;
 final class PanelCards {
     private PanelCards() {}
 
-    static final int WHITE = Color.WHITE, DIM = 0x99FFFFFF;
+    /** Text colours of the current theme (see Ui.cur): main text and the dimmer secondary text. Set by theme() when the panel opens or the day / night setting changes. */
+    static int WHITE = Ui.cur.tx, DIM = Ui.cur.tx2;
+
+    /** Takes the system's day / night setting from the context; the panel then builds its views with these colours. */
+    static void theme(Context c) { Ui.useTheme(c); retheme(); }
+
+    static void retheme() { WHITE = Ui.cur.tx; DIM = Ui.cur.tx2; MODE_COLORS = modeColors(); }
+
+    /** The fill of a control track / flat pill sitting on a tile. */
+    static int track() { return Ui.cur.night ? 0x22FFFFFF : 0x1A12161C; }
+
+    /** Text on an accent fill: the on-accent colour, and its softer second line. */
+    static int onAcc() { return Ui.cur.onAcc; }
+    static int onAccDim() { return (Ui.cur.onAcc & 0x00FFFFFF) | 0xCC000000; }
 
     abstract static class Card {
         final String id, title;
@@ -149,7 +163,8 @@ final class PanelCards {
     }
 
     /** Mode colours: Full green, Balanced cyan, Cool soft blue, Saver amber (the panel header and the selected segment use them). */
-    static final int[] MODE_COLORS = {RecentsChip.GREEN, RecentsChip.CYAN, 0xFF9DB4FF, RecentsChip.AMBER};
+    static int[] MODE_COLORS = modeColors();
+    private static int[] modeColors() { return new int[]{Ui.cur.ok, Ui.cur.acc, Ui.cur.night ? 0xFF9DB4FF : 0xFF3F5FD0, Ui.cur.warn}; }
 
     /** A click handler that can never throw into the launcher. */
     static View.OnClickListener safe(Runnable r) {
@@ -172,14 +187,14 @@ final class PanelCards {
     static LinearLayout seg(Activity a, CharSequence[] labels, int sel, IntUnaryOperator selColor, IntConsumer pick) {
         LinearLayout seg = new LinearLayout(a);
         GradientDrawable sb = new GradientDrawable();
-        sb.setColor(0x22FFFFFF);
+        sb.setColor(track());
         sb.setCornerRadius(dp(a, 18));
         seg.setBackground(sb);
         seg.setPadding(dp(a, 3), dp(a, 3), dp(a, 3), dp(a, 3));
         for (int i = 0; i < labels.length; i++) {
             final int idx = i;
             boolean on = i == sel;
-            TextView b = tv(a, labels[i], 14, on ? Color.BLACK : WHITE, on);
+            TextView b = tv(a, labels[i], 14, on ? onAcc() : WHITE, on);
             b.setGravity(Gravity.CENTER);
             b.setSingleLine(true);
             b.setMinHeight(dp(a, 34));   // 34 + the 3 dp track padding: a 40 dp target
@@ -192,12 +207,12 @@ final class PanelCards {
 
     /** A flat pill button. */
     static TextView button(Activity a, String label, Runnable click) {
-        TextView b = tv(a, label, 14, Color.WHITE, true);
+        TextView b = tv(a, label, 14, WHITE, true);
         b.setGravity(Gravity.CENTER);
         b.setPadding(dp(a, 12), 0, dp(a, 12), 0);
         b.setMinHeight(dp(a, 40));
         GradientDrawable g = new GradientDrawable();
-        g.setColor(0x22FFFFFF);
+        g.setColor(track());
         g.setCornerRadius(dp(a, 18));
         b.setBackground(g);
         b.setOnClickListener(safe(click));
@@ -207,10 +222,10 @@ final class PanelCards {
     /** A toggle pill: filled cyan with black text when on, the usual translucent pill when off. */
     static void pillStyle(TextView t, boolean on) {
         GradientDrawable g = new GradientDrawable();
-        g.setColor(on ? RecentsChip.CYAN : 0x22FFFFFF);
+        g.setColor(on ? Ui.cur.acc : track());
         g.setCornerRadius(dp(t.getContext(), 18));
         t.setBackground(g);
-        t.setTextColor(on ? Color.BLACK : WHITE);
+        t.setTextColor(on ? onAcc() : WHITE);
     }
 
     static TextView pill(Activity a, String label, boolean on, Runnable click) {
@@ -234,7 +249,7 @@ final class PanelCards {
         try { if (PerfPanel.panel != null) PerfPanel.panel.dismiss(); } catch (Throwable ignored) {}
     }
 
-    static int loadColor(int pct) { return pct >= 85 ? RecentsChip.RED : pct >= 60 ? RecentsChip.AMBER : RecentsChip.GREEN; }
+    static int loadColor(int pct) { return pct >= 85 ? Ui.cur.err : pct >= 60 ? Ui.cur.warn : Ui.cur.ok; }
 
     /** "34% · 1.9 GHz · max 2.4 GHz": the "max" part turns amber when something holds the speed below the hardware maximum. */
     static CharSequence rateText(String first, String now, int cap, int hw, boolean cpu) {
@@ -245,7 +260,7 @@ final class PanelCards {
             int s2 = t.length();
             boolean held = cap < hw * 0.97f;
             t.append("max ").append(cpu ? Perf.ghz(cap) : cap + " MHz");
-            if (held) t.setSpan(new ForegroundColorSpan(RecentsChip.AMBER), s2, t.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            if (held) t.setSpan(new ForegroundColorSpan(Ui.cur.warn), s2, t.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
         return t;
     }
@@ -255,7 +270,7 @@ final class PanelCards {
         int cur = RecentsChip.effPct(a, which, Global.gint(a, "sbmods_" + which + "_pct", 0), Global.gint(a, "sbmods_cool", 0) == 1);   // what is really in force
         int sel = -1;
         for (int i = 0; i < RecentsChip.PCTS.length; i++) if (RecentsChip.PCTS[i] == cur || (i == 0 && cur == 0)) sel = i;
-        return seg(a, RecentsChip.PCT_NAMES, sel, i -> i == 0 ? RecentsChip.GREEN : RecentsChip.CYAN, i -> {
+        return seg(a, RecentsChip.PCT_NAMES, sel, i -> i == 0 ? Ui.cur.ok : Ui.cur.acc, i -> {
             int pct = RecentsChip.PCTS[i];
             if (pct > 0) Global.gset(a, "sbmods_" + which + "_pick", String.valueOf(pct));
             boolean cooling = Global.gint(a, "sbmods_cool", 0) == 1;
@@ -347,7 +362,7 @@ final class PanelCards {
             int m = currentMode(a);
             TextView v = valueView(a);
             if (m >= 0) v.setText("");   // the panel's header already names the mode
-            else { v.setText(Global.gint(a, "sbmods_cool", 0) == 1 ? "Cool-down" : "Custom"); v.setTextColor(RecentsChip.AMBER); }
+            else { v.setText(Global.gint(a, "sbmods_cool", 0) == 1 ? "Cool-down" : "Custom"); v.setTextColor(Ui.cur.warn); }
             col.addView(seg(a, PanelMath.MODE_NAMES, m, i -> MODE_COLORS[i], i -> applyMode(a, i)));
             return col;
         }
@@ -549,8 +564,8 @@ final class PanelCards {
     private static View tileText(Activity a, Card k, boolean on, String state) {
         LinearLayout col = column(a);
         col.setGravity(Gravity.CENTER_VERTICAL);
-        col.addView(tvm(a, k.title, 14, on ? Color.BLACK : WHITE));
-        col.addView(oneLine(tv(a, state, 12, on ? 0xCC000000 : DIM, false)));
+        col.addView(tvm(a, k.title, 14, on ? onAcc() : WHITE));
+        col.addView(oneLine(tv(a, state, 12, on ? onAccDim() : DIM, false)));
         return col;
     }
 
@@ -609,7 +624,7 @@ final class PanelCards {
             col.addView(offT, lp(-2, -2, 0, dp(a, 1), 0, 0));
             verdict = tv(a, "", 13, WHITE, true);
             col.addView(verdict, lp(-2, -2, 0, dp(a, 1), 0, 0));
-            err = tv(a, "No answer from the helper – turn it on in StatusBar Mods › Overview.", 13, RecentsChip.AMBER, false);
+            err = tv(a, "No answer from the helper – turn it on in StatusBar Mods › Overview.", 13, Ui.cur.warn, false);
             err.setVisibility(View.GONE);
             col.addView(err, lp(-2, -2, 0, dp(a, 2), 0, 0));
             col.addView(button(a, "Battery usage ›", () -> openScreen(a, "battery",
@@ -642,7 +657,7 @@ final class PanelCards {
             int v = PanelMath.standbyVerdict(PanelMath.screenOffRate(b));
             verdict.setVisibility(v < 0 ? View.GONE : View.VISIBLE);
             verdict.setText(v == 0 ? "Standby drain is normal" : v == 1 ? "Standby drain is a bit high" : "Standby drain is high – something keeps the phone awake");
-            verdict.setTextColor(v == 0 ? RecentsChip.GREEN : v == 1 ? RecentsChip.AMBER : RecentsChip.RED);
+            verdict.setTextColor(v == 0 ? Ui.cur.ok : v == 1 ? Ui.cur.warn : Ui.cur.err);
         }
         @Override String help(Activity a) { return "Since the last full charge. Power draw now is shown at the top of the panel."; }
     }
@@ -679,7 +694,7 @@ final class PanelCards {
             left.addView(line);
             row.addView(left, lp(0, -2, 0, 0, dp(a, 10), 0, 1));
             final boolean vk = "vulkan".equals(Global.gstr(a, "sbmods_gfx"));
-            row.addView(seg(a, new CharSequence[]{"Normal", "Vulkan"}, vk ? 1 : 0, i -> i == 0 ? RecentsChip.GREEN : RecentsChip.CYAN, i -> {
+            row.addView(seg(a, new CharSequence[]{"Normal", "Vulkan"}, vk ? 1 : 0, i -> i == 0 ? Ui.cur.ok : Ui.cur.acc, i -> {
                 if ((i == 1) == vk) return;
                 used(a, "graphics");
                 PanelCmd.post(a, i == 1 ? "gfx:vulkan" : "gfx:opengl", null);
@@ -705,7 +720,7 @@ final class PanelCards {
             line.setText(how.equals("vulkan") ? askedName + " is drawing with Vulkan right now"
                     : how.equals("opengl") ? askedName + " is drawing the normal way right now"
                     : how.equals("unknown") ? askedName + ": can't tell (it is asleep)" : "Checking " + askedName + "…");
-            line.setTextColor(how.equals("vulkan") ? RecentsChip.CYAN : how.equals("opengl") ? WHITE : DIM);
+            line.setTextColor(how.equals("vulkan") ? Ui.cur.acc : how.equals("opengl") ? WHITE : DIM);
         }
         @Override String sig(Activity a) { return String.valueOf(Global.gstr(a, "sbmods_gfx")); }
     }
@@ -779,9 +794,9 @@ final class PanelCards {
             RecentsChip.Mem m = RecentsChip.readMem();
             int ram = m.totalMb > 0 ? (int) Math.round((m.totalMb - m.availMb) * 100.0 / m.totalMb) : 0;
             ramT.setText("Memory " + ram + "%");
-            ramB.set(ram, ram >= 90 ? RecentsChip.RED : ram >= 80 ? RecentsChip.AMBER : RecentsChip.GREEN);
+            ramB.set(ram, ram >= 90 ? Ui.cur.err : ram >= 80 ? Ui.cur.warn : Ui.cur.ok);
             swapT.setText("Swap " + m.swapPct + "%");
-            swapB.set(m.swapPct, m.swapPct >= 90 ? RecentsChip.RED : m.swapPct >= 60 ? RecentsChip.AMBER : RecentsChip.GREEN);
+            swapB.set(m.swapPct, m.swapPct >= 90 ? Ui.cur.err : m.swapPct >= 60 ? Ui.cur.warn : Ui.cur.ok);
         }
     }
 
@@ -814,7 +829,7 @@ final class PanelCards {
                 if (shownRaw == null) {
                     boolean late = sentAt > 0 && now - sentAt > 12000;
                     status.setText(late ? "No answer from the helper – turn it on in StatusBar Mods › Overview." : "Looking…");
-                    status.setTextColor(late ? RecentsChip.AMBER : DIM);
+                    status.setTextColor(late ? Ui.cur.warn : DIM);
                 }
                 return;
             }
@@ -857,7 +872,7 @@ final class PanelCards {
             boolean protectedApp = pkg.equals(Entry.LAUNCHER) || pkg.equals("com.android.systemui") || pkg.equals(a.getPackageName())
                     || pkg.startsWith("com.google.android.gms") || pkg.startsWith("com.android.providers.") || pkg.equals("android") || pkg.equals("dev.gitesh.sbmods") || pkg.equals("com.termux");   // the helper refuses these too
             if (!protectedApp) {
-                TextView stop = tv(a, "Stop", 14, RecentsChip.CYAN, true);
+                TextView stop = tv(a, "Stop", 14, Ui.cur.acc, true);
                 stop.setPadding(dp(a, 14), dp(a, 8), 0, dp(a, 8));
                 stop.setOnClickListener(safe(() -> {
                     used(a, "topapps");

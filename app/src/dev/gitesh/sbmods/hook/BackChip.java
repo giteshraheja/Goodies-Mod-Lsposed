@@ -31,6 +31,7 @@ import java.util.List;
 
 import dev.gitesh.sbmods.Config;
 import dev.gitesh.sbmods.ZoneLayout;
+import dev.gitesh.sbmods.Ui;
 
 /**
  * "◀ App" on the left of the status bar: shows the previously used app and switches back to it
@@ -51,7 +52,7 @@ final class BackChip {
     private String lastPkg, iconPkg;
     private android.graphics.drawable.Drawable iconDraw, iconDrawDark;
     private android.graphics.drawable.Drawable shownIcon;
-    private int tint = 0xFF3A3A3E;
+    private int tint = Ui.CHIP_TINT;
     private boolean faded;                   // dulled to plain text after the chosen time
     private String shownKey;                 // what the chip currently points at (restarts the fade timer on change)
     private android.animation.ValueAnimator fadeAnim;
@@ -268,7 +269,7 @@ final class BackChip {
         if (pill == null) return;
         pill.setColor(fill);
         float d = chip != null ? chip.getResources().getDisplayMetrics().density : 2.5f;
-        int line = (fill >>> 24) == 0 ? 0 : ((chip != null ? chip.getCurrentTextColor() : 0xFFFFFFFF) & 0x00FFFFFF) | 0xB3000000;
+        int line = (fill >>> 24) == 0 ? 0 : ((chip != null ? chip.getCurrentTextColor() : Ui.CHIP_FG) & 0x00FFFFFF) | 0xB3000000;
         pill.setStroke(Math.max(2, Math.round(1.2f * d)), line);
     }
 
@@ -296,7 +297,7 @@ final class BackChip {
         chip.setPadding(Math.round(7 * d), Math.round(1 * d), Math.round(9 * d), Math.round(1 * d));
         pill = new android.graphics.drawable.GradientDrawable();
         pill.setCornerRadius(100 * d);
-        setPill(0x33FFFFFF);
+        setPill(Ui.CHIP_PILL);
         chip.setBackground(pill);
         // The chip is an overlay next to Samsung's left row, not a child of it: Samsung's notification /
         // live-activity logic looks at its own row's children, and an extra child there made the live
@@ -376,7 +377,7 @@ final class BackChip {
         syncSliver();
         syncMerge();
         boolean capsule = (owner.config().backStyle == 1 || mergeWanted || compactWanted) && !faded;
-        int color = capsule ? 0xFFFFFFFF : clock.getCurrentTextColor();
+        int color = capsule ? Ui.CHIP_FG : clock.getCurrentTextColor();
         if (faded) color = (color & 0x00FFFFFF) | 0xB0000000;     // dimmed text, no pill
         if (!sliverApplied && chip.getCurrentTextColor() != color) chip.setTextColor(color);
         if (pill != null && !capsule && !faded && pillFor != color) {   // translucent pill in the text colour: reads as a button
@@ -567,13 +568,13 @@ final class BackChip {
                 ic2.clipPath(clip);
                 ic.setBounds(0, 0, px, px);
                 ic.draw(ic2);
-                iconDraw = chevIcon(ctx, icon, chev, px, dk, 0xFFFFFFFF);       // white chevron (on a coloured / dark background)
-                iconDrawDark = chevIcon(ctx, icon, chev, px, dk, 0xFF1B1B1F);   // dark chevron (on a light background)
+                iconDraw = chevIcon(ctx, icon, chev, px, dk, Ui.CHIP_FG);       // white chevron (on a coloured / dark background)
+                iconDrawDark = chevIcon(ctx, icon, chev, px, dk, Ui.CHIP_INK);   // dark chevron (on a light background)
                 tint = tintOf(icon);
                 iconPkg = iconKey;
             } catch (Throwable t) {
                 iconDraw = null;
-                tint = 0xFF3A3A3E;
+                tint = Ui.CHIP_TINT;
                 iconPkg = iconKey;
             }
         }
@@ -630,7 +631,7 @@ final class BackChip {
                 wsum += w;
             }
         }
-        if (wsum <= 0) return 0xFF3A3A3E;
+        if (wsum <= 0) return Ui.CHIP_TINT;
         android.graphics.Color.colorToHSV(android.graphics.Color.rgb((int) (r / wsum), (int) (g / wsum), (int) (b / wsum)), hsv);
         hsv[1] = Math.max(hsv[1], hsv[1] < 0.12f ? hsv[1] : 0.55f);
         hsv[2] = Math.min(Math.max(hsv[2], 0.30f), 0.55f);

@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.function.Consumer;
 
 import dev.gitesh.sbmods.PanelLayout;
+import dev.gitesh.sbmods.Ui;
 
 import static dev.gitesh.sbmods.hook.PanelCards.dp;
 import static dev.gitesh.sbmods.hook.PanelCards.tv;
@@ -61,21 +62,21 @@ final class PerfPanel {
     }
 
     private static void show(Activity a) {
+        PanelCards.theme(a);   // the system's day / night setting decides the colours
+        final Ui.Pal pal = Ui.cur;
         LinearLayout col = new LinearLayout(a);
         col.setOrientation(LinearLayout.VERTICAL);
         col.setPadding(dp(a, 14), dp(a, 10), dp(a, 14), dp(a, 12));
-        GradientDrawable bg = new GradientDrawable();
-        bg.setCornerRadius(dp(a, 28));
-        bg.setStroke(1, 0x22FFFFFF);
+        final Ui.Glass bg = Ui.panelGlass(a, pal, pal.sheet, pal.sheetBd, Ui.R_SHEET);
         col.setBackground(bg);
 
         // the usual bottom-sheet handle (only a cue, no gesture)
         View grab = new View(a);
         GradientDrawable gb = new GradientDrawable();
-        gb.setColor(0x55FFFFFF);
-        gb.setCornerRadius(dp(a, 2));
+        gb.setColor((pal.tx2 & 0x00FFFFFF) | 0x99000000);
+        gb.setCornerRadius(dp(a, 3));
         grab.setBackground(gb);
-        LinearLayout.LayoutParams gp = new LinearLayout.LayoutParams(dp(a, 36), dp(a, 4));
+        LinearLayout.LayoutParams gp = new LinearLayout.LayoutParams(dp(a, 40), dp(a, 5));
         gp.gravity = Gravity.CENTER_HORIZONTAL;
         gp.bottomMargin = dp(a, 8);
         col.addView(grab, gp);
@@ -83,8 +84,8 @@ final class PerfPanel {
         // header: title left; battery temperature, power draw and (when a limit is on) its end on the right
         LinearLayout head = new LinearLayout(a);
         head.setGravity(Gravity.CENTER_VERTICAL);
-        head.addView(PanelCards.tvm(a, "Performance", 20, Color.WHITE), new LinearLayout.LayoutParams(-2, -2));   // the title never wraps: the facts on the right take what is left
-        pHead = tv(a, "", 13, 0xCCFFFFFF, false);
+        head.addView(PanelCards.tvm(a, "Performance", Ui.T_PANEL, pal.tx), new LinearLayout.LayoutParams(-2, -2));   // the title never wraps: the facts on the right take what is left
+        pHead = tv(a, "", 13, pal.tx2, false);
         pHead.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
         pHead.setMaxLines(1);   // one line always: a long line (Cool-down, hours left) shrinks a little instead of wrapping
         pHead.setAutoSizeTextTypeUniformWithConfiguration(10, 13, 1, android.util.TypedValue.COMPLEX_UNIT_SP);
@@ -102,7 +103,7 @@ final class PerfPanel {
         col.addView(pSwitch);
         buildSwitch(a);
 
-        pWarn = tv(a, "The limit isn't being applied: the root helper seems to be off. Turn it on in StatusBar Mods › Overview.", 13, RecentsChip.RED, false);
+        pWarn = tv(a, "The limit isn't being applied: the root helper seems to be off. Turn it on in StatusBar Mods › System.", 13, pal.err, false);
         pWarn.setPadding(0, dp(a, 6), 0, 0);
         pWarn.setVisibility(View.GONE);
         col.addView(pWarn);
@@ -139,6 +140,7 @@ final class PerfPanel {
         FrameLayout wrap = new FrameLayout(a);
         wrap.setPadding(dp(a, 12), 0, dp(a, 12), dp(a, 12));
         wrap.addView(col);
+        final FrameLayout wrapView = wrap;
         dl.setContentView(wrap);
 
         // frosted glass: blur the scene behind when the system allows it (it does not while power saving), and fall back live
@@ -155,7 +157,18 @@ final class PerfPanel {
             applyBlur(a, w, bg, on);
             try { if (wm != null) wm.addCrossWindowBlurEnabledListener(a.getMainExecutor(), blurWatch); } catch (Throwable t) { Log.w("blur listener: " + t); }
         }
+        // day <-> night while the panel is open: build it again in the other colours (event-driven, nothing runs otherwise)
+        final android.content.ComponentCallbacks themeWatch = new android.content.ComponentCallbacks() {
+            @Override public void onConfigurationChanged(android.content.res.Configuration n) {
+                boolean night = (n.uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES;
+                if (panel != dl || night == Ui.cur.night) return;
+                RecentsChip.main.post(() -> { try { if (panel == dl) show(a); } catch (Throwable t) { Log.w("retheme: " + t); } });
+            }
+            @Override public void onLowMemory() {}
+        };
+        try { a.registerComponentCallbacks(themeWatch); } catch (Throwable t) { Log.w("theme watch: " + t); }
         dl.setOnDismissListener(x -> {
+            try { a.unregisterComponentCallbacks(themeWatch); } catch (Throwable ignored) {}
             try { if (wm != null) wm.removeCrossWindowBlurEnabledListener(blurWatch); } catch (Throwable ignored) {}
             if (panel != dl) return;   // an older panel replaced by a new one: the new one owns everything below
             panel = null;
@@ -172,13 +185,13 @@ final class PerfPanel {
         RecentsChip.main.postDelayed(ticker, 1000);
     }
 
-    private static void applyBlur(Context a, Window w, GradientDrawable bg, boolean on) {
-        bg.setColor(on ? 0x99181A1E : 0xF2202326);   // glass when blurred, today's solid look otherwise
+    private static void applyBlur(Context a, Window w, Ui.Glass bg, boolean on) {
+        bg.setFill(on ? Ui.cur.sheet : Ui.cur.sheetSolid);   // glass when blurred, a near-solid sheet otherwise
         WindowManager.LayoutParams lp = w.getAttributes();
         if (on) { w.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND); lp.setBlurBehindRadius(dp(a, 60)); }
         else { w.clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND); lp.setBlurBehindRadius(0); }
         w.setAttributes(lp);
-        w.setDimAmount(on ? 0.25f : 0.45f);
+        w.setDimAmount(Ui.cur.night ? (on ? 0.25f : 0.45f) : (on ? 0.10f : 0.30f));
     }
 
     /** One refresh a second while the panel shows (the Overview tick keeps its slower rhythm). */
@@ -200,7 +213,7 @@ final class PerfPanel {
 
     private static void buildSwitch(Activity a) {
         pSwitch.removeAllViews();
-        pSwitch.addView(PanelCards.seg(a, PanelLayout.PAGE_NAMES, page, i -> RecentsChip.CYAN, i -> {
+        pSwitch.addView(PanelCards.seg(a, PanelLayout.PAGE_NAMES, page, i -> Ui.cur.acc, i -> {
             if (i == page) return;
             page = i;
             allOrder = null; helpOpen = null;   // the All page is rebuilt with the newest order
@@ -237,11 +250,8 @@ final class PerfPanel {
         LinearLayout t = new LinearLayout(a);
         t.setOrientation(LinearLayout.VERTICAL);
         t.setPadding(dp(a, 12), dp(a, 10), dp(a, 12), dp(a, 10));
-        GradientDrawable g = new GradientDrawable();
-        g.setColor(on ? RecentsChip.CYAN : 0x14FFFFFF);
-        g.setCornerRadius(dp(a, 20));
-        g.setStroke(1, 0x1FFFFFFF);
-        t.setBackground(g);
+        t.setBackground(on ? Ui.round(Ui.cur.acc, dp(a, Ui.R_TILE), 1, Ui.cur.acc)
+                : Ui.panelGlass(a, Ui.cur, Ui.cur.tile, Ui.cur.tileBd, Ui.R_TILE));
         if (k.tapTile()) {
             t.setMinimumHeight(dp(a, 64));
             t.setGravity(Gravity.CENTER_VERTICAL);
@@ -264,7 +274,7 @@ final class PerfPanel {
         t.addView(content, new LinearLayout.LayoutParams(-1, -2));
         TextView hv = null;
         if (h != null) {
-            hv = tv(a, h, 12, on ? 0xCC000000 : 0x99FFFFFF, false);
+            hv = tv(a, h, 12, on ? PanelCards.onAccDim() : Ui.cur.tx2, false);
             hv.setPadding(0, dp(a, 8), 0, 0);
             hv.setVisibility(k.id.equals(helpOpen) ? View.VISIBLE : View.GONE);
             t.addView(hv, new LinearLayout.LayoutParams(-1, -2));
@@ -306,13 +316,13 @@ final class PerfPanel {
                     empty.setOrientation(LinearLayout.VERTICAL);
                     empty.setGravity(Gravity.CENTER_HORIZONTAL);
                     empty.setPadding(dp(a, 16), dp(a, 28), dp(a, 16), dp(a, 28));
-                    TextView l1 = tv(a, "Nothing here yet", 15, Color.WHITE, false);
-                    TextView l2 = tv(a, "Whatever you change on the other pages shows up here, newest first.", 13, 0x99FFFFFF, false);
+                    TextView l1 = tv(a, "Nothing here yet", 15, Ui.cur.tx, false);
+                    TextView l2 = tv(a, "Whatever you change on the other pages shows up here, newest first.", 13, Ui.cur.tx2, false);
                     l2.setGravity(Gravity.CENTER);
                     empty.addView(l1);
                     empty.addView(l2, PanelCards.lp(-2, -2, 0, dp(a, 6), 0, 0));
                     pBox.addView(empty, new LinearLayout.LayoutParams(-1, -2));
-                } else pBox.addView(tv(a, "No cards on this page. Turn some on in StatusBar Mods.", 14, 0x99FFFFFF, false), new LinearLayout.LayoutParams(-1, -2));
+                } else pBox.addView(tv(a, "No cards on this page. Turn some on in StatusBar Mods.", 14, Ui.cur.tx2, false), new LinearLayout.LayoutParams(-1, -2));
             }
             pScroll.post(() -> pScroll.scrollTo(0, y));
         } finally { rebuilding = false; }
@@ -340,7 +350,7 @@ final class PerfPanel {
     private static void header(Activity a) {
         SpannableStringBuilder t = new SpannableStringBuilder();
         int m = PanelCards.currentMode(a);   // the mode's colour and name lead the line (amber when it is your own mix or cool-down)
-        int mc = m >= 0 ? PanelCards.MODE_COLORS[m] : RecentsChip.AMBER;
+        int mc = m >= 0 ? PanelCards.MODE_COLORS[m] : Ui.cur.warn;
         t.append("\u25cf");
         t.setSpan(new ForegroundColorSpan(mc), 0, t.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         t.append(" ").append(m >= 0 ? PanelMath.MODE_NAMES[m] : Global.gint(a, "sbmods_cool", 0) == 1 ? "Cool-down" : "Custom").append(" · ").append(PanelCards.Power.tempC + "°C");
@@ -353,7 +363,7 @@ final class PerfPanel {
             t.append(" · ");
             int st = t.length();
             t.append(PanelMath.duration(min));   // just the time left, in the limit colour: the word "limit" pushed the line past 384dp
-            t.setSpan(new ForegroundColorSpan(RecentsChip.CYAN), st, t.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            t.setSpan(new ForegroundColorSpan(Ui.cur.acc), st, t.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
         pHead.setText(t);
     }

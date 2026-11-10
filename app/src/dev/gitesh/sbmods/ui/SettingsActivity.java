@@ -39,7 +39,6 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
-import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -55,6 +54,7 @@ import dev.gitesh.sbmods.ClockFormat;
 import dev.gitesh.sbmods.Config;
 import dev.gitesh.sbmods.Helper;
 import dev.gitesh.sbmods.PanelLayout;
+import dev.gitesh.sbmods.Ui;
 import dev.gitesh.sbmods.ZoneLayout;
 import dev.gitesh.sbmods.items.TempItem;
 
@@ -118,6 +118,7 @@ public final class SettingsActivity extends Activity {
 
     // ------------------------------------------------------------------ state
 
+    private Ui.Pal pal;
     private int cBg, cCard, cText, cOnAccent, cSub, cAccent, cAccentSoft, cDivider, cOk, cErr, cWarn, cField;
 
     private SharedPreferences prefs;
@@ -172,22 +173,10 @@ public final class SettingsActivity extends Activity {
         getWindow().setNavigationBarContrastEnforced(false);
         boolean night = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
                 == Configuration.UI_MODE_NIGHT_YES;
-        cBg = night ? 0xFF0F1012 : 0xFFF2F3F5;
-        cCard = night ? 0xFF1C1E22 : 0xFFFFFFFF;
-        cText = night ? 0xFFECEDEF : 0xFF16181B;
-        cSub = night ? 0xFF9BA1A9 : 0xFF656B74;
-        cAccent = night ? 0xFF7AA5FF : 0xFF2F6BEB;
-        TypedValue tv = new TypedValue();   // the phone's own accent colour, when the theme has one
-        if (getTheme().resolveAttribute(android.R.attr.colorAccent, tv, true)
-                && tv.type >= TypedValue.TYPE_FIRST_COLOR_INT && tv.type <= TypedValue.TYPE_LAST_COLOR_INT)
-            cAccent = tv.data | 0xFF000000;
-        cAccentSoft = (cAccent & 0x00FFFFFF) | (night ? 0x33000000 : 0x1A000000);
-        cOnAccent = Color.luminance(cAccent) > 0.5f ? 0xFF101214 : Color.WHITE;
-        cDivider = night ? 0xFF2B2E34 : 0xFFE6E8EB;
-        cOk = night ? 0xFF4CC38A : 0xFF1E9E5A;
-        cErr = night ? 0xFFFF7070 : 0xFFD33A3A;
-        cWarn = night ? 0xFFFFC266 : 0xFFC77700;
-        cField = night ? 0xFF26292E : 0xFFEEF0F3;
+        pal = Ui.pal(this);
+        cBg = pal.bg; cCard = pal.card; cText = pal.tx; cSub = pal.tx2;
+        cAccent = pal.acc; cAccentSoft = pal.accSoft; cOnAccent = pal.onAcc;
+        cDivider = pal.line; cOk = pal.ok; cErr = pal.err; cWarn = pal.warn; cField = pal.card2;
 
         int light = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
                 | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
@@ -253,13 +242,13 @@ public final class SettingsActivity extends Activity {
         row.setPadding(dp(20), dp(16), dp(16), dp(6));
         TextView title = new TextView(this);
         title.setText("StatusBar Mods");
-        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 24);
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_TITLE);
         title.setTextColor(cText);
-        title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        title.setTypeface(Ui.font(500));
         row.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
         statusPill = new TextView(this);
-        statusPill.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-        statusPill.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        statusPill.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_VALUE);
+        statusPill.setTypeface(Ui.font(500));
         statusPill.setPadding(dp(12), dp(7), dp(12), dp(7));
         statusPill.setOnClickListener(v -> statusDialog());
         row.addView(statusPill);
@@ -272,7 +261,7 @@ public final class SettingsActivity extends Activity {
         previewHolder.removeAllViews();
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setBackground(round(cCard, dp(24), 0, 0));
+        card.setBackground(round(cCard, dp(Ui.R_CARD), 0, 0));
         card.setPadding(dp(12), dp(10), dp(12), dp(8));
         float d = getResources().getDisplayMetrics().density;
         android.view.WindowMetrics wm = getWindowManager().getMaximumWindowMetrics();
@@ -318,11 +307,11 @@ public final class SettingsActivity extends Activity {
             TextView t = new TextView(this);
             t.setText(TABS[i]);
             t.setGravity(Gravity.CENTER);
-            t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+            t.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_SECTION);
             t.setSingleLine(true);
-            t.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            t.setTypeface(Ui.font(500));
             t.setTextColor(on ? cOnAccent : cText);
-            t.setBackground(round(on ? cAccent : cCard, dp(20), 0, 0));
+            t.setBackground(round(on ? cAccent : cCard, dp(Ui.R_SEG), 0, 0));
             t.setPadding(dp(18), 0, dp(18), 0);
             t.setOnClickListener(v -> switchTab(at));
             if (on) tabScroll.post(() -> tabScroll.scrollTo(Math.max(0, t.getLeft() - dp(16)), 0));   // bring the chosen tab into view
@@ -375,9 +364,9 @@ public final class SettingsActivity extends Activity {
             back.setText("Put everything back in Samsung's place");
             back.setGravity(Gravity.CENTER);
             back.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
-            back.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            back.setTypeface(Ui.font(500));
             back.setTextColor(cOnAccent);
-            back.setBackground(round(cAccent, dp(24), 0, 0));
+            back.setBackground(round(cAccent, dp(Ui.R_BUTTON), 0, 0));
             back.setOnClickListener(v -> {
                 cfg.plan = new ZoneLayout.Plan();
                 apply();
@@ -668,11 +657,11 @@ public final class SettingsActivity extends Activity {
         e.setTypeface(Typeface.MONOSPACE);
         box.addView(e, new LinearLayout.LayoutParams(-1, -2));
         TextView err = new TextView(this);
-        err.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        err.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_CAPTION);
         err.setPadding(0, dp(6), 0, 0);
         box.addView(err);
         TextView help = new TextView(this);
-        help.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        help.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_CAPTION);
         help.setTextColor(cSub);
         help.setTypeface(Typeface.MONOSPACE);
         help.setPadding(0, dp(8), 0, 0);
@@ -921,7 +910,7 @@ public final class SettingsActivity extends Activity {
         r.addView(twoLines(GESTURE_TITLES[slot % 3], null), new LinearLayout.LayoutParams(0, -2, 1));
         TextView val = new TextView(this);
         val.setText(actionName(slot) + "  ›");
-        val.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        val.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_SECTION);
         val.setTextColor(a == Config.ACT_NONE ? cSub : cAccent);
         val.setMaxWidth(dp(190));
         val.setGravity(Gravity.END);
@@ -929,7 +918,7 @@ public final class SettingsActivity extends Activity {
         if (a != Config.ACT_NONE) {
             TextView tryIt = textButton("Test", v -> send(new Intent(Config.ACTION_TEST)
                     .putExtra("act", cfg.action(slot)).putExtra("app", cfg.app(slot))));
-            tryIt.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+            tryIt.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_VALUE);
             r.addView(tryIt);
         }
     }
@@ -947,8 +936,8 @@ public final class SettingsActivity extends Activity {
         for (Object[] g : ACT_GROUPS) {
             TextView t = new TextView(this);
             t.setText((String) g[0]);
-            t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-            t.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            t.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_VALUE);
+            t.setTypeface(Ui.font(500));
             t.setTextColor(cSub);
             t.setPadding(dp(24), dp(14), dp(24), dp(4));
             list.addView(t);
@@ -979,14 +968,14 @@ public final class SettingsActivity extends Activity {
         r.setOnClickListener(l);
         TextView t = new TextView(this);
         t.setText(label);
-        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_BODY);
         t.setTextColor(selected ? cAccent : cText);
         r.addView(t, new LinearLayout.LayoutParams(0, -2, 1));
         if (selected) {
             TextView ck = new TextView(this);
             ck.setText("✓");
             ck.setTextColor(cAccent);
-            ck.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+            ck.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_BODY);
             r.addView(ck);
         }
         cur.addView(r, new LinearLayout.LayoutParams(-1, -2));
@@ -1025,7 +1014,7 @@ public final class SettingsActivity extends Activity {
             r.addView(icon, new LinearLayout.LayoutParams(dp(32), dp(32)));
             TextView t = new TextView(this);
             t.setText((String) a[0]);
-            t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+            t.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_BODY);
             t.setTextColor(cText);
             t.setPadding(dp(14), 0, 0, 0);
             r.addView(t);
@@ -1110,8 +1099,8 @@ public final class SettingsActivity extends Activity {
         for (int page = PanelLayout.PAGE_SPEED; page < PanelLayout.PAGE_NAMES.length; page++) {
             TextView hd = new TextView(this);
             hd.setText(PanelLayout.PAGE_NAMES[page]);
-            hd.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-            hd.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            hd.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_VALUE);
+            hd.setTypeface(Ui.font(500));
             hd.setTextColor(cSub);
             hd.setPadding(dp(20), dp(14), dp(16), dp(2));
             cur.addView(hd);
@@ -1202,7 +1191,7 @@ public final class SettingsActivity extends Activity {
     /** One card of the Performance panel: its name, move up / down inside its page, and a shown / hidden switch. */
     private void panelRow(final List<String> all, final Set<String> hidden, final List<String> ids, final int i) {
         final String id = ids.get(i);
-        Switch sw = new Switch(this);
+        Ui.Switch sw = new Ui.Switch(this, pal);
         LinearLayout r = rowShell(v -> sw.toggle());
         r.setMinimumHeight(dp(56));
         r.setPadding(dp(16), dp(4), dp(12), dp(4));
@@ -1215,7 +1204,7 @@ public final class SettingsActivity extends Activity {
         sl.setMarginEnd(dp(8));
         r.addView(moveButton("\u25BC", i < ids.size() - 1 ? ids.get(i + 1) : null, all, hidden, id), sl);
         sw.setChecked(!hidden.contains(id));
-        sw.setOnCheckedChangeListener((b, v) -> {
+        sw.setOnChange(v -> {
             if (v) hidden.remove(id); else hidden.add(id);
             putGl(PanelLayout.SETTING, PanelLayout.write(all, hidden));
         });
@@ -1439,17 +1428,9 @@ public final class SettingsActivity extends Activity {
         return -1;
     }
 
-    private int dp(float v) {
-        return Math.round(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, getResources().getDisplayMetrics()));
-    }
+    private int dp(float v) { return Ui.dp(this, v); }
 
-    private GradientDrawable round(int fill, int radius, int stroke, int strokeColor) {
-        GradientDrawable g = new GradientDrawable();
-        g.setColor(fill);
-        g.setCornerRadius(radius);
-        if (stroke > 0) g.setStroke(stroke, strokeColor);
-        return g;
-    }
+    private GradientDrawable round(int fill, int radius, int stroke, int strokeColor) { return Ui.round(fill, radius, stroke, strokeColor); }
 
     private RippleDrawable ripple(int fill) {
         GradientDrawable content = fill == 0 ? null : round(fill, 0, 0, 0);
@@ -1479,8 +1460,8 @@ public final class SettingsActivity extends Activity {
         if (key == null && title != null) {
             TextView hd = new TextView(this);
             hd.setText(title);
-            hd.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-            hd.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            hd.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_VALUE);
+            hd.setTypeface(Ui.font(500));
             hd.setTextColor(cSub);
             hd.setPadding(dp(12), dp(16), dp(12), dp(6));
             page.addView(hd);
@@ -1489,7 +1470,7 @@ public final class SettingsActivity extends Activity {
         }
         LinearLayout c = new LinearLayout(this);
         c.setOrientation(LinearLayout.VERTICAL);
-        c.setBackground(round(cCard, dp(24), 0, 0));
+        c.setBackground(round(cCard, dp(Ui.R_CARD), 0, 0));
         c.setClipToOutline(true);
         page.addView(c, new LinearLayout.LayoutParams(-1, -2));
         if (key == null) { cur = c; return; }
@@ -1509,14 +1490,14 @@ public final class SettingsActivity extends Activity {
         col.setOrientation(LinearLayout.VERTICAL);
         TextView t = new TextView(this);
         t.setText(title);
-        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_BODY);
         t.setTextColor(cText);
-        t.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        t.setTypeface(Ui.font(500));
         col.addView(t);
         if (!open && summary != null && !summary.isEmpty()) {
             TextView sm = new TextView(this);
             sm.setText(summary);
-            sm.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+            sm.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_VALUE);
             sm.setTextColor(cSub);
             sm.setSingleLine(true);
             sm.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -1552,7 +1533,7 @@ public final class SettingsActivity extends Activity {
         if (help != null && groupOpen) {
             TextView t = new TextView(this);
             t.setText(help);
-            t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+            t.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_VALUE);
             t.setTextColor(cSub);
             t.setLineSpacing(0, 1.1f);
             t.setPadding(dp(12), dp(8), dp(12), dp(2));
@@ -1588,13 +1569,13 @@ public final class SettingsActivity extends Activity {
         col.setPadding(0, 0, dp(12), 0);
         TextView t = new TextView(this);
         t.setText(title);
-        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_BODY);
         t.setTextColor(cText);
         col.addView(t);
         if (sub != null) {
             TextView s = new TextView(this);
             s.setText(sub);
-            s.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+            s.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_VALUE);
             s.setTextColor(cSub);
             s.setPadding(0, dp(2), 0, 0);
             col.addView(s);
@@ -1608,7 +1589,7 @@ public final class SettingsActivity extends Activity {
         box.setPadding(dp(16), dp(14), dp(16), dp(14));
         TextView t = new TextView(this);
         t.setText(title);
-        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_BODY);
         t.setTextColor(cText);
         t.setPadding(0, 0, 0, dp(10));
         box.addView(t);
@@ -1617,11 +1598,12 @@ public final class SettingsActivity extends Activity {
     }
 
     private void switchRow(String title, String sub, boolean value, BoolSetter s) {
-        Switch sw = new Switch(this);
+        Ui.Switch sw = new Ui.Switch(this, pal);
         LinearLayout r = rowShell(v -> sw.toggle());
         r.addView(twoLines(title, sub), new LinearLayout.LayoutParams(0, -2, 1));
         sw.setChecked(value);
-        sw.setOnCheckedChangeListener((b, v) -> s.set(v));
+        sw.setContentDescription(title);
+        sw.setOnChange(v -> s.set(v));
         r.addView(sw);
     }
 
@@ -1638,7 +1620,7 @@ public final class SettingsActivity extends Activity {
         r.addView(twoLines(title, null), new LinearLayout.LayoutParams(0, -2, 1));
         TextView value = new TextView(this);
         value.setText(labels[sel] + "  ›");
-        value.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        value.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_SECTION);
         value.setTextColor(cAccent);
         value.setGravity(Gravity.END);
         value.setMaxWidth(dp(200));
@@ -1648,13 +1630,13 @@ public final class SettingsActivity extends Activity {
     private LinearLayout segmented(String[] labels, int selected, IntSetter s) {
         LinearLayout seg = new LinearLayout(this);
         seg.setPadding(dp(3), dp(3), dp(3), dp(3));
-        seg.setBackground(round(cField, dp(20), 0, 0));
+        seg.setBackground(round(cField, dp(Ui.R_SEG), 0, 0));
         for (int i = 0; i < labels.length; i++) {
             final int at = i;
             TextView b = new TextView(this);
             b.setText(labels[i]);
             b.setGravity(Gravity.CENTER);
-            b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+            b.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_SECTION);
             b.setSingleLine(true);
             boolean on = i == selected;
             b.setTypeface(on ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
@@ -1690,8 +1672,8 @@ public final class SettingsActivity extends Activity {
         TextView b = new TextView(this);
         b.setText(t);
         b.setTextColor(cAccent);
-        b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
-        b.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        b.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_SECTION);
+        b.setTypeface(Ui.font(500));
         b.setPadding(dp(12), dp(10), dp(12), dp(10));
         b.setBackground(new RippleDrawable(ColorStateList.valueOf(cAccentSoft), null, round(Color.WHITE, dp(18), 0, 0)));
         b.setOnClickListener(l);
@@ -1706,7 +1688,7 @@ public final class SettingsActivity extends Activity {
         e.setHintTextColor(cSub);
         e.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
         e.setPadding(dp(14), dp(10), dp(14), dp(10));
-        e.setBackground(round(cField, dp(12), 0, 0));
+        e.setBackground(round(cField, dp(Ui.R_FIELD), 0, 0));
         return e;
     }
 
@@ -1719,17 +1701,17 @@ public final class SettingsActivity extends Activity {
         top.setGravity(Gravity.CENTER_VERTICAL);
         TextView name = new TextView(this);
         name.setText(t);
-        name.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        name.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_BODY);
         name.setTextColor(cText);
         top.addView(name, new LinearLayout.LayoutParams(0, -2, 1));
         TextView val = new TextView(this);
-        val.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        val.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_SECTION);
         val.setTextColor(cAccent);
         val.setText(label.of(current));
         val.setPadding(0, 0, dp(8), 0);
         top.addView(val);
         TextView reset = textButton("Reset", v -> { s.set(def); apply(); refresh(); });
-        reset.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        reset.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_VALUE);
         reset.setPadding(dp(10), dp(6), dp(10), dp(6));
         reset.setVisibility(current == def ? View.INVISIBLE : View.VISIBLE);
         top.addView(reset);
