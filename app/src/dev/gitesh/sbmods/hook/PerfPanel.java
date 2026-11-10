@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.function.Consumer;
 
 import dev.gitesh.sbmods.PanelLayout;
+import dev.gitesh.sbmods.Config;
 import dev.gitesh.sbmods.Ui;
 
 import static dev.gitesh.sbmods.hook.PanelCards.dp;
@@ -92,6 +93,22 @@ final class PerfPanel {
         pHead.setFontFeatureSettings("tnum");
         pHead.setPadding(dp(a, 10), 0, 0, 0);
         head.addView(pHead, new LinearLayout.LayoutParams(0, -1, 1));   // as tall as the title, not its own text: a shrunk line can then grow back to 13sp
+        // gear: opens the settings app (same launch-intent route the tap actions use for "open an app")
+        FrameLayout gear = new FrameLayout(a);
+        android.widget.ImageView gi = Ui.icon(a, "gear", pal.tx2, 20);
+        ((FrameLayout.LayoutParams) gi.getLayoutParams()).gravity = Gravity.CENTER;
+        gear.addView(gi);
+        gear.setContentDescription("Open settings");
+        gear.setOnClickListener(PanelCards.safe(() -> {
+            android.content.Intent si = a.getPackageManager().getLaunchIntentForPackage(Config.PKG);
+            if (si == null) return;
+            si.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK | android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            a.startActivity(si);
+            if (panel != null) panel.dismiss();
+        }));
+        LinearLayout.LayoutParams glp = new LinearLayout.LayoutParams(dp(a, 40), dp(a, 40));
+        glp.setMarginEnd(dp(a, -10));
+        head.addView(gear, glp);
         col.addView(head);
 
         int saved = Global.gint(a, PanelLayout.TAB, PanelLayout.PAGE_SPEED);   // the page that was open last

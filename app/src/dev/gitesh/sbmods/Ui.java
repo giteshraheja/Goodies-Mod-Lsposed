@@ -308,6 +308,7 @@ public final class Ui {
         ICONS.put("screen", rr(6, 3, 12, 18, 3) + "|M10.5 18h3");
         ICONS.put("spark", "M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z");
         ICONS.put("apps", circ(7, 7, 2) + "|" + circ(17, 7, 2) + "|" + circ(7, 17, 2) + "|" + circ(17, 17, 2));
+        ICONS.put("gear", circ(12, 12, 3) + "|M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8");
         ICONS.put("help", circ(12, 12, 9) + "|M9.6 9.4a2.5 2.5 0 1 1 3.6 2.2c-.8.4-1.2 1-1.2 1.9M12 17v.01");
     }
 
