@@ -624,7 +624,7 @@ final class PanelCards {
             col.addView(offT, lp(-2, -2, 0, dp(a, 1), 0, 0));
             verdict = tv(a, "", 13, WHITE, true);
             col.addView(verdict, lp(-2, -2, 0, dp(a, 1), 0, 0));
-            err = tv(a, "No answer from the helper – turn it on in StatusBar Mods › Overview.", 13, Ui.cur.warn, false);
+            err = tv(a, "No answer from the helper – turn it on in StatusBar Mods › System.", 13, Ui.cur.warn, false);
             err.setVisibility(View.GONE);
             col.addView(err, lp(-2, -2, 0, dp(a, 2), 0, 0));
             col.addView(button(a, "Battery usage ›", () -> openScreen(a, "battery",
@@ -828,7 +828,7 @@ final class PanelCards {
             if (raw == null || raw.equals("-")) {
                 if (shownRaw == null) {
                     boolean late = sentAt > 0 && now - sentAt > 12000;
-                    status.setText(late ? "No answer from the helper – turn it on in StatusBar Mods › Overview." : "Looking…");
+                    status.setText(late ? "No answer from the helper – turn it on in StatusBar Mods › System." : "Looking…");
                     status.setTextColor(late ? Ui.cur.warn : DIM);
                 }
                 return;

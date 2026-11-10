@@ -34,7 +34,7 @@ import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
-import android.widget.HorizontalScrollView;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -112,8 +112,8 @@ public final class SettingsActivity extends Activity {
     }
     private static final String[] ITEM_TITLES = {"Battery icon", "Clock", "Temperature", "Front camera hole", "Wi-Fi icon", "Mobile signal icon"};
     private static final String[] GESTURE_TITLES = {"Tap", "Double-tap", "Long-press"};
-    private static final String[] TABS = {"Layout", "Clock", "Temperature", "Back button", "Gestures", "Overview", "More"};
-    private static final int T_LAYOUT = 0, T_CLOCK = 1, T_TEMP = 2, T_BACK = 3, T_GESTURES = 4, T_OVERVIEW = 5, T_MORE = 6;
+    private static final String[] TABS = {"Layout", "Clock", "Panel", "System"};
+    private static final int T_LAYOUT = 0, T_CLOCK = 1, T_PANEL = 2, T_SYSTEM = 3;
     private static final int[] COLORS = {0xFFFF9800, 0xFFF44336, 0xFFFFEB3B, 0xFFE91E63, 0xFF00BCD4, 0xFF4CAF50};
 
     // ------------------------------------------------------------------ state
@@ -125,8 +125,7 @@ public final class SettingsActivity extends Activity {
     private Config cfg;
     private int tab;
     private ScrollView scroll;
-    private LinearLayout page, cur, previewHolder, tabRow;
-    private HorizontalScrollView tabScroll;
+    private LinearLayout page, cur, previewHolder;
     private TextView statusPill;
     private PositionView posView;
     private final Handler h = new Handler(Looper.getMainLooper());
@@ -187,33 +186,46 @@ public final class SettingsActivity extends Activity {
         prefs = getSharedPreferences("settings", MODE_PRIVATE);
         cfg = Config.load(prefs);
         tab = prefs.getInt("tab", T_LAYOUT);
-        if (prefs.getInt("tabv", 1) < 2) {   // older versions had no Overview tab: their index 5 was "More"
-            if (tab >= 5) tab = T_MORE;
-            prefs.edit().putInt("tabv", 2).apply();
+        int tabv = prefs.getInt("tabv", 1);
+        if (tabv < 3) {   // older versions had 6 or 7 tabs; fold the saved one into the four we have now
+            if (tabv < 2 && tab >= 5) tab = 6;   // the first versions had no Overview tab: their index 5 was "More"
+            tab = new int[]{T_LAYOUT, T_CLOCK, T_CLOCK, T_LAYOUT, T_SYSTEM, T_PANEL, T_SYSTEM}[Math.max(0, Math.min(tab, 6))];
+            prefs.edit().putInt("tab", tab).putInt("tabv", 3).apply();
         }
         tab = Math.max(0, Math.min(tab, TABS.length - 1));
 
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
+        FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(cBg);
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.addView(buildHeader(), new LinearLayout.LayoutParams(-1, -2));
+        previewHolder = new LinearLayout(this);
+        previewHolder.setOrientation(LinearLayout.VERTICAL);
+        content.addView(previewHolder, new LinearLayout.LayoutParams(-1, -2));
+        scroll = new ScrollView(this);
+        scroll.setClipToPadding(false);
+        scroll.setVerticalScrollBarEnabled(false);
+        page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+        page.setPadding(dp(Ui.S4), dp(4), dp(Ui.S4), dp(Ui.NAV_H + 32));
+        scroll.addView(page);
+        content.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        root.addView(content, new FrameLayout.LayoutParams(-1, -1));
+        final View nav = buildNav();
+        final FrameLayout.LayoutParams np = new FrameLayout.LayoutParams(-1, dp(Ui.NAV_H), Gravity.BOTTOM);
+        np.setMargins(dp(Ui.S4), 0, dp(Ui.S4), dp(Ui.S4));
+        root.addView(nav, np);
         root.setOnApplyWindowInsetsListener((v, in) -> {
             Insets bars = in.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
             Insets ime = in.getInsets(WindowInsets.Type.ime());
-            v.setPadding(bars.left, bars.top, bars.right, Math.max(bars.bottom, ime.bottom));
+            boolean kb = ime.bottom > bars.bottom;   // keyboard up: the floating bar steps aside
+            content.setPadding(bars.left, bars.top, bars.right, kb ? ime.bottom : 0);
+            np.setMargins(dp(Ui.S4) + bars.left, 0, dp(Ui.S4) + bars.right, dp(Ui.S4) + bars.bottom);
+            nav.setLayoutParams(np);
+            nav.setVisibility(kb ? View.GONE : View.VISIBLE);
+            page.setPadding(dp(Ui.S4), dp(4), dp(Ui.S4), kb ? dp(Ui.S5) : dp(Ui.NAV_H + 32) + bars.bottom);
             return WindowInsets.CONSUMED;
         });
-        root.addView(buildHeader(), new LinearLayout.LayoutParams(-1, -2));
-        previewHolder = new LinearLayout(this);
-        previewHolder.setOrientation(LinearLayout.VERTICAL);
-        root.addView(previewHolder, new LinearLayout.LayoutParams(-1, -2));
-        root.addView(buildTabBar(), new LinearLayout.LayoutParams(-1, -2));
-        scroll = new ScrollView(this);
-        scroll.setClipToPadding(false);
-        page = new LinearLayout(this);
-        page.setOrientation(LinearLayout.VERTICAL);
-        page.setPadding(dp(16), dp(4), dp(16), dp(48));
-        scroll.addView(page);
-        root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         setContentView(root);
         buildPreviewArea();
         build();
@@ -234,24 +246,27 @@ public final class SettingsActivity extends Activity {
         try { unregisterReceiver(pong); } catch (Exception ignored) {}
     }
 
-    // ================================================================ frame: header, preview, tabs
+    // ================================================================ frame: header, preview, bottom bar
+
+    private static final String[] TAB_TITLES = {"Status bar", "Clock", "Panel", "System"};
+    private static final String[] TAB_ICONS = {"layout", "clock", "panel", "sys"};
+    private TextView titleView;
+    private LinearLayout navBar;
 
     private View buildHeader() {
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(20), dp(16), dp(16), dp(6));
-        TextView title = new TextView(this);
-        title.setText("StatusBar Mods");
-        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_TITLE);
-        title.setTextColor(cText);
-        title.setTypeface(Ui.font(500));
-        row.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
-        statusPill = new TextView(this);
-        statusPill.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_VALUE);
-        statusPill.setTypeface(Ui.font(500));
-        statusPill.setPadding(dp(12), dp(7), dp(12), dp(7));
+        row.setPadding(dp(20), dp(12), dp(16), dp(8));
+        titleView = Ui.text(this, TAB_TITLES[tab], Ui.T_TITLE, cText, 700);
+        titleView.setLetterSpacing(-0.02f);
+        titleView.setSingleLine(true);
+        row.addView(titleView, new LinearLayout.LayoutParams(0, -2, 1));
+        statusPill = Ui.text(this, "", 13, cOk, 600);
+        statusPill.setGravity(Gravity.CENTER);
+        statusPill.setMinHeight(dp(32));
+        statusPill.setPadding(dp(12), 0, dp(12), 0);
         statusPill.setOnClickListener(v -> statusDialog());
-        row.addView(statusPill);
+        row.addView(statusPill, new LinearLayout.LayoutParams(-2, -2));
         refreshStatusPill();
         return row;
     }
@@ -261,8 +276,13 @@ public final class SettingsActivity extends Activity {
         previewHolder.removeAllViews();
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setBackground(round(cCard, dp(Ui.R_CARD), 0, 0));
-        card.setPadding(dp(12), dp(10), dp(12), dp(8));
+        card.setBackground(Ui.card(this, pal));
+        card.setPadding(dp(Ui.S4), 0, dp(Ui.S4), dp(Ui.S3));
+        LinearLayout head = new LinearLayout(this);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        head.addView(Ui.text(this, "Live preview", Ui.T_SECTION, cSub, 600), new LinearLayout.LayoutParams(0, dp(40), 1));
+        head.addView(Ui.text(this, "Drag to reorder", Ui.T_CAPTION, cSub, 500));
+        card.addView(head, new LinearLayout.LayoutParams(-1, -2));
         float d = getResources().getDisplayMetrics().density;
         android.view.WindowMetrics wm = getWindowManager().getMaximumWindowMetrics();
         float screenW = Math.min(wm.getBounds().width(), wm.getBounds().height()) / d;
@@ -277,47 +297,44 @@ public final class SettingsActivity extends Activity {
             @Override public void changed() { apply(); if (tab == T_LAYOUT) refresh(); }
             @Override public void tapped(int element) {   // tap (no drag): the same choices as a list - easier than dragging, and works with TalkBack
                 if (elementOn(element)) zonePicker(element);
-                else switchTab(element == ZoneLayout.TEMP ? T_TEMP : element == ZoneLayout.DATE ? T_CLOCK : T_BACK);
+                else switchTab(element == ZoneLayout.TEMP || element == ZoneLayout.DATE ? T_CLOCK : T_LAYOUT);
             }
         }, screenW, holeL, holeR, cAccent, cText, cSub, cField);
         card.addView(posView, new LinearLayout.LayoutParams(-1, -2));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
-        lp.setMargins(dp(16), dp(4), dp(16), dp(4));
+        lp.setMargins(dp(Ui.S4), dp(2), dp(Ui.S4), dp(Ui.S3));
         previewHolder.addView(card, lp);
         updatePreview();
     }
 
-    private View buildTabBar() {
-        HorizontalScrollView hs = new HorizontalScrollView(this);
-        hs.setHorizontalScrollBarEnabled(false);
-        hs.setOverScrollMode(View.OVER_SCROLL_NEVER);
-        tabScroll = hs;
-        tabRow = new LinearLayout(this);
-        tabRow.setPadding(dp(16), dp(8), dp(8), dp(8));
-        hs.addView(tabRow);
+    /** The floating bottom bar: frosted glass, four tabs, the open one in a soft accent pill. */
+    private View buildNav() {
+        navBar = new LinearLayout(this);
+        navBar.setPadding(dp(6), dp(6), dp(6), dp(6));
+        navBar.setBackground(Ui.glass(this, pal, Ui.NAV_H / 2f));
         fillTabs();
-        return hs;
+        return navBar;
     }
 
     private void fillTabs() {
-        tabRow.removeAllViews();
+        navBar.removeAllViews();
         for (int i = 0; i < TABS.length; i++) {
             final int at = i;
             boolean on = i == tab;
-            TextView t = new TextView(this);
-            t.setText(TABS[i]);
+            LinearLayout t = new LinearLayout(this);
+            t.setOrientation(LinearLayout.VERTICAL);
             t.setGravity(Gravity.CENTER);
-            t.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_SECTION);
-            t.setSingleLine(true);
-            t.setTypeface(Ui.font(500));
-            t.setTextColor(on ? cOnAccent : cText);
-            t.setBackground(round(on ? cAccent : cCard, dp(Ui.R_SEG), 0, 0));
-            t.setPadding(dp(18), 0, dp(18), 0);
+            t.setBackground(on ? round(pal.accSoft, dp(Ui.NAV_TAB_H / 2f), 0, 0) : null);
+            t.addView(Ui.icon(this, TAB_ICONS[i], on ? pal.accInk : cSub, 22));
+            TextView l = Ui.text(this, TABS[i], Ui.T_TAB, on ? pal.accInk : cSub, 600);
+            l.setSingleLine(true);
+            t.addView(l, new LinearLayout.LayoutParams(-2, -2));
+            t.setContentDescription(TABS[i]);
+            t.setSelected(on);
             t.setOnClickListener(v -> switchTab(at));
-            if (on) tabScroll.post(() -> tabScroll.scrollTo(Math.max(0, t.getLeft() - dp(16)), 0));   // bring the chosen tab into view
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, dp(40));
-            lp.setMarginEnd(dp(8));
-            tabRow.addView(t, lp);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(Ui.NAV_TAB_H), 1);
+            lp.setMargins(dp(2), 0, dp(2), 0);
+            navBar.addView(t, lp);
         }
     }
 
@@ -325,6 +342,7 @@ public final class SettingsActivity extends Activity {
         if (t == tab) return;
         tab = t;
         prefs.edit().putInt("tab", t).apply();
+        titleView.setText(TAB_TITLES[t]);
         fillTabs();
         build();
         scroll.scrollTo(0, 0);
@@ -342,16 +360,20 @@ public final class SettingsActivity extends Activity {
     private void build() {
         page.removeAllViews();
         cur = page;
-        previewHolder.setVisibility(tab <= T_BACK ? View.VISIBLE : View.GONE);   // the preview only helps the first four tabs
+        previewHolder.setVisibility(tab == T_LAYOUT || tab == T_CLOCK ? View.VISIBLE : View.GONE);   // the preview only helps these two
         switch (tab) {
-            case T_CLOCK: buildClock(); break;
-            case T_TEMP: buildTemp(); break;
-            case T_BACK: buildBack(); break;
-            case T_GESTURES: buildGestures(); break;
-            case T_OVERVIEW: buildOverview(); break;
-            case T_MORE: buildMore(); break;
-            default: buildLayout(); break;
+            case T_CLOCK: buildClock(); buildTemp(); break;
+            case T_PANEL: buildPanel(); break;
+            case T_SYSTEM: buildSystem(); break;
+            default: buildLayout(); buildBack(); break;
         }
+    }
+
+    /** System tab: what taps do, the root helper and speed limits, the Overview chips, help, and starting over. */
+    private void buildSystem() {
+        buildGestures();
+        buildHelperSpeed();
+        buildMore();
     }
 
     // ---------------------------------------------------------------- Layout tab
@@ -372,8 +394,8 @@ public final class SettingsActivity extends Activity {
                 apply();
                 refresh();
             });
-            LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(-1, dp(48));
-            bp.setMargins(dp(16), 0, dp(16), dp(14));
+            LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(-1, dp(Ui.TAP));
+            bp.setMargins(0, dp(4), 0, dp(12));
             cur.addView(back, bp);
         }
         endGroup(null);
@@ -641,7 +663,9 @@ public final class SettingsActivity extends Activity {
     private void buildClockPattern() {
         group("Your pattern");
         patternEditor();
-        endGroup("The preview above updates as you type.");
+        endGroup("The preview above updates as you type.\n\n"
+                + "h  hour 1-12\nH  hour 0-23\nmm  minutes\nss  seconds\na  AM / PM\nEEE  Sun\nEEEE  Sunday\nd  day 1\ndd  day 01\nMMM  Nov\nMMMM  November\n"
+                + "yy  26\nyyyy  2026\n'text'  shows your own text\n\nExamples:\nEEE d MMM h:mm a\nHH:mm:ss\n'\u23f0' h:mm");
         group("clkampm", "AM / PM", cfg.ampm == Config.AMPM_HIDDEN ? "Hidden" : cfg.ampm == Config.AMPM_SMALL ? "Small" : "Normal size", false);
         segmentedBlock("Show AM / PM", new String[]{"Hide", "Normal size", "Small"}, cfg.ampm,
                 v -> { cfg.ampm = v; apply(); refresh(); });
@@ -660,22 +684,6 @@ public final class SettingsActivity extends Activity {
         err.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_CAPTION);
         err.setPadding(0, dp(6), 0, 0);
         box.addView(err);
-        TextView help = new TextView(this);
-        help.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_CAPTION);
-        help.setTextColor(cSub);
-        help.setTypeface(Typeface.MONOSPACE);
-        help.setPadding(0, dp(8), 0, 0);
-        help.setText("h  hour 1-12        H  hour 0-23\n"
-                + "mm minutes          ss seconds\n"
-                + "a  AM / PM          EEE Sun   EEEE Sunday\n"
-                + "d  day 1            dd day 01\n"
-                + "MMM Nov             MMMM November\n"
-                + "yy 26               yyyy 2026\n"
-                + "'text' shows your own text\n\n"
-                + "Examples:  EEE d MMM h:mm a\n"
-                + "           HH:mm:ss\n"
-                + "           '⏰' h:mm");
-        box.addView(help);
         e.addTextChangedListener(new TextWatcher() {
             final Runnable push = () -> {
                 String p = e.getText().toString();
@@ -764,7 +772,7 @@ public final class SettingsActivity extends Activity {
     private void colorDots() {
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(16), dp(2), dp(16), dp(14));
+        row.setPadding(0, dp(2), 0, dp(14));
         for (int c : COLORS) {
             TextView dot = new TextView(this);
             dot.setGravity(Gravity.CENTER);
@@ -839,7 +847,7 @@ public final class SettingsActivity extends Activity {
         group("backlive", "Live activities", liveNames[Math.max(0, Math.min(cfg.backLive, liveNames.length - 1))], false);
         choiceRow("While one is showing", liveNames, cfg.backLive,
                 v -> { cfg.backLive = v; apply(); refresh(); });
-        endGroup("Music and other live activities share the left side with this button. More about Stack and Merge is in the cheat sheet (More tab).");
+        endGroup("Music and other live activities share the left side with this button. More about Stack and Merge is in the cheat sheet (System tab).");
     }
 
     // ---------------------------------------------------------------- Gestures tab
@@ -905,13 +913,8 @@ public final class SettingsActivity extends Activity {
     private void gestureRow(int slot) {
         int a = cfg.action(slot);
         LinearLayout r = rowShell(v -> actionPicker(slot));
-        r.setMinimumHeight(dp(56));
-        r.setPadding(dp(16), dp(8), dp(12), dp(8));
-        r.addView(twoLines(GESTURE_TITLES[slot % 3], null), new LinearLayout.LayoutParams(0, -2, 1));
-        TextView val = new TextView(this);
-        val.setText(actionName(slot) + "  ›");
-        val.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_SECTION);
-        val.setTextColor(a == Config.ACT_NONE ? cSub : cAccent);
+        r.addView(labelBlock("tap", GESTURE_TITLES[slot % 3], null, cText, dp(130)), new LinearLayout.LayoutParams(0, -2, 1));
+        TextView val = Ui.text(this, actionName(slot), Ui.T_SECTION, a == Config.ACT_NONE ? cSub : pal.accInk, 600);
         val.setMaxWidth(dp(190));
         val.setGravity(Gravity.END);
         r.addView(val);
@@ -1031,11 +1034,6 @@ public final class SettingsActivity extends Activity {
                 .setNegativeButton("Cancel", null).show();
     }
 
-    private void infoRow(String title, String text) {
-        LinearLayout r = rowShell(null);
-        r.addView(twoLines(title, text), new LinearLayout.LayoutParams(0, -2, 1));
-    }
-
     private Boolean helperRunning;   // null = not checked yet
     private boolean helperChecking;
 
@@ -1045,7 +1043,7 @@ public final class SettingsActivity extends Activity {
         new Thread(() -> {
             boolean on0 = Helper.isRunning();
             final boolean on = on0 && !Helper.isCurrent(this) ? Helper.start(this) : on0;   // app was updated: run the new helper
-            runOnUiThread(() -> { helperChecking = false; boolean changed = helperRunning == null || helperRunning != on; helperRunning = on; if (changed && tab == T_OVERVIEW) refresh(); });
+            runOnUiThread(() -> { helperChecking = false; boolean changed = helperRunning == null || helperRunning != on; helperRunning = on; if (changed && tab == T_SYSTEM) refresh(); });
         }).start();
     }
 
@@ -1087,7 +1085,7 @@ public final class SettingsActivity extends Activity {
         return cpu + "\n" + gpu;
     }
 
-    private void buildOverview() {
+    private void buildPanel() {
         String setting = null;
         try { setting = android.provider.Settings.Global.getString(getContentResolver(), PanelLayout.SETTING); } catch (Throwable ignored) {}
         final Set<String> hidden = new HashSet<>();
@@ -1127,6 +1125,10 @@ public final class SettingsActivity extends Activity {
         actionRow("Empty the All page", "Starts the list again from nothing", cAccent, v -> putGl(PanelLayout.RECENT, ""));
         endGroup(null);
 
+    }
+
+    /** The root helper, the CPU / GPU speed limits and the Overview chips (System tab). */
+    private void buildHelperSpeed() {
         if (helperRunning == null && isOpen("helper", false)) checkHelper();   // root check only while the card is open
         group("helper", "Root helper", helperRunning == null ? "Open to check if it is running" : helperRunning ? "Running" : "Not running", false);
         switchRow("Run the helper", "Closing apps and speed limits need root, so this small helper does them for the Overview screen. Allow root for this app when asked. "
@@ -1153,7 +1155,7 @@ public final class SettingsActivity extends Activity {
         final String[] pctNames = {"85% – barely noticeable", "70% – cooler, still smooth", "55% – battery saver", "40% – lowest (slow)"};
         int cpuPick = gl("sbmods_cpu_pick", 55), gpuPick = gl("sbmods_gpu_pick", 55);
         group("speed", "CPU and GPU speed", "Quick limits: CPU " + cpuPick + "% \u00b7 GPU " + gpuPick + "%", false);
-        infoRow("Right now", groupOpen ? speedNow() : "");
+        statusRow("Right now", groupOpen ? speedNow() : "");
         divider();
         int ci = 2, gi = 2;
         for (int i = 0; i < pcts.length; i++) { if (pcts[i] == cpuPick) ci = i; if (pcts[i] == gpuPick) gi = i; }
@@ -1189,26 +1191,25 @@ public final class SettingsActivity extends Activity {
     // ---------------------------------------------------------------- More tab
 
     /** One card of the Performance panel: its name, move up / down inside its page, and a shown / hidden switch. */
+    private static final String[] PANEL_ICONS = {"bolt", "cpu", "gauge", "cpu", "layers", "sys", "leaf", "gauge", "batt", "shield", "mem", "apps"};
+
     private void panelRow(final List<String> all, final Set<String> hidden, final List<String> ids, final int i) {
         final String id = ids.get(i);
         Ui.Switch sw = new Ui.Switch(this, pal);
         LinearLayout r = rowShell(v -> sw.toggle());
-        r.setMinimumHeight(dp(56));
-        r.setPadding(dp(16), dp(4), dp(12), dp(4));
-        r.addView(twoLines(PanelLayout.TITLES[PanelLayout.indexOf(id)], null), new LinearLayout.LayoutParams(0, -2, 1));
+        r.addView(labelBlock(PANEL_ICONS[PanelLayout.indexOf(id)], PanelLayout.TITLES[PanelLayout.indexOf(id)], null, cText, dp(48 * 2 + 64)), new LinearLayout.LayoutParams(0, -2, 1));
         LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(dp(48), dp(48));
         bl.setMarginStart(dp(8));
         r.addView(moveButton("\u25B2", i > 0 ? ids.get(i - 1) : null, all, hidden, id), bl);
         LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(dp(48), dp(48));
         sl.setMarginStart(dp(8));
-        sl.setMarginEnd(dp(8));
         r.addView(moveButton("\u25BC", i < ids.size() - 1 ? ids.get(i + 1) : null, all, hidden, id), sl);
         sw.setChecked(!hidden.contains(id));
         sw.setOnChange(v -> {
             if (v) hidden.remove(id); else hidden.add(id);
             putGl(PanelLayout.SETTING, PanelLayout.write(all, hidden));
         });
-        r.addView(sw);
+        r.addView(sw, new LinearLayout.LayoutParams(dp(56), dp(48)));
     }
 
     /** A small up / down button; without a neighbour on the same page it looks and acts disabled. */
@@ -1227,12 +1228,12 @@ public final class SettingsActivity extends Activity {
     private void buildMore() {
         group("cheat", "Cheat sheet: what taps do", "In the app, on the status bar, on the Overview screen", false);
         infoRow("In this app",
-                "Preview bar: press an item and drag it; drop it on the grey tray to put it back in Samsung's place.\n"
+                "Preview: press an item and drag it; drop it on the grey tray to put it back in Samsung's place.\n"
                 + "Sliders: tap “Reset” next to a value to go back to the starting value.\n"
-                + "Gestures tab: every status bar item can have a tap, double-tap and long-press action. “Test” tries it.");
+                + "System tab: every status bar item can have a tap, double-tap and long-press action. “Test” tries it.");
         divider();
         infoRow("Status bar",
-                "Clock, temperature and battery: tap, double-tap and long-press do whatever you chose in the Gestures tab.\n"
+                "Clock, temperature and battery: tap, double-tap and long-press do whatever you chose in the System tab.\n"
                 + "Back button: tap = jump back to the previous app.\n"
                 + "Camera hole: tap = Samsung Finder (or your choice). Empty spot, double-tap (if on) = lock the screen.");
         divider();
@@ -1249,7 +1250,7 @@ public final class SettingsActivity extends Activity {
                 + "Speed = modes, CPU and GPU limits, resting cores, Vulkan graphics, options. "
                 + "Battery = power saving switch, screen smoothness (120 / 60 Hz), battery report, battery health with a shortcut to Samsung's battery protection. "
                 + "Memory = memory and swap, clean-up buttons, busiest apps with Stop. "
-                + "The panel opens on the page you used last. Choose which cards show and in what order in the Overview tab.");
+                + "The panel opens on the page you used last. Choose which cards show and in what order in the Panel tab.");
         endGroup(null);
 
         group("Screen care");
@@ -1341,10 +1342,10 @@ public final class SettingsActivity extends Activity {
 
     private void refreshStatusPill() {
         if (statusPill == null) return;
-        int c = statusState == 1 ? cOk : statusState == 2 ? cErr : cWarn;
-        statusPill.setText("●  " + statusShort);
+        int c = statusState == 1 ? pal.accInk : statusState == 2 ? cErr : cWarn;
+        statusPill.setText("●  " + (statusState == 1 && "Working".equals(statusShort) ? "Active" : statusShort));
         statusPill.setTextColor(c);
-        statusPill.setBackground(round((c & 0x00FFFFFF) | 0x22000000, dp(18), 0, 0));
+        statusPill.setBackground(round(statusState == 1 ? pal.accSoft : (c & 0x00FFFFFF) | 0x22000000, dp(16), 0, 0));
     }
 
     private void showStatus(Intent i) {
@@ -1357,7 +1358,7 @@ public final class SettingsActivity extends Activity {
             state = 2;
             shortText = "Switched off";
             detail = "The mod switched itself off because the status bar crashed three times right after loading it.\n\n"
-                    + "Open the More tab, tap “Turn the mod back on”, then restart the status bar.";
+                    + "Open the System tab, tap “Turn the mod back on”, then restart the status bar.";
         } else if (i.getBooleanExtra("disabled", false)) {
             state = 2;
             shortText = "Stopped";
@@ -1434,88 +1435,75 @@ public final class SettingsActivity extends Activity {
 
     private RippleDrawable ripple(int fill) {
         GradientDrawable content = fill == 0 ? null : round(fill, 0, 0, 0);
-        return new RippleDrawable(ColorStateList.valueOf(cAccentSoft), content, round(Color.WHITE, 0, 0, 0));
+        return Ui.ripple(pal, content, round(Color.WHITE, 0, 0, 0));
     }
 
     private boolean groupOpen = true;     // is the card being built shown? (a closed one builds into `sink`)
     private LinearLayout sink;            // detached throw-away layout: closed cards' rows go here and are never shown
+    private View infoSlot;                // the card header's info button (hidden until endGroup gets a help text)
+    private String cardTitle;
 
     /** Open / closed state of a collapsible card (remembered); key == null means always open. */
     private boolean isOpen(String key, boolean openByDefault) {
         return key == null || prefs.getBoolean("open_" + key, openByDefault);
     }
 
-    /** A card that is always open. A title becomes a small caption above it. Rows go inside until endGroup(). */
+    /** A card that is always open. Rows go inside until endGroup(). */
     private void group(String title) {
         group(null, title, null, true);
     }
 
     /**
-     * A card. key == null: always open, no header (a title becomes a caption above it). Otherwise the card has a header
-     * (title, one-line summary while closed, chevron); tapping it opens / closes the card and the state is remembered.
+     * A solid rounded card with its title inside (14 sp, grey). key == null: always open. Otherwise the header also has a
+     * one-line summary while closed and a chevron; tapping it opens / closes the card and the state is remembered.
      * A closed card builds its rows into a detached layout, so the row code runs unchanged but nothing is shown.
+     * What used to be a long caption under a card is now its info "i" (see endGroup).
      */
     private void group(String key, String title, String summary, boolean openByDefault) {
         groupOpen = isOpen(key, openByDefault);
-        if (key == null && title != null) {
-            TextView hd = new TextView(this);
-            hd.setText(title);
-            hd.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_VALUE);
-            hd.setTypeface(Ui.font(500));
-            hd.setTextColor(cSub);
-            hd.setPadding(dp(12), dp(16), dp(12), dp(6));
-            page.addView(hd);
-        } else {
-            page.addView(new View(this), new LinearLayout.LayoutParams(1, dp(12)));
-        }
+        cardTitle = title;
+        infoSlot = null;
         LinearLayout c = new LinearLayout(this);
         c.setOrientation(LinearLayout.VERTICAL);
-        c.setBackground(round(cCard, dp(Ui.R_CARD), 0, 0));
+        c.setBackground(Ui.card(this, pal));
         c.setClipToOutline(true);
-        page.addView(c, new LinearLayout.LayoutParams(-1, -2));
-        if (key == null) { cur = c; return; }
+        c.setPadding(dp(Ui.S4), 0, dp(Ui.S4), dp(4));
+        page.addView(c, cardParams());
 
         final boolean open = groupOpen;
         LinearLayout hdr = new LinearLayout(this);
         hdr.setGravity(Gravity.CENTER_VERTICAL);
-        hdr.setMinimumHeight(dp(64));
-        hdr.setPadding(dp(20), dp(10), dp(12), dp(10));
-        hdr.setBackground(ripple(0));
-        hdr.setStateDescription(open ? "Open" : "Closed");
-        hdr.setOnClickListener(v -> {
-            prefs.edit().putBoolean("open_" + key, !open).apply();
-            refresh();
-        });
+        hdr.setMinimumHeight(dp(44));
+        if (key != null) {
+            hdr.setBackground(ripple(0));
+            hdr.setStateDescription(open ? "Open" : "Closed");
+            hdr.setOnClickListener(v -> {
+                prefs.edit().putBoolean("open_" + key, !open).apply();
+                refresh();
+            });
+        }
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
-        TextView t = new TextView(this);
-        t.setText(title);
-        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_BODY);
-        t.setTextColor(cText);
-        t.setTypeface(Ui.font(500));
-        col.addView(t);
+        col.addView(Ui.text(this, title == null ? "" : title, Ui.T_SECTION, cSub, 600));
         if (!open && summary != null && !summary.isEmpty()) {
-            TextView sm = new TextView(this);
-            sm.setText(summary);
-            sm.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_VALUE);
-            sm.setTextColor(cSub);
+            TextView sm = Ui.text(this, summary, Ui.T_CAPTION, cSub, 400);
             sm.setSingleLine(true);
             sm.setEllipsize(android.text.TextUtils.TruncateAt.END);
-            sm.setPadding(0, dp(2), 0, 0);
             col.addView(sm);
         }
         hdr.addView(col, new LinearLayout.LayoutParams(0, -2, 1));
-        TextView chev = new TextView(this);
-        chev.setText(open ? "\u2303" : "\u2304");
-        chev.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
-        chev.setTextColor(cSub);
-        chev.setGravity(Gravity.CENTER);
-        hdr.addView(chev, new LinearLayout.LayoutParams(dp(40), dp(40)));
+        infoSlot = Ui.infoButton(this, pal, title == null ? "this card" : title, null);
+        infoSlot.setVisibility(View.GONE);
+        hdr.addView(infoSlot, new LinearLayout.LayoutParams(dp(Ui.TAP), dp(44)));
+        if (key != null) {
+            View chev = Ui.icon(this, open ? "chevd" : "chev", cSub, 20);
+            if (open) chev.setRotation(180);
+            LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(dp(20), dp(20));
+            cp.setMarginEnd(dp(4));
+            hdr.addView(chev, cp);
+        }
         c.addView(hdr, new LinearLayout.LayoutParams(-1, -2));
         if (open) {
-            View hair = new View(this);
-            hair.setBackgroundColor(cDivider);
-            c.addView(hair, new LinearLayout.LayoutParams(-1, Math.max(1, dp(0.7f))));
             LinearLayout body = new LinearLayout(this);
             body.setOrientation(LinearLayout.VERTICAL);
             c.addView(body, new LinearLayout.LayoutParams(-1, -2));
@@ -1527,34 +1515,95 @@ public final class SettingsActivity extends Activity {
         }
     }
 
-    /** Closes the card; optional plain-English help goes underneath it (not for a closed card). */
+    private LinearLayout.LayoutParams cardParams() {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.bottomMargin = dp(Ui.S3);
+        return lp;
+    }
+
+    /** Closes the card. The plain-English help that used to sit under it opens from the "i" in its header. */
     private void endGroup(String help) {
         cur = page;
-        if (help != null && groupOpen) {
-            TextView t = new TextView(this);
-            t.setText(help);
-            t.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_VALUE);
-            t.setTextColor(cSub);
-            t.setLineSpacing(0, 1.1f);
-            t.setPadding(dp(12), dp(8), dp(12), dp(2));
-            page.addView(t);
+        if (help != null && groupOpen && infoSlot != null) {
+            final String title = cardTitle == null || cardTitle.isEmpty() ? "About this" : cardTitle, text = help;
+            infoSlot.setVisibility(View.VISIBLE);
+            infoSlot.setOnClickListener(v -> showInfo(title, text));
         }
         groupOpen = true;
+    }
+
+    /** The info sheet: a frosted bottom sheet with a title, the text and "Got it". No realtime blur. */
+    private void showInfo(String title, String text) {
+        final android.app.Dialog dl = new android.app.Dialog(this);
+        dl.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
+        LinearLayout sheet = new LinearLayout(this);
+        sheet.setOrientation(LinearLayout.VERTICAL);
+        sheet.setPadding(dp(Ui.S5), dp(10), dp(Ui.S5), dp(Ui.S5));
+        sheet.setBackground(new Ui.Glass(pal.night ? 0xD11E242E : 0xE0FFFFFF, pal.glassBd, pal.glassHi, dp(36), Math.max(1, dp(1))));
+        View handle = new View(this);
+        handle.setBackground(round((pal.tx2 & 0x00FFFFFF) | 0x8C000000, dp(3), 0, 0));
+        LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(dp(40), dp(5));
+        hp.gravity = Gravity.CENTER_HORIZONTAL;
+        hp.bottomMargin = dp(20);
+        sheet.addView(handle, hp);
+        FrameLayout badge = new FrameLayout(this);
+        badge.setBackground(round(pal.accSoft, dp(16), 0, 0));
+        ImageView ic = Ui.icon(this, "info", pal.accInk, 26);
+        ((FrameLayout.LayoutParams) ic.getLayoutParams()).gravity = Gravity.CENTER;
+        badge.addView(ic);
+        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(48), dp(48));
+        bp.bottomMargin = dp(Ui.S4);
+        sheet.addView(badge, bp);
+        TextView t = Ui.text(this, title, Ui.T_SHEET, cText, 700);
+        t.setLetterSpacing(-0.01f);
+        sheet.addView(t, new LinearLayout.LayoutParams(-1, -2));
+        TextView body = Ui.text(this, text, Ui.T_BODY, cSub, 400);
+        body.setLineSpacing(0, 1.25f);
+        body.setPadding(0, dp(Ui.S2), 0, dp(Ui.S5));
+        int maxH = Math.round(getResources().getDisplayMetrics().heightPixels * 0.5f);
+        sheet.addView(new MaxHeightScroll(this, maxH, body), new LinearLayout.LayoutParams(-1, -2));
+        TextView got = Ui.text(this, "Got it", Ui.T_BODY, pal.onAcc, 700);
+        got.setGravity(Gravity.CENTER);
+        got.setBackground(ripple2(round(cAccent, dp(Ui.R_BUTTON), 0, 0), dp(Ui.R_BUTTON)));
+        got.setOnClickListener(v -> dl.dismiss());
+        sheet.addView(got, new LinearLayout.LayoutParams(-1, dp(56)));
+        FrameLayout wrap = new FrameLayout(this);
+        wrap.setPadding(dp(8), 0, dp(8), dp(8));
+        wrap.addView(sheet);
+        dl.setContentView(wrap);
+        android.view.Window w = dl.getWindow();
+        if (w != null) {
+            w.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
+            w.setGravity(Gravity.BOTTOM);
+            w.setLayout(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+            w.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            w.setDimAmount(pal.night ? 0.55f : 0.42f);
+        }
+        dl.show();
+    }
+
+    /** A scroll view that never grows past maxH (long help texts scroll inside the sheet). */
+    private static final class MaxHeightScroll extends ScrollView {
+        private final int maxH;
+        MaxHeightScroll(Context c, int maxH, View child) { super(c); this.maxH = maxH; addView(child); setVerticalScrollBarEnabled(false); }
+        @Override protected void onMeasure(int w, int h) { super.onMeasure(w, MeasureSpec.makeMeasureSpec(maxH, MeasureSpec.AT_MOST)); }
+    }
+
+    private RippleDrawable ripple2(GradientDrawable fill, int radius) {
+        return new RippleDrawable(ColorStateList.valueOf(0x33FFFFFF), fill, round(Color.WHITE, radius, 0, 0));
     }
 
     private void divider() {
         View d = new View(this);
         d.setBackgroundColor(cDivider);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, Math.max(1, dp(0.7f)));
-        lp.setMargins(dp(16), 0, dp(16), 0);
-        cur.addView(d, lp);
+        cur.addView(d, new LinearLayout.LayoutParams(-1, Math.max(1, dp(0.7f))));
     }
 
+    /** One 56 dp row: icon badge, label, info "i" (when there is help), filling the space up to the control that follows. */
     private LinearLayout rowShell(View.OnClickListener click) {
         LinearLayout r = new LinearLayout(this);
         r.setGravity(Gravity.CENTER_VERTICAL);
-        r.setMinimumHeight(dp(56));
-        r.setPadding(dp(16), dp(12), dp(16), dp(12));
+        r.setMinimumHeight(dp(Ui.ROW_H));
         if (click != null) {
             r.setBackground(ripple(0));
             r.setOnClickListener(click);
@@ -1563,34 +1612,80 @@ public final class SettingsActivity extends Activity {
         return r;
     }
 
-    private LinearLayout twoLines(String title, String sub) {
+    /** Icons for rows, picked from the words of the label (one place to change them). */
+    private static String autoIcon(String t) {
+        String s = t.toLowerCase(Locale.ROOT);
+        String[][] m = {{"clock", "clock"}, {"time", "clock"}, {"am / pm", "clock"}, {"second", "clock"}, {"hour", "clock"},
+                {"date", "date"}, {"day", "date"}, {"year", "date"}, {"temperature", "temp"}, {"heat", "temp"}, {"cool", "snow"}, {"measure", "temp"},
+                {"back", "back"}, {"wi-fi", "wifi"}, {"mobile", "signal"}, {"network", "signal"}, {"connection", "wifi"},
+                {"battery", "batt"}, {"power", "leaf"}, {"screen", "screen"}, {"notification", "bell"}, {"alarm", "bell"},
+                {"bluetooth", "link"}, {"camera", "hole"}, {"edge", "compact"}, {"space", "compact"}, {"spacing", "compact"}, {"distance", "compact"},
+                {"size", "text"}, {"letters", "text"}, {"format", "text"}, {"look", "eye"}, {"style", "eye"}, {"colour", "drop"}, {"color", "drop"},
+                {"vibrate", "tap"}, {"tap", "tap"}, {"press", "tap"}, {"double", "tap"}, {"test", "tap"}, {"remind", "bell"},
+                {"helper", "cpu"}, {"cpu", "cpu"}, {"gpu", "gauge"}, {"speed", "gauge"}, {"limit", "gauge"}, {"full speed", "bolt"},
+                {"restart", "reset"}, {"reset", "reset"}, {"back on", "power"}, {"start", "power"}, {"run", "power"}, {"chips", "layers"}, {"fade", "eye"},
+                {"lock", "lock"}, {"protect", "shield"}, {"pattern", "text"}, {"arrange", "layout"}, {"samsung", "layout"}, {"hide", "eye"}, {"icon", "eye"}};
+        for (String[] e : m) if (s.contains(e[0])) return e[1];
+        return "sys";
+    }
+
+    /** Badge + label (+ info "i" when `help` is given), as one block that leaves `reserve` px for the control at the row's end. */
+    private LinearLayout labelBlock(String icon, String title, String help, int labelColor, int reserve) {
+        LinearLayout b = new LinearLayout(this);
+        b.setGravity(Gravity.CENTER_VERTICAL);
+        if (icon != null) {
+            LinearLayout.LayoutParams ip = new LinearLayout.LayoutParams(dp(36), dp(36));
+            ip.setMarginEnd(dp(Ui.S3));
+            b.addView(Ui.iconBadge(this, pal, icon), ip);
+        }
+        TextView l = Ui.text(this, title, Ui.T_BODY, labelColor, 500);
+        int cardW = getResources().getDisplayMetrics().widthPixels - dp(2 * Ui.S4 + 2 * Ui.S4);
+        l.setMaxWidth(Math.max(dp(80), cardW - (icon != null ? dp(36 + Ui.S3) : 0) - (help != null ? dp(Ui.TAP) : 0) - reserve));
+        b.addView(l, new LinearLayout.LayoutParams(-2, -2));
+        if (help != null) {
+            final String tt = title, hh = help;
+            View i = Ui.infoButton(this, pal, title, v -> showInfo(tt, hh));
+            b.addView(i, new LinearLayout.LayoutParams(dp(Ui.TAP), dp(Ui.TAP)));
+        }
+        return b;
+    }
+
+    /** A line of status or explanation inside a card; with `text` it is a labelled row whose text opens in the info sheet. */
+    private void infoRow(String title, String text) {
+        if (text == null) {
+            LinearLayout r = rowShell(null);
+            TextView t = Ui.text(this, title, Ui.T_BODY, cText, 400);
+            t.setPadding(0, dp(Ui.S3), 0, dp(Ui.S3));
+            r.addView(t, new LinearLayout.LayoutParams(0, -2, 1));
+            return;
+        }
+        LinearLayout r = rowShell(v -> showInfo(title, text));
+        r.addView(labelBlock(autoIcon(title), title, null, cText, 0), new LinearLayout.LayoutParams(0, -2, 1));
+        View i = Ui.icon(this, "chev", cSub, 20);
+        r.addView(i, new LinearLayout.LayoutParams(dp(20), dp(20)));
+        r.setContentDescription(title);
+    }
+
+    /** Live status text under a label, shown inline (it is a reading, not an explanation). */
+    private void statusRow(String title, String text) {
+        LinearLayout r = rowShell(null);
+        r.setPadding(0, dp(Ui.S2), 0, dp(Ui.S2));
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
-        col.setPadding(0, 0, dp(12), 0);
-        TextView t = new TextView(this);
-        t.setText(title);
-        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_BODY);
-        t.setTextColor(cText);
-        col.addView(t);
-        if (sub != null) {
-            TextView s = new TextView(this);
-            s.setText(sub);
-            s.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_VALUE);
-            s.setTextColor(cSub);
+        col.addView(Ui.text(this, title, Ui.T_BODY, cText, 500));
+        if (text != null && !text.isEmpty()) {
+            TextView s = Ui.text(this, text, Ui.T_VALUE, cSub, 400);
             s.setPadding(0, dp(2), 0, 0);
             col.addView(s);
         }
-        return col;
+        r.addView(col, new LinearLayout.LayoutParams(0, -2, 1));
     }
 
     private LinearLayout block(String title) {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(dp(16), dp(14), dp(16), dp(14));
-        TextView t = new TextView(this);
-        t.setText(title);
-        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_BODY);
-        t.setTextColor(cText);
+        box.setPadding(0, dp(Ui.S3), 0, dp(Ui.S3));
+        TextView t = Ui.text(this, title, Ui.T_BODY, cText, 500);
         t.setPadding(0, 0, 0, dp(10));
         box.addView(t);
         cur.addView(box, new LinearLayout.LayoutParams(-1, -2));
@@ -1600,11 +1695,13 @@ public final class SettingsActivity extends Activity {
     private void switchRow(String title, String sub, boolean value, BoolSetter s) {
         Ui.Switch sw = new Ui.Switch(this, pal);
         LinearLayout r = rowShell(v -> sw.toggle());
-        r.addView(twoLines(title, sub), new LinearLayout.LayoutParams(0, -2, 1));
+        r.addView(labelBlock(autoIcon(title), title, sub, cText, dp(56)), new LinearLayout.LayoutParams(0, -2, 1));
         sw.setChecked(value);
         sw.setContentDescription(title);
         sw.setOnChange(v -> s.set(v));
-        r.addView(sw);
+        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(dp(56), dp(Ui.TAP));
+        sp.setMarginEnd(dp(-4));
+        r.addView(sw, sp);
     }
 
     private void choiceRow(String title, String[] labels, int current, IntSetter s) {
@@ -1617,33 +1714,31 @@ public final class SettingsActivity extends Activity {
                 })
                 .setNegativeButton("Cancel", null)
                 .show());
-        r.addView(twoLines(title, null), new LinearLayout.LayoutParams(0, -2, 1));
-        TextView value = new TextView(this);
-        value.setText(labels[sel] + "  ›");
-        value.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_SECTION);
-        value.setTextColor(cAccent);
+        r.addView(labelBlock(autoIcon(title), title, null, cText, dp(130)), new LinearLayout.LayoutParams(0, -2, 1));
+        TextView value = Ui.text(this, labels[sel], Ui.T_SECTION, pal.accInk, 600);
         value.setGravity(Gravity.END);
-        value.setMaxWidth(dp(200));
+        value.setMaxWidth(dp(150));
         r.addView(value);
+        LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(dp(20), dp(20));
+        cp.setMarginStart(dp(2));
+        r.addView(Ui.icon(this, "chev", cSub, 20), cp);
     }
 
+    /** A pill track with the chosen option lifted on a card-coloured pill. */
     private LinearLayout segmented(String[] labels, int selected, IntSetter s) {
         LinearLayout seg = new LinearLayout(this);
-        seg.setPadding(dp(3), dp(3), dp(3), dp(3));
-        seg.setBackground(round(cField, dp(Ui.R_SEG), 0, 0));
+        seg.setPadding(dp(4), dp(4), dp(4), dp(4));
+        seg.setBackground(round(pal.seg, dp(Ui.R_SEG), 0, 0));
         for (int i = 0; i < labels.length; i++) {
             final int at = i;
-            TextView b = new TextView(this);
-            b.setText(labels[i]);
+            TextView b = Ui.text(this, labels[i], 14, i == selected ? cText : cSub, 600);
             b.setGravity(Gravity.CENTER);
-            b.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_SECTION);
             b.setSingleLine(true);
-            boolean on = i == selected;
-            b.setTypeface(on ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
-            b.setTextColor(on ? cOnAccent : cText);
-            if (on) b.setBackground(round(cAccent, dp(17), 0, 0));
+            b.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            if (i == selected) b.setBackground(round(pal.night ? pal.card2 : pal.card, dp(20), pal.night ? 0 : 1, pal.line));
             b.setOnClickListener(v -> { if (at != selected) { s.set(at); refresh(); } });
-            seg.addView(b, new LinearLayout.LayoutParams(0, dp(34), 1));
+            b.setSelected(i == selected);
+            seg.addView(b, new LinearLayout.LayoutParams(0, dp(40), 1));
         }
         return seg;
     }
@@ -1656,26 +1751,22 @@ public final class SettingsActivity extends Activity {
     /** Segmented control directly under the previous row (no title). */
     private void segmentedInline(String[] labels, int selected, IntSetter s) {
         LinearLayout box = new LinearLayout(this);
-        box.setPadding(dp(16), 0, dp(16), dp(14));
+        box.setPadding(0, 0, 0, dp(Ui.S3));
         box.addView(segmented(labels, selected, s), new LinearLayout.LayoutParams(-1, -2));
         cur.addView(box);
     }
 
     private void actionRow(String title, String sub, int color, View.OnClickListener l) {
         LinearLayout r = rowShell(l);
-        LinearLayout t = twoLines(title, sub);
-        ((TextView) t.getChildAt(0)).setTextColor(color);
-        r.addView(t, new LinearLayout.LayoutParams(0, -2, 1));
+        r.addView(labelBlock(autoIcon(title), title, sub, color == cAccent ? pal.accInk : color, 0), new LinearLayout.LayoutParams(0, -2, 1));
     }
 
     private TextView textButton(String t, View.OnClickListener l) {
-        TextView b = new TextView(this);
-        b.setText(t);
-        b.setTextColor(cAccent);
-        b.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_SECTION);
-        b.setTypeface(Ui.font(500));
+        TextView b = Ui.text(this, t, Ui.T_SECTION, pal.accInk, 600);
+        b.setGravity(Gravity.CENTER);
         b.setPadding(dp(12), dp(10), dp(12), dp(10));
-        b.setBackground(new RippleDrawable(ColorStateList.valueOf(cAccentSoft), null, round(Color.WHITE, dp(18), 0, 0)));
+        b.setMinHeight(dp(40));
+        b.setBackground(ripple2(null, dp(18)));
         b.setOnClickListener(l);
         return b;
     }
@@ -1696,32 +1787,37 @@ public final class SettingsActivity extends Activity {
     private void slider(String t, int min, int max, int current, Label label, IntSetter s, int def) {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(dp(16), dp(12), dp(8), dp(6));
+        box.setPadding(0, dp(Ui.S2), 0, dp(2));
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
-        TextView name = new TextView(this);
-        name.setText(t);
-        name.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_BODY);
-        name.setTextColor(cText);
-        top.addView(name, new LinearLayout.LayoutParams(0, -2, 1));
-        TextView val = new TextView(this);
-        val.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_SECTION);
-        val.setTextColor(cAccent);
-        val.setText(label.of(current));
-        val.setPadding(0, 0, dp(8), 0);
+        top.addView(Ui.text(this, t, Ui.T_BODY, cText, 500), new LinearLayout.LayoutParams(0, -2, 1));
+        TextView val = Ui.text(this, label.of(current), Ui.T_SECTION, pal.accInk, 600);
+        val.setPadding(0, 0, dp(Ui.S2), 0);
         top.addView(val);
         TextView reset = textButton("Reset", v -> { s.set(def); apply(); refresh(); });
         reset.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_VALUE);
         reset.setPadding(dp(10), dp(6), dp(10), dp(6));
         reset.setVisibility(current == def ? View.INVISIBLE : View.VISIBLE);
         top.addView(reset);
-        box.addView(top, new LinearLayout.LayoutParams(-1, dp(36)));
+        box.addView(top, new LinearLayout.LayoutParams(-1, dp(40)));
         SeekBar sb = new SeekBar(this);
         sb.setMax(max - min);
+        GradientDrawable trk = round(pal.night ? 0xFF4A5463 : 0xFFB4BCC8, dp(3), 0, 0);
+        trk.setSize(-1, dp(6));
+        GradientDrawable prog = round(cAccent, dp(3), 0, 0);
+        prog.setSize(-1, dp(6));
+        android.graphics.drawable.LayerDrawable ld = new android.graphics.drawable.LayerDrawable(new Drawable[]{trk,
+                new android.graphics.drawable.ClipDrawable(prog, Gravity.START, android.graphics.drawable.ClipDrawable.HORIZONTAL)});
+        ld.setId(0, android.R.id.background);
+        ld.setId(1, android.R.id.progress);
+        sb.setProgressDrawable(ld);
+        GradientDrawable thumb = round(cCard, dp(14), dp(3), cAccent);
+        thumb.setSize(dp(28), dp(28));
+        sb.setThumb(thumb);
+        sb.setSplitTrack(false);
         sb.setProgress(Math.max(current, min) - min);
-        sb.setProgressTintList(ColorStateList.valueOf(cAccent));
-        sb.setThumbTintList(ColorStateList.valueOf(cAccent));
-        sb.setPadding(dp(4), dp(8), dp(12), dp(6));
+        sb.setPadding(dp(14), 0, dp(14), 0);
+        sb.setContentDescription(t);
         sb.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override public void onProgressChanged(SeekBar b, int p, boolean user) {
                 val.setText(label.of(p + min));
@@ -1731,7 +1827,7 @@ public final class SettingsActivity extends Activity {
             @Override public void onStartTrackingTouch(SeekBar b) {}
             @Override public void onStopTrackingTouch(SeekBar b) { apply(); refresh(); }
         });
-        box.addView(sb);
+        box.addView(sb, new LinearLayout.LayoutParams(-1, dp(Ui.TAP)));
         cur.addView(box, new LinearLayout.LayoutParams(-1, -2));
     }
 }
