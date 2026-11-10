@@ -551,10 +551,8 @@ public final class SettingsActivity extends Activity {
             names.add("Left of the " + o); codes.add(10 + 2 * j);
             names.add("Right of the " + o); codes.add(11 + 2 * j);
         }
-        new AlertDialog.Builder(this).setTitle("Where should the " + what + " go?")
-                .setItems(names.toArray(new String[0]), (dlg, which) -> {
-                    posView.place(element, codes.get(which));
-                }).setNegativeButton("Cancel", null).show();
+        Ui.picker(this, pal, "Where should the " + what + " go?", names.toArray(new String[0]), -1,
+                which -> posView.place(element, codes.get(which))).show();
     }
 
     // ---------------------------------------------------------------- Clock tab
@@ -801,10 +799,10 @@ public final class SettingsActivity extends Activity {
         LinearLayout wrap = new LinearLayout(this);
         wrap.setPadding(dp(20), dp(8), dp(20), 0);
         wrap.addView(e, new LinearLayout.LayoutParams(-1, -2));
-        new AlertDialog.Builder(this).setTitle("Your own colour").setMessage("Type a colour code, like #FF9800")
-                .setView(wrap)
-                .setNegativeButton("Cancel", null)
-                .setPositiveButton("Use it", (d, w) -> {
+        new Ui.Dlg(this, pal).title("Your own colour").message("Type a colour code, like #FF9800")
+                .view(wrap)
+                .button(0, "Cancel", null)
+                .button(2, "Use it", () -> {
                     try {
                         cfg.warnColor = Color.parseColor(e.getText().toString().trim());
                         apply();
@@ -943,7 +941,7 @@ public final class SettingsActivity extends Activity {
 
     /** Grouped list of actions in a dialog. */
     private void actionPicker(int slot) {
-        AlertDialog[] dlg = new AlertDialog[1];
+        Ui.Dlg[] dlg = new Ui.Dlg[1];
         LinearLayout list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
         list.setPadding(0, dp(4), 0, dp(8));
@@ -969,34 +967,14 @@ public final class SettingsActivity extends Activity {
             }
         }
         cur = saved;
-        ScrollView sv = new ScrollView(this);
-        sv.addView(list);
         String when = GESTURE_TITLES[slot % 3].toLowerCase(Locale.ROOT);
         String what = ITEM_TITLES[slot / 3].toLowerCase(Locale.ROOT);
-        dlg[0] = new AlertDialog.Builder(this)
-                .setTitle("On " + when + " of the " + what)
-                .setView(sv).setNegativeButton("Cancel", null).show();
+        dlg[0] = new Ui.Dlg(this, pal).title("On " + when + " of the " + what)
+                .view(list).button(0, "Cancel", null).show();
     }
 
     private void pickRow(String label, boolean selected, View.OnClickListener l) {
-        LinearLayout r = new LinearLayout(this);
-        r.setGravity(Gravity.CENTER_VERTICAL);
-        r.setPadding(dp(24), dp(12), dp(24), dp(12));
-        r.setBackground(ripple(selected ? cAccentSoft : 0));
-        r.setOnClickListener(l);
-        TextView t = new TextView(this);
-        t.setText(label);
-        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_BODY);
-        t.setTextColor(selected ? cAccent : cText);
-        r.addView(t, new LinearLayout.LayoutParams(0, -2, 1));
-        if (selected) {
-            TextView ck = new TextView(this);
-            ck.setText("✓");
-            ck.setTextColor(cAccent);
-            ck.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_BODY);
-            r.addView(ck);
-        }
-        cur.addView(r, new LinearLayout.LayoutParams(-1, -2));
+        cur.addView(Ui.pickRow(this, pal, label, selected, l), new LinearLayout.LayoutParams(-1, -2));
     }
 
     private void pick(int slot, int action) {
@@ -1016,9 +994,10 @@ public final class SettingsActivity extends Activity {
             apps.add(new Object[]{ri.loadLabel(pm).toString(), pkg, ri});
         }
         Collections.sort(apps, (a, b) -> ((String) a[0]).compareToIgnoreCase((String) b[0]));
-        AlertDialog[] dlg = new AlertDialog[1];
+        Ui.Dlg[] dlg = new Ui.Dlg[1];
         LinearLayout list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
+        String curApp = cfg.action(slot) == Config.ACT_APP ? cfg.app(slot) : null;
         for (Object[] a : apps) {
             LinearLayout r = new LinearLayout(this);
             r.setGravity(Gravity.CENTER_VERTICAL);
@@ -1033,9 +1012,12 @@ public final class SettingsActivity extends Activity {
             TextView t = new TextView(this);
             t.setText((String) a[0]);
             t.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_BODY);
-            t.setTextColor(cText);
+            boolean isSel = a[1].equals(curApp);
+            t.setTextColor(isSel ? pal.accInk : cText);
+            if (isSel) t.setTypeface(Ui.font(700));
             t.setPadding(dp(14), 0, 0, 0);
-            r.addView(t);
+            r.addView(t, new LinearLayout.LayoutParams(0, -2, 1));
+            if (isSel) r.addView(Ui.icon(this, "check", pal.accInk, 20));
             r.setOnClickListener(v -> {
                 cfg.apps[slot] = (String) a[1];
                 dlg[0].dismiss();
@@ -1043,10 +1025,8 @@ public final class SettingsActivity extends Activity {
             });
             list.addView(r, new LinearLayout.LayoutParams(-1, -2));
         }
-        ScrollView sv = new ScrollView(this);
-        sv.addView(list);
-        dlg[0] = new AlertDialog.Builder(this).setTitle("Which app should open?").setView(sv)
-                .setNegativeButton("Cancel", null).show();
+        dlg[0] = new Ui.Dlg(this, pal).title("Which app should open?").view(list)
+                .button(0, "Cancel", null).show();
     }
 
     private Boolean helperRunning;   // null = not checked yet
@@ -1374,11 +1354,11 @@ public final class SettingsActivity extends Activity {
 
         group("Start over");
         actionRow("Restore defaults", "Every option goes back to how it was at the start, and the Performance panel shows all its cards again", cErr, v ->
-                new AlertDialog.Builder(this)
-                        .setTitle("Restore defaults?")
-                        .setMessage("Every option in this app goes back to its starting value, and the Performance panel goes back to its standard cards and order. You can't undo this.")
-                        .setNegativeButton("Cancel", null)
-                        .setPositiveButton("Restore", (d, w) -> restoreDefaults()).show());
+                new Ui.Dlg(this, pal)
+                        .title("Restore defaults?")
+                        .message("Every option in this app goes back to its starting value, and the Performance panel goes back to its standard cards and order. You can't undo this.")
+                        .button(0, "Cancel", null)
+                        .button(2, "Restore", () -> restoreDefaults()).show());
         endGroup(modVersion.isEmpty() ? "StatusBar Mods for the Galaxy S23 Ultra"
                 : "StatusBar Mods  v" + modVersion + "  ·  for the Galaxy S23 Ultra");
     }
@@ -1484,10 +1464,10 @@ public final class SettingsActivity extends Activity {
     }
 
     private void statusDialog() {
-        new AlertDialog.Builder(this).setTitle("Status").setMessage(statusDetail)
-                .setPositiveButton("Check again", (d, w) -> ping())
-                .setNeutralButton("Restart status bar", (d, w) -> restartSystemUi())
-                .setNegativeButton("Close", null)
+        new Ui.Dlg(this, pal).title("Status").message(statusDetail)
+                .button(2, "Check again", () -> ping())
+                .button(1, "Restart status bar", () -> restartSystemUi())
+                .button(0, "Close", null)
                 .show();
     }
 
@@ -1810,14 +1790,9 @@ public final class SettingsActivity extends Activity {
 
     private void choiceRow(String title, String[] labels, int current, IntSetter s) {
         final int sel = current < 0 || current >= labels.length ? 0 : current;
-        LinearLayout r = rowShell(v -> new AlertDialog.Builder(this)
-                .setTitle(title)
-                .setSingleChoiceItems(labels, sel, (d, which) -> {
-                    d.dismiss();
-                    if (which != sel) s.set(which);
-                })
-                .setNegativeButton("Cancel", null)
-                .show());
+        LinearLayout r = rowShell(v -> Ui.picker(this, pal, title, labels, sel, which -> {
+            if (which != sel) s.set(which);
+        }).show());
         r.addView(labelBlock(autoIcon(title), title, null, cText, dp(130)), new LinearLayout.LayoutParams(0, -2, 1));
         TextView value = Ui.text(this, labels[sel], Ui.T_SECTION, pal.accInk, 600);
         value.setGravity(Gravity.END);

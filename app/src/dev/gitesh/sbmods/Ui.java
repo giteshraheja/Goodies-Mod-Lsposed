@@ -23,7 +23,9 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.FrameLayout;
+import android.graphics.Color;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import java.util.HashMap;
@@ -447,7 +449,7 @@ public final class Ui {
         return f;
     }
 
-    /** The info "i" button (48 dp target, 19 dp icon). */
+    /** The info "i" button (48 dp target, 20 dp icon). */
     public static View infoButton(Context c, Pal p, String about, View.OnClickListener l) {
         return infoButton(c, p.tx2, about, l);
     }
@@ -461,5 +463,114 @@ public final class Ui {
         f.setOnClickListener(l);
         f.setLayoutParams(new android.widget.LinearLayout.LayoutParams(dp(c, TAP), dp(c, TAP)));
         return f;
+    }
+
+    // ------------------------------------------------------------------ styled dialogs (replace stock AlertDialog)
+
+    /** A rounded card dialog: title, optional message, content view, accent text buttons. Nothing animates or polls. */
+    public static final class Dlg {
+        private final Context c; private final Pal p;
+        private String title, msg; private View body;
+        private String[] btnText = new String[3]; private View.OnClickListener[] btnClick = new View.OnClickListener[3];
+        private boolean[] btnDismiss = new boolean[3];
+        private android.app.Dialog dl;
+        public Dlg(Context c, Pal p) { this.c = c; this.p = p; }
+        public Dlg title(String t) { title = t; return this; }
+        public Dlg message(String m) { msg = m; return this; }
+        public Dlg view(View v) { body = v; return this; }
+        /** slot 0 = negative (left), 1 = neutral, 2 = positive (right). */
+        public Dlg button(int slot, String text, Runnable r) {
+            btnText[slot] = text; btnDismiss[slot] = true;
+            btnClick[slot] = r == null ? null : v -> r.run();
+            return this;
+        }
+        public android.app.Dialog dialog() { return dl; }
+        public void dismiss() { if (dl != null) dl.dismiss(); }
+        public Dlg show() {
+            dl = new android.app.Dialog(c);
+            dl.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
+            LinearLayout card = new LinearLayout(c);
+            card.setOrientation(LinearLayout.VERTICAL);
+            card.setPadding(0, dp(c, S5), 0, dp(c, S2));
+            card.setBackground(round(p.card, dp(c, R_CARD + 4), 0, 0));
+            if (title != null) {
+                TextView t = text(c, title, 20, p.tx, 700);
+                t.setPadding(dp(c, S5), 0, dp(c, S5), dp(c, S3));
+                card.addView(t, new LinearLayout.LayoutParams(-1, -2));
+            }
+            if (msg != null) {
+                TextView m = text(c, msg, T_BODY, p.tx2, 400);
+                m.setLineSpacing(0, 1.2f);
+                m.setPadding(dp(c, S5), 0, dp(c, S5), dp(c, S3));
+                card.addView(m, new LinearLayout.LayoutParams(-1, -2));
+            }
+            if (body != null) {
+                int maxH = Math.round(c.getResources().getDisplayMetrics().heightPixels * 0.6f);
+                android.widget.ScrollView sv = new android.widget.ScrollView(c) {
+                    @Override protected void onMeasure(int w, int h) { super.onMeasure(w, MeasureSpec.makeMeasureSpec(maxH, MeasureSpec.AT_MOST)); }
+                };
+                sv.setVerticalScrollBarEnabled(false);
+                sv.addView(body);
+                card.addView(sv, new LinearLayout.LayoutParams(-1, -2));
+            }
+            LinearLayout row = new LinearLayout(c);
+            row.setGravity(Gravity.CENTER_VERTICAL | Gravity.END);
+            row.setPadding(dp(c, S2), dp(c, S2), dp(c, S2), 0);
+            int[] order = {1, 0, 2};
+            for (int k : order) {
+                if (btnText[k] == null) continue;
+                final int kk = k;
+                TextView b = text(c, btnText[k], 15, p.accInk, 700);
+                b.setGravity(Gravity.CENTER);
+                b.setMinHeight(dp(c, TAP));
+                b.setPadding(dp(c, S4), 0, dp(c, S4), 0);
+                b.setBackground(ripple(p, null, round(Color.WHITE, dp(c, R_BUTTON), 0, 0)));
+                b.setOnClickListener(v -> { dl.dismiss(); if (btnClick[kk] != null) btnClick[kk].onClick(v); });
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, dp(c, TAP));
+                if (k == 1) lp.weight = 0;
+                row.addView(b, lp);
+            }
+            if (row.getChildCount() > 0) card.addView(row, new LinearLayout.LayoutParams(-1, -2));
+            FrameLayout wrap = new FrameLayout(c);
+            wrap.setPadding(dp(c, S4), 0, dp(c, S4), 0);
+            wrap.addView(card);
+            dl.setContentView(wrap);
+            android.view.Window w = dl.getWindow();
+            if (w != null) {
+                w.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
+                w.setLayout(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+                w.addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+                w.setDimAmount(p.night ? 0.55f : 0.42f);
+            }
+            dl.show();
+            return this;
+        }
+    }
+
+    /** One selectable row for a picker: label, accent colour plus a check when selected. */
+    public static View pickRow(Context c, Pal p, String label, boolean selected, View.OnClickListener l) {
+        LinearLayout r = new LinearLayout(c);
+        r.setGravity(Gravity.CENTER_VERTICAL);
+        r.setMinimumHeight(dp(c, TAP));
+        r.setPadding(dp(c, S5), dp(c, S2), dp(c, S5), dp(c, S2));
+        r.setBackground(ripple(p, selected ? round(p.accSoft, 0, 0, 0) : null, round(Color.WHITE, 0, 0, 0)));
+        r.setOnClickListener(l);
+        TextView t = text(c, label, T_BODY, selected ? p.accInk : p.tx, selected ? 700 : 400);
+        r.addView(t, new LinearLayout.LayoutParams(0, -2, 1));
+        if (selected) r.addView(icon(c, "check", p.accInk, 20));
+        return r;
+    }
+
+    /** A simple single-choice picker; `selected` < 0 marks nothing. */
+    public static Dlg picker(Context c, Pal p, String title, String[] items, int selected, java.util.function.IntConsumer onPick) {
+        LinearLayout list = new LinearLayout(c);
+        list.setOrientation(LinearLayout.VERTICAL);
+        final Dlg[] d = new Dlg[1];
+        for (int i = 0; i < items.length; i++) {
+            final int k = i;
+            list.addView(pickRow(c, p, items[i], i == selected, v -> { d[0].dismiss(); onPick.accept(k); }));
+        }
+        d[0] = new Dlg(c, p).title(title).view(list).button(0, "Cancel", null);
+        return d[0];
     }
 }
