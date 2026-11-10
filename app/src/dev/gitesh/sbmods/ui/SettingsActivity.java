@@ -1124,17 +1124,36 @@ public final class SettingsActivity extends Activity {
                 + ".\n\nSwitch a card off to hide it. Press and hold the handle on the left of a card and drag it up or down to move it within its page. "
                 + "Reset shows every card again in the standard order.");
 
+        final String tiles = gs(PanelLayout.TILES);
+        group("tiles", "Tile size", null, true);
+        cardResetAction(() -> putGl(PanelLayout.TILES, ""));
+        for (int i = 0; i < PanelLayout.TILE_CARDS.length; i++) {
+            final String id = PanelLayout.TILE_CARDS[i];
+            if (i > 0) divider();
+            segmentedBlock(PanelLayout.TITLES[PanelLayout.indexOf(id)], new String[]{"Wide", "Small (icon only)"}, PanelLayout.small(tiles, id) ? 1 : 0,
+                    v -> putGl(PanelLayout.TILES, PanelLayout.withSmall(tiles, id, v == 1)));
+        }
+        endGroup("Switch cards show as tiles in the panel. Wide shows an icon, the name and the state, two to a row; Small shows only the icon, four to a row. "
+                + "A tile is solid when it is on and frosted glass when it is off. Tap a tile to switch it; tap the \u201ci\u201d on a wide tile, or press and hold a small one, for help.");
+
+        group("allpage", "The All page", null, true);
+        cardResetAction(() -> putGl(PanelLayout.ALLFILL, "0"));
+        switchRow("Fill it with the cards I use most", "The All page lists every card that is shown, in your order, and its order never changes. "
+                + "Switch this on and it collects the five cards you used last instead, newest first.",
+                gl(PanelLayout.ALLFILL, 0) == 1, v -> putGl(PanelLayout.ALLFILL, v ? "1" : "0"));
+        if (advanced("allpage")) {
+            divider();
+            actionRow("Empty the used-cards list", "Starts the list of the cards you used last again from nothing", cAccent, v -> putGl(PanelLayout.RECENT, ""));
+        }
+        endGroup(null);
+
         group("aboutpanel", "About the panel", null, true);
         infoRow("The Performance panel", "It opens from the CPU or GPU chip on the recent apps screen and has four pages: All, Speed, Battery and Memory.\n\n"
-                + "All = the five cards you used last. "
+                + "All = every shown card in your order (or the five cards you used last, if you chose that below). "
                 + "Speed = modes, CPU and GPU limits, resting cores, Vulkan graphics, options. "
                 + "Battery = power saving switch, screen smoothness (120 / 60 Hz), battery report, battery health with a shortcut to Samsung's battery protection. "
                 + "Memory = memory and swap, clean-up buttons, busiest apps with Stop.\n\n"
                 + "The panel opens on the page you used last.");
-        divider();
-        infoRow("The All page", "The panel's “All” page collects the five cards you used last, so your favourites are one tap away.");
-        divider();
-        actionRow("Empty the All page", "Starts the list again from nothing", cAccent, v -> putGl(PanelLayout.RECENT, ""));
         endGroup(null);
     }
 
@@ -1303,9 +1322,12 @@ public final class SettingsActivity extends Activity {
         for (String k : prefs.getAll().keySet()) if (k.startsWith("adv_") || k.startsWith("open_")) ed.remove(k);
         ed.apply();
         buildPreviewArea();
-        putGl(PanelLayout.SETTING, "", PANEL_RESET_KEY, "");
+        putGl(PanelLayout.SETTING, "", PanelLayout.TILES, "", PanelLayout.ALLFILL, "0");
     }
-    private static final String PANEL_RESET_KEY = "sbmods_cards";   // stage 4 adds the tile sizes and the All page option here
+
+    private String gs(String key) {
+        try { return android.provider.Settings.Global.getString(getContentResolver(), key); } catch (Throwable t) { return null; }
+    }
 
     private void buildMore() {
         group("cheat", "Cheat sheet: what taps do", "In the app, on the status bar, on the Overview screen", false);
@@ -1328,7 +1350,7 @@ public final class SettingsActivity extends Activity {
                 "RAM: tap = close background apps. Swap: tap = deep clean. Temp: tap = cool-down on / off. Long-press any of them = Device care.\n"
                 + "CPU (bottom right) and GPU (bottom left) show the live speed and what holds it back (full speed, Samsung's heat limit, or your limit). "
                 + "Tap = Performance panel, long-press = quick limit on / off.\n"
-                + "Performance panel: four pages. All = the five cards you used last. "
+                + "Performance panel: four pages. All = every shown card (or the five you used last, if you chose that). "
                 + "Speed = modes, CPU and GPU limits, resting cores, Vulkan graphics, options. "
                 + "Battery = power saving switch, screen smoothness (120 / 60 Hz), battery report, battery health with a shortcut to Samsung's battery protection. "
                 + "Memory = memory and swap, clean-up buttons, busiest apps with Stop. "

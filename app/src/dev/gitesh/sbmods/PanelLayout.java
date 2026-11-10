@@ -22,6 +22,12 @@ public final class PanelLayout {
     public static final String RECENT = "sbmods_recent";
     public static final String TAB = "sbmods_panel_tab";
     public static final int RECENT_MAX = 5;
+    /** Ids of the switch cards shown as small icon-only tiles (comma-separated); the others are wide tiles. */
+    public static final String TILES = "sbmods_tiles";
+    /** 1 = the All page fills itself with the cards used last (opt-in); otherwise it lists every shown card in the owner's order. */
+    public static final String ALLFILL = "sbmods_allfill";
+    /** The cards that are tiles (a tap switches them); their size is the owner's choice. */
+    public static final String[] TILE_CARDS = {"powersave", "smooth"};
 
     /** Default order. The page of each card is in PAGES, its plain-English name in TITLES (same positions). */
     public static final String[] DEFAULTS = {"modes", "cpu", "gpu", "cores", "graphics", "switches",
@@ -93,6 +99,25 @@ public final class PanelLayout {
         r.add(0, id);
         while (r.size() > RECENT_MAX) r.remove(r.size() - 1);
         return write(r, null);
+    }
+
+    public static boolean isTile(String id) { return Arrays.asList(TILE_CARDS).contains(id); }
+
+    /** Is this tile card set to the small icon-only size? */
+    public static boolean small(String setting, String id) {
+        if (setting != null) for (String t : setting.split(",")) if (t.trim().equals(id)) return true;
+        return false;
+    }
+
+    /** The tiles setting after one card's size was chosen. */
+    public static String withSmall(String setting, String id, boolean small) {
+        List<String> out = new ArrayList<>();
+        if (setting != null) for (String t : setting.split(",")) {
+            t = t.trim();
+            if (!t.isEmpty() && !t.equals(id) && isTile(t) && !out.contains(t)) out.add(t);
+        }
+        if (small) out.add(id);
+        return write(out, null);
     }
 
     /** Index of an id in DEFAULTS, or -1. */

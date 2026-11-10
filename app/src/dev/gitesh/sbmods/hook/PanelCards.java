@@ -80,6 +80,9 @@ final class PanelCards {
         boolean tapTile() { return false; }
         boolean on(Activity a) { return false; }
         void tap(Activity a) {}
+        /** A tile's line-icon name and state text ("On", "Standard · 60"); only tile cards have them. */
+        String icon() { return "sys"; }
+        String state(Activity a) { return ""; }
         /** True when the card draws its own title (a one-row card): the panel then adds no header line. */
         boolean ownHeader() { return false; }
 
@@ -122,6 +125,18 @@ final class PanelCards {
         for (String id : PanelLayout.recent(Global.gstr(c, PanelLayout.RECENT))) if (vis.contains(id)) out.add(id);
         return out;
     }
+
+    /** Every shown card, in the owner's order (the All page unless it fills itself). */
+    static List<Card> allFixed(Context c) {
+        List<Card> out = new ArrayList<>();
+        for (String id : PanelLayout.order(Global.gstr(c, PanelLayout.SETTING), PanelLayout.DEFAULTS)) { Card k = byId(id); if (k != null) out.add(k); }
+        return out;
+    }
+
+    static boolean allFill(Context c) { return Global.gint(c, PanelLayout.ALLFILL, 0) == 1; }
+
+    /** Is this tile card set to the small icon-only size? */
+    static boolean small(Context c, Card k) { return PanelLayout.small(Global.gstr(c, PanelLayout.TILES), k.id); }
 
     static Card byId(String id) {
         for (Card k : ALL) if (k.id.equals(id)) return k;
@@ -579,7 +594,9 @@ final class PanelCards {
             Global.gset(a, "low_power", on(a) ? "0" : "1");   // the phone's own power saving, so quick settings and the battery screen agree
             used(a, "powersave");
         }
-        @Override View build(Activity a) { boolean on = on(a); return tileText(a, this, on, on ? "On" : "Off"); }
+        @Override String icon() { return "leaf"; }
+        @Override String state(Activity a) { return on(a) ? "On" : "Off"; }
+        @Override View build(Activity a) { boolean on = on(a); return tileText(a, this, on, state(a)); }
         @Override String help(Activity a) { return "The phone's own power saving, the same switch as in quick settings."; }
         @Override String sig(Activity a) { return String.valueOf(Global.gint(a, "low_power", 0)); }
     }
@@ -597,10 +614,9 @@ final class PanelCards {
             if (!Global.sput(a, "refresh_rate_mode", smooth ? "1" : "0")) return;
             used(a, "smooth");
         }
-        @Override View build(Activity a) {
-            int v = Global.sint(a, "refresh_rate_mode", 1);
-            return tileText(a, this, v != 0, v == 0 ? "Standard · 60" : v == 2 ? "Smooth · 120" : "Smooth · up to 120");
-        }
+        @Override String icon() { return "gauge"; }
+        @Override String state(Activity a) { int v = Global.sint(a, "refresh_rate_mode", 1); return v == 0 ? "Standard · 60" : v == 2 ? "Smooth · 120" : "Smooth · up to 120"; }
+        @Override View build(Activity a) { return tileText(a, this, on(a), state(a)); }
         @Override String help(Activity a) { return "Standard uses less battery. Smooth lets the screen refresh up to 120 times a second."; }
         @Override String sig(Activity a) { return String.valueOf(Global.sint(a, "refresh_rate_mode", 1)); }
     }

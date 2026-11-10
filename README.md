@@ -16,6 +16,16 @@ nothing loads, SystemUI is stock.
 Add a new item: implement items/Item.java (see TempItem), register in items/Items.java,
 add its option to Config.java and a control in ui/SettingsActivity.java, bump versionCode, build.
 
+## Look (branch ui-liquid)
+One shared style in `app/src/dev/gitesh/sbmods/Ui.java`: cool-grey surfaces, one teal accent (#0B7A85 day / #5CD0DB night), system font,
+glass on the bottom bar, info sheet and the Performance panel, solid cards elsewhere, line icons drawn in code. No XML layouts, no realtime blur in the app
+(frosted fills + a highlight border); the panel uses the window blur only when the system allows it. Nothing polls or animates continuously.
+- Settings app: four tabs (Layout, Clock, Panel, System). Layout and Clock pin the live preview. Long captions open from the "i" in a bottom sheet.
+  Each card has Reset; less-used options sit behind an "Advanced" row; System > Restore defaults resets everything (with a confirm).
+- Performance panel follows the system day / night setting. Panel cards are reordered with the drag handle in the Panel tab.
+  Switch cards are tiles (wide or small icon-only, chosen in the Panel tab). The All page lists every shown card in your order; "Fill it with the cards I use most" brings back the old behaviour.
+- New global settings (written by the app with root, read by the panel): `sbmods_tiles` (small tile ids), `sbmods_allfill` (1 = All page fills itself).
+
 ## Signing key
 `build.sh` creates `keys/sbmods.jks` on first run. Provide its password via `SBMODS_KS_PASS` or a
 git-ignored `keys/pass.txt`. Forks must use their own key and a different package name.

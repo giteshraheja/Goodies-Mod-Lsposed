@@ -211,17 +211,30 @@ final class PerfPanel {
         RecentsChip.main.postDelayed(() -> { try { if (showing()) rebuildCards(a); RecentsChip.refresh(a); } catch (Throwable t) { Log.w("panel refresh: " + t); } }, 350);
     }
 
+    /** The page buttons: four 48 dp pills, the open one solid accent, the others glass. */
     private static void buildSwitch(Activity a) {
         pSwitch.removeAllViews();
-        pSwitch.addView(PanelCards.seg(a, PanelLayout.PAGE_NAMES, page, i -> Ui.cur.acc, i -> {
-            if (i == page) return;
-            page = i;
-            allOrder = null; helpOpen = null;   // the All page is rebuilt with the newest order
-            Global.gset(a, PanelLayout.TAB, String.valueOf(i));
-            buildSwitch(a);
-            rebuildCards(a);   // only the card area changes
-            try { pBox.setAlpha(0f); pBox.animate().alpha(1f).setDuration(120).start(); } catch (Throwable t) { Log.w("fade: " + t); }
-        }), new LinearLayout.LayoutParams(-1, -2));
+        LinearLayout row = new LinearLayout(a);
+        for (int i = 0; i < PanelLayout.PAGE_NAMES.length; i++) {
+            final int at = i;
+            boolean on = i == page;
+            TextView b = PanelCards.tvm(a, PanelLayout.PAGE_NAMES[i], 14, on ? Ui.cur.onAcc : Ui.cur.tx);
+            b.setGravity(Gravity.CENTER);
+            b.setSingleLine(true);
+            b.setBackground(on ? Ui.round(Ui.cur.acc, dp(a, 24), 1, Ui.cur.acc) : Ui.panelGlass(a, Ui.cur, Ui.cur.tile, Ui.cur.tileBd, 24));
+            b.setSelected(on);
+            b.setOnClickListener(PanelCards.safe(() -> {
+                if (at == page) return;
+                page = at;
+                allOrder = null; helpOpen = null;   // the All page is rebuilt with the newest order
+                Global.gset(a, PanelLayout.TAB, String.valueOf(at));
+                buildSwitch(a);
+                rebuildCards(a);   // only the card area changes
+                try { pBox.setAlpha(0f); pBox.animate().alpha(1f).setDuration(120).start(); } catch (Throwable t) { Log.w("fade: " + t); }
+            }));
+            row.addView(b, PanelCards.lp(0, dp(a, 48), i == 0 ? 0 : dp(a, 4), 0, i == PanelLayout.PAGE_NAMES.length - 1 ? 0 : dp(a, 4), 0, 1));
+        }
+        pSwitch.addView(row, new LinearLayout.LayoutParams(-1, -2));
     }
 
     /** Rebuild the card area now (a card changed something that its own view cannot show). */
@@ -230,7 +243,8 @@ final class PerfPanel {
     /** The cards of the current page. The All page keeps the order it was built with until the page is left or the panel reopens. */
     private static List<PanelCards.Card> pageCards(Activity a) {
         if (page != PanelLayout.PAGE_ALL) return PanelCards.visible(a, page);
-        if (allOrder == null) allOrder = PanelCards.recentVisible(a);
+        if (!PanelCards.allFill(a)) return PanelCards.allFixed(a);   // the usual All page: every shown card, in the owner's order
+        if (allOrder == null) allOrder = PanelCards.recentVisible(a);   // opt-in: the cards used last, kept while the panel shows
         List<PanelCards.Card> out = new ArrayList<>();
         for (String id : allOrder) { PanelCards.Card k = PanelCards.byId(id); if (k != null) out.add(k); }
         return out;
@@ -287,7 +301,102 @@ final class PerfPanel {
         return t;
     }
 
-    /** Fill the card area with the cards of the current page; two small cards in a row sit side by side. */
+    private static void bindToggle(PanelCards.Card k) {
+        k.val = null;
+        k.toggle = () -> {
+            helpOpen = k.id.equals(helpOpen) ? null : k.id;
+            for (int i = 0; i < shown.size() && i < helps.size(); i++) if (helps.get(i) != null) helps.get(i).setVisibility(shown.get(i).id.equals(helpOpen) ? View.VISIBLE : View.GONE);
+        };
+    }
+
+    /**
+     * A switch card as a tile. Wide: round icon, label and state, an info "i" for the help; small: the icon only.
+     * Solid accent while on, glass while off. Returns null if it failed; the help text goes into `helpOut` (added under the row).
+     */
+    private static View switchTile(Activity a, PanelCards.Card k, boolean small, List<TextView> helpOut) {
+        Ui.Pal p = Ui.cur;
+        bindToggle(k);
+        boolean on = false;
+        String state = "";
+        try { on = k.on(a); state = k.state(a); } catch (Throwable t) { Log.w("card " + k.id + " tile: " + t); return null; }
+        String h = null;
+        try { h = k.help(a); } catch (Throwable x) { Log.w("card " + k.id + " help: " + x); }
+        FrameLayout t = new FrameLayout(a);
+        t.setBackground(on ? Ui.round(p.acc, dp(a, Ui.R_TILE), 1, p.acc) : Ui.panelGlass(a, p, p.tile, p.tileBd, Ui.R_TILE));
+        t.setClickable(true);
+        t.setContentDescription(k.title + ", " + state);
+        t.setOnClickListener(PanelCards.safe(() -> { k.tap(a); rebuild(a); }));
+        t.setOnLongClickListener(v -> { try { k.toggle.run(); } catch (Throwable x) { Log.w("help: " + x); } return true; });
+        int ink = on ? p.onAcc : p.accInk;
+        if (small) {
+            android.widget.ImageView ic = Ui.icon(a, k.icon(), on ? p.onAcc : p.tx, 26);
+            FrameLayout.LayoutParams ip = (FrameLayout.LayoutParams) ic.getLayoutParams();
+            ip.gravity = Gravity.CENTER;
+            t.addView(ic);
+        } else {
+            LinearLayout col = new LinearLayout(a);
+            col.setOrientation(LinearLayout.VERTICAL);
+            col.setPadding(dp(a, 14), dp(a, 12), dp(a, 14), dp(a, 12));
+            FrameLayout badge = new FrameLayout(a);
+            GradientDrawable bg = new GradientDrawable();
+            bg.setShape(GradientDrawable.OVAL);
+            bg.setColor(on ? (p.night ? 0x29031F23 : 0x38FFFFFF) : p.tileIco);
+            badge.setBackground(bg);
+            android.widget.ImageView ic = Ui.icon(a, k.icon(), ink, 20);
+            ((FrameLayout.LayoutParams) ic.getLayoutParams()).gravity = Gravity.CENTER;
+            badge.addView(ic);
+            col.addView(badge, new LinearLayout.LayoutParams(dp(a, 36), dp(a, 36)));
+            col.addView(new View(a), new LinearLayout.LayoutParams(1, 0, 1));
+            TextView lab = PanelCards.tvm(a, k.title, Ui.T_LABEL, on ? p.onAcc : p.tx);
+            lab.setSingleLine(true);
+            lab.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            col.addView(lab);
+            TextView val = tv(a, state, 13, on ? p.onAcc : p.tx2, false);
+            val.setSingleLine(true);
+            val.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            col.addView(val);
+            t.addView(col, new FrameLayout.LayoutParams(-1, -1));
+            if (h != null) {
+                View info = Ui.infoButton(a, on ? p.onAcc : p.tx2, k.title, PanelCards.safe(k.toggle));
+                FrameLayout.LayoutParams fp = new FrameLayout.LayoutParams(dp(a, 48), dp(a, 48), Gravity.TOP | Gravity.END);
+                fp.setMargins(0, dp(a, -2), dp(a, -2), 0);
+                t.addView(info, fp);
+            }
+        }
+        TextView hv = null;
+        if (h != null) {
+            hv = tv(a, h, 12, p.tx2, false);
+            hv.setPadding(dp(a, 6), dp(a, 8), dp(a, 6), 0);
+            hv.setVisibility(k.id.equals(helpOpen) ? View.VISIBLE : View.GONE);
+            helpOut.add(hv);
+        }
+        shown.add(k);
+        helps.add(hv);
+        String sg = "";
+        try { sg = k.sig(a); } catch (Throwable x) { Log.w("card " + k.id + " sig: " + x); }
+        sigs.add(sg);
+        return t;
+    }
+
+    /** Switch cards in a row: two wide tiles or four small ones; a short row keeps the tile size (empty slots). */
+    private static void addTileRow(Activity a, List<PanelCards.Card> run, boolean small, int per) {
+        LinearLayout col = new LinearLayout(a);
+        col.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout row = new LinearLayout(a);
+        List<TextView> hv = new ArrayList<>();
+        int gap = dp(a, small ? 5 : 5);
+        for (int i = 0; i < per; i++) {
+            View t = i < run.size() ? switchTile(a, run.get(i), small, hv) : null;
+            if (t == null) t = new View(a);
+            row.addView(t, PanelCards.lp(0, dp(a, small ? 72 : 106), i == 0 ? 0 : gap, 0, i == per - 1 ? 0 : gap, 0, 1));
+        }
+        col.addView(row, new LinearLayout.LayoutParams(-1, -2));
+        for (TextView h : hv) col.addView(h, new LinearLayout.LayoutParams(-1, -2));
+        int top = pBox.getChildCount() > 0 ? dp(a, 10) : 0;
+        pBox.addView(col, PanelCards.lp(-1, -2, 0, top, 0, 0));
+    }
+
+    /** Fill the card area with the cards of the current page; switch cards become tiles, two wide or four small to a row. */
     private static void rebuildCards(Activity a) {
         if (pBox == null || rebuilding) return;
         rebuilding = true;
@@ -297,18 +406,19 @@ final class PerfPanel {
             shown.clear(); sigs.clear(); helps.clear();
             Perf.read();   // make sure the core groups are known before cards use them
             List<PanelCards.Card> cards = pageCards(a);
-            for (int i = 0; i < cards.size(); i++) {
+            for (int i = 0; i < cards.size(); ) {
                 PanelCards.Card k = cards.get(i);
-                boolean pair = k.half() && i + 1 < cards.size() && cards.get(i + 1).half();
-                LinearLayout t1 = tile(a, k), t2 = pair ? tile(a, cards.get(i + 1)) : null;
-                if (pair) i++;
-                int top = pBox.getChildCount() > 0 ? dp(a, 8) : 0;
-                if (t1 != null && t2 != null) {
-                    LinearLayout row = new LinearLayout(a);
-                    row.addView(t1, PanelCards.lp(0, -1, 0, 0, dp(a, 4), 0, 1));
-                    row.addView(t2, PanelCards.lp(0, -1, dp(a, 4), 0, 0, 0, 1));
-                    pBox.addView(row, PanelCards.lp(-1, -2, 0, top, 0, 0));
-                } else if (t1 != null || t2 != null) pBox.addView(t1 != null ? t1 : t2, PanelCards.lp(-1, -2, 0, top, 0, 0));
+                if (k.tapTile()) {
+                    boolean small = PanelCards.small(a, k);
+                    int per = small ? 4 : 2;
+                    List<PanelCards.Card> run = new ArrayList<>();
+                    while (i < cards.size() && cards.get(i).tapTile() && PanelCards.small(a, cards.get(i)) == small && run.size() < per) run.add(cards.get(i++));
+                    addTileRow(a, run, small, per);
+                    continue;
+                }
+                i++;
+                LinearLayout t1 = tile(a, k);
+                if (t1 != null) pBox.addView(t1, PanelCards.lp(-1, -2, 0, pBox.getChildCount() > 0 ? dp(a, 10) : 0, 0, 0));
             }
             if (shown.isEmpty()) {
                 if (page == PanelLayout.PAGE_ALL) {
@@ -317,7 +427,7 @@ final class PerfPanel {
                     empty.setGravity(Gravity.CENTER_HORIZONTAL);
                     empty.setPadding(dp(a, 16), dp(a, 28), dp(a, 16), dp(a, 28));
                     TextView l1 = tv(a, "Nothing here yet", 15, Ui.cur.tx, false);
-                    TextView l2 = tv(a, "Whatever you change on the other pages shows up here, newest first.", 13, Ui.cur.tx2, false);
+                    TextView l2 = tv(a, PanelCards.allFill(a) ? "Whatever you change on the other pages shows up here, newest first." : "No cards are shown. Turn some on in StatusBar Mods.", 13, Ui.cur.tx2, false);
                     l2.setGravity(Gravity.CENTER);
                     empty.addView(l1);
                     empty.addView(l2, PanelCards.lp(-2, -2, 0, dp(a, 6), 0, 0));
