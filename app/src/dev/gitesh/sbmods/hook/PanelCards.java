@@ -31,6 +31,8 @@ import java.util.Locale;
 import java.util.function.IntConsumer;
 import java.util.function.IntUnaryOperator;
 
+import dev.gitesh.sbmods.Config;
+import dev.gitesh.sbmods.Habits;
 import dev.gitesh.sbmods.PanelLayout;
 import dev.gitesh.sbmods.Ui;
 
@@ -363,6 +365,7 @@ final class PanelCards {
         if (PanelMath.MODE_CPU[m] > 0) Global.gset(a, "sbmods_cpu_pick", String.valueOf(PanelMath.MODE_CPU[m]));   // so a long-press on a chip returns to this level
         if (PanelMath.MODE_GPU[m] > 0) Global.gset(a, "sbmods_gpu_pick", String.valueOf(PanelMath.MODE_GPU[m]));
         Global.gset(a, "sbmods_cores", PanelMath.MODE_CORES[m]);
+        learn(a, PanelMath.MODE_CPU[m], PanelMath.MODE_GPU[m]);   // Full (0/0) is ignored
         used(a, "modes");
         PerfPanel.changed(a);
     }
@@ -829,6 +832,20 @@ final class PanelCards {
     /** "Smart suggestions" from the settings app, mirrored into a global because this runs in the launcher; missing = on. */
     static boolean smartOn(Context c) { return Global.gint(c, "sbmods_smart", 1) != 0; }
 
+    private static String str(String s) { return s == null ? "" : s; }
+
+    /** The owner turned a speed limit on by hand (Mode pick or a chip's long-press): remember it for the app used last. One settings write, only when something changed. */
+    static void learn(Activity a, int cpu, int gpu) {
+        try {
+            if (!smartOn(a)) return;
+            String p = lastApp(a);
+            if (p == null || p.equals(Config.PKG) || p.equals(Config.SYSUI)) return;
+            String cur = str(Global.gstr(a, "sbmods_habits"));
+            String n = Habits.learn(cur, p, cpu, gpu, java.time.LocalDate.now().toEpochDay());
+            if (!n.equals(cur)) Global.gput(a, "sbmods_habits", n);
+        } catch (Throwable t) { Log.w("learn: " + t); }
+    }
+
     static final class Insight extends Card {
         private static final long TOP_KEEP = 20000;   // a busiest-apps answer is reused for this long (a panel closed and opened again at once asks nothing)
         private static String topRaw;                 // the helper's last "top" answer
@@ -882,6 +899,8 @@ final class PanelCards {
             in.front = in.top == null ? null : lastApp(a);
             in.canStop = p -> stoppable(a, p);
             in.label = p -> { try { PackageManager pm = a.getPackageManager(); return pm.getApplicationInfo(p, 0).loadLabel(pm).toString(); } catch (Throwable t) { return p; } };
+            Habits.H hb = Habits.candidate(Global.gstr(a, "sbmods_habits"), Global.gstr(a, "sbmods_rules"));
+            if (hb != null) { in.habitPkg = hb.pkg; in.habitName = in.label.apply(hb.pkg); }
             in.gfxKeep = Global.gint(a, "sbmods_gfx_keep", 0) == 1;
             in.gfxVulkan = "vulkan".equals(Global.gstr(a, "sbmods_gfx"));
             List<Insights.Item> items = Insights.rank(in, done::contains);
@@ -892,6 +911,12 @@ final class PanelCards {
                 row.setGravity(Gravity.CENTER_VERTICAL);
                 row.setMinimumHeight(dp(a, 44));
                 row.addView(tv(a, it.text, 14, WHITE, false), new LinearLayout.LayoutParams(0, -2, 1));
+                if (it.button2 != null) row.addView(button(a, it.button2, () -> {   // "No": remembered as declined
+                    done.add(it.key());
+                    Global.gset(a, "sbmods_habits", Habits.decline(str(Global.gstr(a, "sbmods_habits")), it.arg));
+                    col.removeView(row);
+                    if (col.getChildCount() == 0) col.addView(tv(a, "Everything looks fine", 14, WHITE, false));
+                }), lp(-2, -2, dp(a, 10), 0, 0, 0));
                 row.addView(button(a, it.button, () -> {
                     done.add(it.key());
                     act(a, it);
@@ -919,6 +944,15 @@ final class PanelCards {
                     Toast.makeText(a, "Full speed", Toast.LENGTH_SHORT).show();
                     PerfPanel.changed(a);
                     break;
+                case Insights.HABIT: {   // the rule takes the levels chosen by hand; Smart (status bar process) applies it
+                    for (Habits.H x : Habits.parseHabits(Global.gstr(a, "sbmods_habits"))) if (x.pkg.equals(it.arg)) {
+                        Global.gset(a, "sbmods_rules", Habits.addRule(str(Global.gstr(a, "sbmods_rules")), x.pkg, x.cpu, x.gpu));
+                        String n = it.arg;
+                        try { PackageManager pm = a.getPackageManager(); n = pm.getApplicationInfo(n, 0).loadLabel(pm).toString(); } catch (Throwable ignored) {}
+                        Toast.makeText(a, "Rule saved: " + n + " will slow down automatically", Toast.LENGTH_LONG).show();
+                    }
+                    break;
+                }
                 case Insights.VULKAN:   // same as the Graphics card's Vulkan button
                     PanelCmd.post(a, "gfx:vulkan", null);
                     Toast.makeText(a, "Vulkan: apps use it the next time they open", Toast.LENGTH_SHORT).show();

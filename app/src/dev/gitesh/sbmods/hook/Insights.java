@@ -20,11 +20,12 @@ final class Insights {
     static final int RAM_MIN_PCT = 90;          // memory this full = tight (the Memory card turns red here)
     static final int LIMIT_END_SEC = 60;        // a limit with less than this left is "nearly over"
 
-    static final int HOT = 0, APP = 1, MEMORY = 2, LIMIT = 3, VULKAN = 4;   // also the rank: lower comes first
+    static final int HOT = 0, APP = 1, MEMORY = 2, LIMIT = 3, VULKAN = 4, HABIT = 5;   // also the rank: lower comes first
 
     static final class Item {
         final int kind;
-        final String text, button, arg;   // arg: the package for APP, else null
+        final String text, button, arg;   // arg: the package for APP and HABIT, else null
+        String button2;                   // optional small second button (HABIT: "No")
         Item(int kind, String text, String button, String arg) { this.kind = kind; this.text = text; this.button = button; this.arg = arg; }
         /** Stable id of this suggestion, so a line the owner already acted on stays gone while the panel is open. */
         String key() { return kind + ":" + (arg == null ? "" : arg); }
@@ -42,6 +43,7 @@ final class Insights {
         String front;                      // the app used last (not the home screen), or null
         Predicate<String> canStop;         // false for apps the helper refuses and for ours / the launcher
         Function<String, String> label;    // package -> name shown to the owner
+        String habitPkg, habitName;        // an app the owner slows down by hand again and again (no rule, not declined), else null
         boolean gfxKeep, gfxVulkan;        // "keep Vulkan" was chosen / Vulkan is on now
     }
 
@@ -50,6 +52,11 @@ final class Insights {
         List<Item> out = new ArrayList<>();
         boolean hot = in.tempC * 10 >= in.coolAtTenths;
         if (hot && !in.limitOn) out.add(new Item(HOT, "Phone is " + in.tempC + "°C", "Cool down", null));   // 1: warm and nothing holds it back
+        if (in.habitPkg != null) {   // after "hot", before "background app"
+            Item h = new Item(HABIT, "You often slow the phone down in " + in.habitName + ". Do it automatically?", "Yes", in.habitPkg);
+            h.button2 = "No";
+            out.add(h);
+        }
         String app = heavyApp(in);
         if (app != null) out.add(new Item(APP, in.label.apply(app) + " is using a lot in the background", "Stop", app));   // 2
         if (in.swapPct >= SWAP_MIN_PCT || in.ramUsedPct >= RAM_MIN_PCT) out.add(new Item(MEMORY, "Memory is nearly full", "Deep clean", null));   // 3

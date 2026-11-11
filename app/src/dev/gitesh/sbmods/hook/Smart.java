@@ -34,6 +34,7 @@ import java.util.Map;
 import java.util.Set;
 
 import dev.gitesh.sbmods.Config;
+import dev.gitesh.sbmods.Habits;
 import dev.gitesh.sbmods.Ui;
 
 /**
@@ -74,6 +75,14 @@ final class Smart {
     private static ContentObserver observer;
     private static View popup;
 
+    // automatic speed rules (sbmods_rules): parsed copy, one observer, and which limit is ours
+    private static final String K_OWN = "sm_own", G_RULES = "sbmods_rules";
+    private static final Map<String, Habits.R> rules = new HashMap<>();
+    private static ContentObserver rulesObs;
+    private static String ruleTop;          // last front app the rules looked at (a repeat event for the same app does nothing)
+    private static String owned;            // app whose limit WE set, else null
+    private static int ownCpu, ownGpu;
+
     private static final Runnable fire = Smart::fire;
     private static final Runnable timeout = () -> finishCheck(null);
     private static final Runnable dismiss = Smart::dismissPopup;
@@ -106,6 +115,13 @@ final class Smart {
         });
         hub = h.getField("INSTANCE").get(null);
         hub.getClass().getMethod("registerTaskStackListener", itf).invoke(hub, listener);
+        loadRules();
+        rulesObs = new ContentObserver(main) {
+            @Override public void onChange(boolean self) { loadRules(); }
+        };
+        c.getContentResolver().registerContentObserver(Settings.Global.getUriFor(G_RULES), false, rulesObs);
+        String[] o = p.getString(K_OWN, "").split("\\|");   // a limit of ours that outlived a status bar restart
+        if (o.length == 3) try { owned = o[0]; ownCpu = Integer.parseInt(o[1]); ownGpu = Integer.parseInt(o[2]); } catch (NumberFormatException e) { owned = null; }
         main.post(Smart::onFront);
     }
 
@@ -116,6 +132,9 @@ final class Smart {
         try { if (hub != null && listener != null) hub.getClass().getMethod("unregisterTaskStackListener", itf).invoke(hub, listener); }
         catch (Throwable t) { Log.w("smart unregister: " + t); }
         listener = null; top = null; pendingPkg = null;
+        try { if (rulesObs != null) ctx.getContentResolver().unregisterContentObserver(rulesObs); } catch (Throwable ignored) {}
+        rulesObs = null; rules.clear(); ruleTop = null;
+        if (owned != null) { if (stillOurs()) restoreFull(); forgetOwned(); }   // switched off while our limit is on: give full speed back
     }
 
     // ------------------------------------------------------------------ a different app came to the front
@@ -128,7 +147,9 @@ final class Smart {
             if (r == null || r.isEmpty()) return;
             ComponentName cn = r.get(0).topActivity;
             String p = cn != null ? cn.getPackageName() : null;
-            if (p == null || p.equals(top)) return;
+            if (p == null) return;
+            ruleFront(p, cn.getClassName());
+            if (p.equals(top)) return;
             top = p;
             main.removeCallbacks(fire); pendingPkg = null;
             if (checkPkg != null && !checkPkg.equals(p)) finishCheck("moved");
@@ -144,6 +165,64 @@ final class Smart {
             pendingPkg = p; pendingMode = mode;
             main.postDelayed(fire, DELAY_MS);
         } catch (Throwable t) { Log.w("smart front: " + t); }
+    }
+
+    // ------------------------------------------------------------------ automatic speed rules
+
+    private static void loadRules() {
+        rules.clear();
+        for (Habits.R r : Habits.parseRules(Global.gstr(ctx, G_RULES))) rules.put(r.pkg, r);
+    }
+
+    /** Surfaces that are not "the app the owner is using": they neither start nor end a rule (permission dialogs, our own screens, Overview). */
+    private static boolean transientSurface(String p, String cls) {
+        if (p.equals(Config.SYSUI) || p.equals(Config.PKG) || p.contains("permissioncontroller")) return true;
+        return p.equals(home()) && cls != null && cls.contains("ecents");   // launcher's Overview; the plain home screen counts as leaving the app
+    }
+
+    /** An app came to the front (called from onFront only). Cost with no rules and no limit of ours: two field checks. */
+    private static void ruleFront(String p, String cls) {
+        if (!on) return;
+        if (rules.isEmpty() && owned == null) return;
+        try {
+            if (transientSurface(p, cls)) return;
+            if (locked()) { ruleTop = null; return; }   // screen off / lock: leave everything; the first event after unlock decides
+            if (p.equals(ruleTop)) return;
+            ruleTop = p;
+            if (owned != null) {
+                if (p.equals(owned)) return;
+                if (stillOurs()) { restoreFull(); toast("Back to full speed"); }
+                forgetOwned();   // (if the owner changed the limit meanwhile: just forget, leave it alone)
+            }
+            Habits.R r = rules.get(p);
+            if (r == null || ctx.getSystemService(PowerManager.class).isPowerSaveMode() || limitActive()) return;
+            Global.gput(ctx, "sbmods_cpu_pct", String.valueOf(r.cpu));
+            Global.gput(ctx, "sbmods_gpu_pct", String.valueOf(r.gpu));
+            owned = p; ownCpu = r.cpu; ownGpu = r.gpu;
+            prefs.edit().putString(K_OWN, p + "|" + r.cpu + "|" + r.gpu).apply();
+            toast(nameOf(p) + ": slowed down to save battery");
+        } catch (Throwable t) { Log.w("smart rules: " + t); }
+    }
+
+    private static boolean limitActive() {
+        return Global.gint(ctx, "sbmods_cpu_pct", 0) > 0 || Global.gint(ctx, "sbmods_gpu_pct", 0) > 0 || Global.gint(ctx, "sbmods_cool", 0) == 1
+                || !PanelMath.normCores(Global.gstr(ctx, "sbmods_cores")).equals("0");
+    }
+
+    /** The limit in force is exactly the one we set (nothing else on). */
+    private static boolean stillOurs() {
+        return Global.gint(ctx, "sbmods_cpu_pct", 0) == ownCpu && Global.gint(ctx, "sbmods_gpu_pct", 0) == ownGpu
+                && Global.gint(ctx, "sbmods_cool", 0) == 0 && PanelMath.normCores(Global.gstr(ctx, "sbmods_cores")).equals("0");
+    }
+
+    /** Same as the Options card's "Full speed". */
+    private static void restoreFull() {
+        for (String k : new String[]{"sbmods_cpu_pct", "sbmods_gpu_pct", "sbmods_cool", "sbmods_cores"}) Global.gset(ctx, k, "0");
+    }
+
+    private static void forgetOwned() {
+        owned = null;
+        prefs.edit().remove(K_OWN).apply();
     }
 
     /** 0 nothing to do, 1 ask the helper, 2 only offer (answer already known). */

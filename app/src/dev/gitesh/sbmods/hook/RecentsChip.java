@@ -428,6 +428,7 @@ final class RecentsChip {
         if (on >= 100) on = 0;
         int level = Global.gint(a, "sbmods_" + which + "_pick", 55);
         Global.gput(a, "sbmods_" + which + "_pct", on > 0 ? "0" : String.valueOf(level));
+        if (on == 0) PanelCards.learn(a, effPct(a, "cpu", Global.gint(a, "sbmods_cpu_pct", 0), false), effPct(a, "gpu", Global.gint(a, "sbmods_gpu_pct", 0), false));   // turned ON by hand: remember it for the app used last
         PerfPanel.pChangedAt = android.os.SystemClock.uptimeMillis();
         Toast.makeText(a, which.toUpperCase(java.util.Locale.ROOT) + (on > 0 ? ": full speed" : ": limited to " + level + "%"), Toast.LENGTH_SHORT).show();
         main.postDelayed(() -> refresh(a), 1500);

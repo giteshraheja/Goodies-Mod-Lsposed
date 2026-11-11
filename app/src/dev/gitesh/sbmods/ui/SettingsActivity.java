@@ -52,6 +52,7 @@ import java.util.Set;
 
 import dev.gitesh.sbmods.ClockFormat;
 import dev.gitesh.sbmods.Config;
+import dev.gitesh.sbmods.Habits;
 import dev.gitesh.sbmods.Helper;
 import dev.gitesh.sbmods.PanelLayout;
 import dev.gitesh.sbmods.Ui;
@@ -397,9 +398,26 @@ public final class SettingsActivity extends Activity {
                 putGl("sbmods_smart_noask", "0");
                 Toast.makeText(this, "It may ask about Vulkan again", Toast.LENGTH_SHORT).show();
             });
+            divider();
+            java.util.List<Habits.R> rl = Habits.parseRules(glStr("sbmods_rules"));
+            if (rl.isEmpty()) infoRow("Automatic rules: none yet. When you often slow the phone down in the same app, the Overview panel offers to do it for you.", null);
+            for (Habits.R r : rl) {
+                LinearLayout row = rowShell(null);
+                String nm = r.pkg;
+                try { nm = getPackageManager().getApplicationInfo(r.pkg, 0).loadLabel(getPackageManager()).toString(); } catch (Throwable ignored) {}
+                TextView t = Ui.text(this, nm + ": " + Habits.describe(r), Ui.T_BODY, cText, 400);
+                row.addView(t, new LinearLayout.LayoutParams(0, -2, 1));
+                final String pk = r.pkg;
+                row.addView(textButton("Remove", v -> putGl("sbmods_rules", Habits.removeRule(glStr("sbmods_rules"), pk))));
+            }
+            divider();
+            actionRow("Forget what it learned", "Clears the apps it noticed and the ones you said No to. Your automatic rules stay.", cAccent, v -> {
+                putGl("sbmods_habits", "");
+                Toast.makeText(this, "Forgotten", Toast.LENGTH_SHORT).show();
+            });
         }
         endGroup("When an app comes to the front, the mod asks the root helper (see below) how that app draws the screen, once per app, and tells you in a short message. "
-                + "If it uses the older OpenGL, it can offer to switch the phone to Vulkan. It only looks when you open an app, never in the background, and it needs the root helper to be running.");
+                + "If it uses the older OpenGL, it can offer to switch the phone to Vulkan. If you often slow the phone down by hand in the same app, the Overview panel can offer to do it for you (nothing happens until you say Yes; each time it does, a message tells you). It only looks when you open an app, never in the background, and it needs the root helper to be running.");
     }
 
     /** System tab: what taps do, the root helper and speed limits, the Overview chips, help, and starting over. */
@@ -1079,6 +1097,10 @@ public final class SettingsActivity extends Activity {
 
     private int gl(String key, int def) {
         try { return android.provider.Settings.Global.getInt(getContentResolver(), key, def); } catch (Throwable t) { return def; }
+    }
+
+    private String glStr(String key) {
+        try { String v = android.provider.Settings.Global.getString(getContentResolver(), key); return v == null ? "" : v; } catch (Throwable t) { return ""; }
     }
 
     /** Writes the helper's controls (root), then redraws. */
