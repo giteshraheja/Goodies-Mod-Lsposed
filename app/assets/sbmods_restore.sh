@@ -6,7 +6,7 @@
 #                               the mod made (used by uninstall, by the app's "Undo everything" button and by the helper when the app is gone)
 ST=/data/local/tmp/sbmods_state
 G=/sys/class/kgsl/kgsl-3d0/devfreq
-p=$(cat /data/local/tmp/sbmods_cpud.pid 2>/dev/null); [ -n "$p" ] && grep -q sbmods_cpud /proc/$p/cmdline 2>/dev/null && kill $p   # never a reused PID
+p=$(cat /data/local/tmp/sbmods_cpud.pid 2>/dev/null); [ -n "$p" ] && grep -q sbmods_cpud /proc/$p/cmdline 2>/dev/null && { kill $p; i=0; while [ $i -lt 20 ] && [ -d /proc/$p ]; do sleep 0.1; i=$((i+1)); done; }   # never a reused PID; wait for it to end, so it cannot write a setting after the clean-up below
 rm -f /data/local/tmp/sbmods_cpud.pid
 w=$(cat $ST/inotify.pid 2>/dev/null); [ -n "$w" ] && grep -q inotifyd /proc/$w/cmdline 2>/dev/null && kill $w   # the helper's settings watcher (never a reused PID)
 rm -f $ST/inotify.pid
@@ -36,6 +36,6 @@ if [ "$1" = "all" ]; then
   # every other setting the mod keeps, the one-off job notes and our own scripts (this one is deleted last; the shell has it open)
   for k in $(settings list global | grep '^sbmods_' | cut -d= -f1); do settings delete global $k >/dev/null 2>&1; done
   rm -rf /data/local/tmp/sbmods_job /data/local/tmp/sbmods_cpud.sh
-  case "$0" in /data/local/tmp/sbmods_restore.sh) rm -f "$0";; esac
+  rm -f /data/local/tmp/sbmods_restore.sh   # (also when this run is a copy from the app's cache folder)
   echo "SBMods: everything undone"
 else echo "SBMods: speeds restored"; fi
