@@ -184,6 +184,7 @@ public final class SettingsActivity extends Activity {
         if (ic != null) ic.setSystemBarsAppearance(night ? 0 : light, light);
 
         prefs = getSharedPreferences("settings", MODE_PRIVATE);
+        Helper.setAtBoot(this, prefs.getBoolean("helperAtBoot", false));
         cfg = Config.load(prefs);
         tab = prefs.getInt("tab", T_LAYOUT);
         int tabv = prefs.getInt("tabv", 1);
@@ -1159,7 +1160,7 @@ public final class SettingsActivity extends Activity {
     /** The root helper, the CPU / GPU speed limits and the Overview chips (System tab). */
     private void buildHelperSpeed() {
         group("helper", "Root helper", null, true);
-        cardResetAction(() -> { prefs.edit().putBoolean("helperAtBoot", false).apply(); refresh(); });
+        cardResetAction(() -> { prefs.edit().putBoolean("helperAtBoot", false).apply(); Helper.setAtBoot(this, false); refresh(); });
         statusRow("Status", helperRunning == null ? "Not checked yet. Checking needs root." : helperRunning ? "Running" : "Not running");
         divider();
         actionRow("Check again", null, cAccent, v -> { helperRunning = null; checkHelper(); });
@@ -1181,7 +1182,7 @@ public final class SettingsActivity extends Activity {
         if (advanced("helper")) {
             divider();
             switchRow("Start it when the phone starts", "Only if the status bar mod is on. Speed limits never survive a restart.",
-                    prefs.getBoolean("helperAtBoot", false), v -> prefs.edit().putBoolean("helperAtBoot", v).apply());
+                    prefs.getBoolean("helperAtBoot", false), v -> { prefs.edit().putBoolean("helperAtBoot", v).apply(); Helper.setAtBoot(this, v); });
         }
         endGroup("Idle, it only checks once a second whether you pressed something; it doesn't keep the phone awake.");
 

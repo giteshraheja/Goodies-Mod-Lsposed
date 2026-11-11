@@ -124,4 +124,18 @@ public final class Helper {
     public static boolean stopAndRestore() {
         return su("[ -x " + DIR + "/sbmods_restore.sh ] && " + DIR + "/sbmods_restore.sh") == 0;
     }
+
+    /** Marks (or unmarks) "start the helper at boot" with an empty file in the app's own files folder, which the boot receiver can always read. */
+    public static void setAtBoot(Context c, boolean on) {
+        try {
+            File f = new File(c.getFilesDir(), "helper_at_boot");
+            if (on) f.createNewFile(); else f.delete();
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** True if the "start at boot" marker file exists. */
+    public static boolean atBoot(Context c) {
+        return new File(c.getFilesDir(), "helper_at_boot").exists();
+    }
 }
