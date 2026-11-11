@@ -205,6 +205,7 @@ public final class Controller {
         f.addAction(Intent.ACTION_TIMEZONE_CHANGED);
         f.addAction(Intent.ACTION_LOCALE_CHANGED);
         ctx.registerReceiver(systemReceiver, f, null, main, Context.RECEIVER_NOT_EXPORTED);
+        Smart.apply(ctx, prefs, cfg.smartOn);
         Log.i("initialised v" + VERSION + ", clockId=" + Integer.toHexString(clockId));
     }
 
@@ -949,6 +950,7 @@ public final class Controller {
                 if (Config.ACTION_APPLY.equals(a)) {
                     Config n = Config.fromBundle(i.getExtras());
                     cfg = n;
+                    Smart.apply(ctx, prefs, n.smartOn);
                     NotifExpand.apply(n);
                     n.save(prefs);
                     publishLockMax(n);
