@@ -309,12 +309,12 @@ if [ -p $ST/wait ]; then
   # sleep until the settings folder reports something. After a wake-up the queued lines are thrown away (read -t 0.05: -t 0 is
   # unreliable in this shell, a fractional timeout works; with lines queued it returns at once, so this costs one 50 ms poll).
   # A timeout means nothing happened: check that the watcher still lives, else go back to the one-second nap for good.
-  # On that timeout (the only wake-up added for this) a built-in test checks that the app is still installed: if its data folder is gone
+  # On that timeout (the only wake-up added for this) a built-in test checks that the app is still installed: if its data folder (/data/user_de, readable even before the first unlock) is gone
   # (uninstalled without the restore script), the same undo as the restore script's "everything" mode runs and the helper ends.
   idle() {
     if read -t 60 _n <&9; then while read -t 0.05 _n <&9; do :; done
     else
-      [ -d /data/data/dev.gitesh.sbmods ] || { [ -f /data/local/tmp/sbmods_restore.sh ] && exec sh /data/local/tmp/sbmods_restore.sh all; cores_restore; stopw; rm -rf $ST /data/local/tmp/sbmods_cpud.pid /data/local/tmp/sbmods_cpud.sh; exit 0; }
+      [ -d /data/user_de/0/dev.gitesh.sbmods ] || { [ -f /data/local/tmp/sbmods_restore.sh ] && exec sh /data/local/tmp/sbmods_restore.sh all; cores_restore; stopw; rm -rf $ST /data/local/tmp/sbmods_cpud.pid /data/local/tmp/sbmods_cpud.sh; exit 0; }
       kill -0 $WP 2>/dev/null || IDLE=""
     fi
   }
