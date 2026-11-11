@@ -76,7 +76,7 @@ plainok() { case "$1" in ''|*[!A-Za-z0-9._]*) return 1;; *.*) return 0;; esac; r
 # only plain package names may reach `am` and never the ones that would hurt the phone (or this tool).
 # The calling services (Wi-Fi calling) are refused here too, so no job can ever stop them.
 stopok() { case "$1" in ''|*[!A-Za-z0-9._]*) return 1;; *.*) ;; *) return 1;; esac
-  case "$1" in android|com.android.systemui|com.sec.android.app.launcher|dev.gitesh.sbmods|com.termux|com.android.providers.*|com.google.android.gms.*|com.google.android.gms|com.sec.imsservice|com.sec.epdg) return 1;; esac; }
+  case "$1" in android|com.android.systemui|com.sec.android.app.launcher|dev.gitesh.sbmods|com.termux|com.android.phone|com.android.server.telecom|com.samsung.android.incallui|com.samsung.android.dialer|com.samsung.android.honeyboard|com.android.settings|com.topjohnwu.magisk|org.lsposed.manager|com.samsung.android.providers.*|com.android.shell|com.android.providers.*|com.google.android.gms.*|com.google.android.gms|com.sec.imsservice|com.sec.epdg) return 1;; esac; }
 
 # kill the cached background apps one by one, except kept ones ($1 = " a b "): oom_score_adj >= 900, package from cmdline (":suffix" cut),
 # each package once, nothing stopok refuses (and never the calling services). Sets KILLED and SPARED (kept apps that were running).

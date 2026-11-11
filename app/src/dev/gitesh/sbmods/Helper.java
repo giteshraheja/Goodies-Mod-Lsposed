@@ -95,7 +95,7 @@ public final class Helper {
         String cache = c.getCacheDir().getAbsolutePath();
         int rc = su("cp " + cache + "/sbmods_cpud.sh " + DIR + "/sbmods_cpud.sh && cp " + cache + "/sbmods_restore.sh " + DIR + "/sbmods_restore.sh"
                 + " && chmod 755 " + DIR + "/sbmods_cpud.sh " + DIR + "/sbmods_restore.sh"
-                + " && { p=$(cat " + DIR + "/sbmods_cpud.pid 2>/dev/null); [ -n \"$p\" ] && grep -q sbmods_cpud /proc/$p/cmdline 2>/dev/null && kill $p; true; }"
+                + " && { p=$(cat " + DIR + "/sbmods_cpud.pid 2>/dev/null); [ -n \"$p\" ] && grep -q sbmods_cpud /proc/$p/cmdline 2>/dev/null && { kill $p; i=0; while [ $i -lt 20 ] && [ -d /proc/$p ]; do sleep 0.1; i=$((i+1)); done; }; true; }"   // wait for it to end: the new helper leaves if the pid file still names a live one
                 + " && { setsid nohup " + DIR + "/sbmods_cpud.sh >/dev/null 2>&1 < /dev/null & }");
         if (rc != 0) return false;
         try { Thread.sleep(1500); } catch (InterruptedException ignored) {}
@@ -131,6 +131,12 @@ public final class Helper {
     /** Stops the helper and puts every CPU / GPU speed and the power saving switch back to normal. */
     public static boolean stopAndRestore() {
         return su("[ -x " + DIR + "/sbmods_restore.sh ] && " + DIR + "/sbmods_restore.sh") == 0;
+    }
+
+    /** "Undo everything": runs the restore script in its "everything" mode (speeds, charge limit, renderer, settings and files the mod made). Returns its answer line, or null if root is not available. Never call on the main thread. */
+    public static String undoEverything(Context c) {
+        if (!copyAsset(c, "sbmods_restore.sh")) return null;
+        return suOut("sh " + c.getCacheDir().getAbsolutePath() + "/sbmods_restore.sh all", 40);
     }
 
     /** Marks (or unmarks) "start the helper at boot" with an empty file in the app's own files folder, which the boot receiver can always read. */

@@ -1462,6 +1462,17 @@ public final class SettingsActivity extends Activity {
                         .message("Every option in this app goes back to its starting value, and the Performance panel goes back to its standard cards and order. You can't undo this.")
                         .button(0, "Cancel", null)
                         .button(2, "Restore", () -> restoreDefaults()).show());
+        divider();
+        actionRow("Undo everything the mod changed", "Puts back the speeds, charge limit, graphics setting and every file and setting the mod made, so you can remove the app cleanly", cErr, v ->
+                new Ui.Dlg(this, pal)
+                        .title("Undo everything?")
+                        .message("This stops the helper and puts back every speed limit, the battery charge limit you had before, the graphics setting, and every setting and file the mod made. "
+                                + "Needs root. Afterwards, restart the status bar. You can't undo this.")
+                        .button(0, "Cancel", null)
+                        .button(2, "Undo everything", () -> new Thread(() -> {
+                            String r = Helper.undoEverything(this);
+                            runOnUiThread(() -> Toast.makeText(this, r == null ? "That did not work: root was not available" : r.isEmpty() ? "Done" : r, Toast.LENGTH_LONG).show());
+                        }).start()).show());
         endGroup(modVersion.isEmpty() ? "StatusBar Mods for the Galaxy S23 Ultra"
                 : "StatusBar Mods  v" + modVersion + "  ·  for the Galaxy S23 Ultra");
     }

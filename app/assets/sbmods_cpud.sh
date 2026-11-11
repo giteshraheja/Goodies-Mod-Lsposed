@@ -44,6 +44,10 @@ ST=/data/local/tmp/sbmods_state
 CPU=/sys/devices/system/cpu
 F=/data/system/users/0/settings_global.xml
 G=/sys/class/kgsl/kgsl-3d0/devfreq
+# one helper at a time: if the pid file names a live helper that is not us, leave quietly (the app's start kills the old one first and waits for it).
+# Runs once at start; `grep` is the only program started.
+_o=$(cat /data/local/tmp/sbmods_cpud.pid 2>/dev/null)
+[ -n "$_o" ] && [ "$_o" != "$$" ] && [ -r /proc/$_o/cmdline ] && grep -q sbmods_cpud /proc/$_o/cmdline 2>/dev/null && exit 0
 mkdir -p $ST
 echo $$ > /data/local/tmp/sbmods_cpud.pid
 
@@ -234,7 +238,7 @@ gfx_vulkan() {
 }
 # only plain package names may reach `am` and never the ones that would hurt the phone (or this tool)
 stopok() { case "$1" in ''|*[!A-Za-z0-9._]*) return 1;; *.*) ;; *) return 1;; esac
-  case "$1" in android|com.android.systemui|com.sec.android.app.launcher|dev.gitesh.sbmods|com.termux|com.android.providers.*|com.google.android.gms.*|com.google.android.gms) return 1;; esac; }
+  case "$1" in android|com.android.systemui|com.sec.android.app.launcher|dev.gitesh.sbmods|com.termux|com.android.phone|com.android.server.telecom|com.samsung.android.incallui|com.samsung.android.dialer|com.samsung.android.honeyboard|com.android.settings|com.topjohnwu.magisk|org.lsposed.manager|com.samsung.android.providers.*|com.android.shell|com.android.providers.*|com.google.android.gms.*|com.google.android.gms) return 1;; esac; }
 
 # Clean-up that spares the apps the owner keeps reopening (global sbmods_keep = "pkg|count|day;...", count >= 2 = kept; used only when Smart
 # suggestions is on, sbmods_smart missing = on). Prints the kept packages as " a b c " (just " " = none).
@@ -305,9 +309,14 @@ if [ -p $ST/wait ]; then
   # sleep until the settings folder reports something. After a wake-up the queued lines are thrown away (read -t 0.05: -t 0 is
   # unreliable in this shell, a fractional timeout works; with lines queued it returns at once, so this costs one 50 ms poll).
   # A timeout means nothing happened: check that the watcher still lives, else go back to the one-second nap for good.
+  # On that timeout (the only wake-up added for this) a built-in test checks that the app is still installed: if its data folder is gone
+  # (uninstalled without the restore script), the same undo as the restore script's "everything" mode runs and the helper ends.
   idle() {
     if read -t 60 _n <&9; then while read -t 0.05 _n <&9; do :; done
-    else kill -0 $WP 2>/dev/null || IDLE=""; fi
+    else
+      [ -d /data/data/dev.gitesh.sbmods ] || { [ -f /data/local/tmp/sbmods_restore.sh ] && exec sh /data/local/tmp/sbmods_restore.sh all; cores_restore; stopw; rm -rf $ST /data/local/tmp/sbmods_cpud.pid /data/local/tmp/sbmods_cpud.sh; exit 0; }
+      kill -0 $WP 2>/dev/null || IDLE=""
+    fi
   }
 else nap() { sleep 1; }; fi
 # the next wait. Without the watcher: the plain one-second nap. With it: if a fresh read is due (or we just wrote a setting, or the
