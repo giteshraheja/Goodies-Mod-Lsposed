@@ -348,8 +348,9 @@ final class BackChip {
     void attach(TextView clock) {
         Context ctx = clock.getContext();
         int rowId = ctx.getResources().getIdentifier("status_bar_start_side_except_heads_up", "id", Config.SYSUI);
+        Log.missId(rowId, "status_bar_start_side_except_heads_up", "the back pill");   // (a row that is just not on screen right now is no miss)
         View row = rowId == 0 ? null : clock.getRootView().findViewById(rowId);
-        if (!(row instanceof LinearLayout)) { Log.w("back chip: left row not found"); Log.miss("status_bar_start_side_except_heads_up", "the back pill"); return; }
+        if (!(row instanceof LinearLayout)) { Log.w("back chip: left row not found"); return; }
         if (!owner.config().backEnabled) { detach(); return; } // never touch the layout unless wanted
         if (chip != null && chip.getParent() == row) return;
         detach();
