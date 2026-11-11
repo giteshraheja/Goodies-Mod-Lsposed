@@ -303,28 +303,32 @@ if [ -p $ST/wait ]; then
     WP=$!; echo $WP > $ST/inotify.pid
     sleep 0.3; kill -0 $WP 2>/dev/null && IDLE=1   # (start-up only) one that died at once keeps the one-second nap
   fi
-  stopw() { [ -n "$WP" ] && kill $WP 2>/dev/null; rm -f $ST/inotify.pid; }
   trap 'cores_restore; stopw; exit 0' TERM INT HUP
   trap stopw EXIT
   # sleep until the settings folder reports something. After a wake-up the queued lines are thrown away (read -t 0.05: -t 0 is
   # unreliable in this shell, a fractional timeout works; with lines queued it returns at once, so this costs one 50 ms poll).
   # A timeout means nothing happened: check that the watcher still lives, else go back to the one-second nap for good.
-  # On that timeout (the only wake-up added for this) a built-in test checks that the app is still installed: if its data folder (/data/user_de, readable even before the first unlock) is gone
-  # (uninstalled without the restore script), the same undo as the restore script's "everything" mode runs and the helper ends.
+  # (Whether the app is still installed is checked by gone(), called from rest(): on every wake-up that happens anyway, never an extra one.)
   idle() {
     if read -t 60 _n <&9; then while read -t 0.05 _n <&9; do :; done
-    else
-      [ -d /data/user_de/0/dev.gitesh.sbmods ] || { [ -f /data/local/tmp/sbmods_restore.sh ] && exec sh /data/local/tmp/sbmods_restore.sh all; cores_restore; stopw; rm -rf $ST /data/local/tmp/sbmods_cpud.pid /data/local/tmp/sbmods_cpud.sh; exit 0; }
-      kill -0 $WP 2>/dev/null || IDLE=""
+    else kill -0 $WP 2>/dev/null || IDLE=""
     fi
   }
 else nap() { sleep 1; }; fi
+# The app is gone (uninstalled without the restore script): the same undo as the restore script's "everything" mode runs and the helper ends.
+# A built-in test of the app's data folder (/data/user_de, readable even before the first unlock), run at the start of every wait, so in every mode
+# (idle, limit on, one-second fallback) and never as a wake-up of its own. stopw does nothing when there is no watcher.
+stopw() { [ -n "$WP" ] && kill $WP 2>/dev/null; rm -f $ST/inotify.pid; }
+gone() { [ -d /data/user_de/0/dev.gitesh.sbmods ] && return
+  [ -f /data/local/tmp/sbmods_restore.sh ] && exec sh /data/local/tmp/sbmods_restore.sh all
+  cores_restore; stopw; rm -rf $ST /data/local/tmp/sbmods_cpud.pid /data/local/tmp/sbmods_cpud.sh; exit 0; }
 # the next wait. Without the watcher: the plain one-second nap. With it: if a fresh read is due (or we just wrote a setting, or the
 # settings file is newer than our last read) a one-second nap; otherwise sleep until the NEXT timed job is due, i.e. the smallest
 # time left over everything that is on (at least 1 s), and idle (60 s safety net) when nothing is on. All of these end early on a
 # watcher line. Timed jobs: watch load 4 s (lw), per-core load 2 s (lc, watch 2 only), core parking check 5 s (lk), and the 10 s
 # look-in (lr) while a limit / core parking / pending renderer check is on (on=1; the renderer check runs in that look-in).
 rest() {
+  gone
   if [ -z "$IDLE" ]; then nap; return; fi
   if [ "$force" != "0" ] || [ ! -f $ST/seen ] || [ $F -nt $ST/seen ]; then nap; return; fi
   if [ "$on" = "0" ] && [ "$w" != "1" ] && [ "$w" != "2" ] && [ "$pk" = "0" ]; then idle; return; fi
