@@ -385,10 +385,28 @@ public final class SettingsActivity extends Activity {
         endGroup("Applies the next time the notification panel updates: open it again or wait for a new notification.");
     }
 
+    /** Smart suggestions card (System tab): the master switch for everything the mod notices by itself. */
+    private void buildSmart() {
+        group("Smart suggestions");
+        cardReset((c, d) -> c.smartOn = d.smartOn);
+        switchRow("Smart suggestions", "The mod notices things and offers a fix. Off = it never checks anything.",
+                cfg.smartOn, v -> { cfg.smartOn = v; apply(); refresh(); });
+        if (cfg.smartOn) {
+            divider();
+            actionRow("Ask about Vulkan again", "Use this after you chose “Don't ask again” on the Vulkan question.", cAccent, v -> {
+                putGl("sbmods_smart_noask", "0");
+                Toast.makeText(this, "It may ask about Vulkan again", Toast.LENGTH_SHORT).show();
+            });
+        }
+        endGroup("When an app comes to the front, the mod asks the root helper (see below) how that app draws the screen, once per app, and tells you in a short message. "
+                + "If it uses the older OpenGL, it can offer to switch the phone to Vulkan. It only looks when you open an app, never in the background, and it needs the root helper to be running.");
+    }
+
     /** System tab: what taps do, the root helper and speed limits, the Overview chips, help, and starting over. */
     private void buildSystem() {
         buildGestures();
         buildNotifs();
+        buildSmart();
         buildHelperSpeed();
         buildMore();
     }

@@ -147,6 +147,10 @@ public final class Config {
     // ---- battery ----
     public boolean pauseScreenOff = true;
 
+    // ---- smart suggestions ----
+    /** The mod notices things (for now: which drawing method an app uses) and offers a fix. On by default; off = it never checks anything. */
+    public boolean smartOn = true;
+
     public Config sanitize() {
         if (sensor != SENSOR_CPU && sensor != SENSOR_BATTERY && sensor != SENSOR_SKIN) sensor = SENSOR_SKIN;
         intervalSec = clamp(intervalSec, 1, 120);
@@ -251,6 +255,7 @@ public final class Config {
         for (int i = 0; i < SLOTS; i++) o.s("app" + i, app(i));
         o.b("pixelShift", pixelShift); o.i("tipsMode", tipsMode);
         o.b("backEnabled", backEnabled); o.i("backChars", backChars);
+        o.b("smartOn", smartOn);
         o.b("dateFirst", dateFirst); o.i("gapDayDate", gapDayDate); o.i("gapDateTime", gapDateTime);
     }
 
@@ -302,6 +307,7 @@ public final class Config {
         for (int i = 0; i < SLOTS; i++) apps[i] = in.s("app" + i, app(i));
         pixelShift = in.b("pixelShift", pixelShift); tipsMode = in.i("tipsMode", tipsMode);
         backEnabled = in.b("backEnabled", backEnabled); backChars = in.i("backChars", backChars);
+        smartOn = in.b("smartOn", smartOn);
         dateFirst = in.b("dateFirst", dateFirst); gapDayDate = in.i("gapDayDate", gapDayDate);
         gapDateTime = in.i("gapDateTime", gapDateTime);
         return sanitize();
