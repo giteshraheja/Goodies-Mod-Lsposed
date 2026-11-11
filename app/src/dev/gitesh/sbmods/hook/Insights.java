@@ -23,6 +23,7 @@ final class Insights {
     static final int LIMIT_END_SEC = 60;        // a limit with less than this left is "nearly over"
 
     static final int HOT = 0, APP = 1, MEMORY = 2, LIMIT = 3, VULKAN = 4, HABIT = 5, IDLE = 6;   // also the rank: lower comes first
+    static final int HOT_TENTHS = 370;   // the "Phone is N°C" line shows from 37°C
 
     static final class Item {
         final int kind;
@@ -54,7 +55,8 @@ final class Insights {
     /** The suggestions, most important first, at most MAX; skip(key) drops lines already dealt with. */
     static List<Item> rank(In in, Predicate<String> skip) {
         List<Item> out = new ArrayList<>();
-        boolean hot = in.tempC * 10 >= in.coolAtTenths;
+        // "hot" starts at 37°C (owner's choice), and never below the cool-down level itself (cooling to a level we are already under is pointless)
+        boolean hot = in.tempC * 10 >= Math.max(HOT_TENTHS, in.coolAtTenths);
         if (hot && !in.limitOn) out.add(new Item(HOT, "Phone is " + in.tempC + "°C", "Cool down", null));   // 1: warm and nothing holds it back
         if (in.habitPkg != null) {   // after "hot", before "background app"
             Item h = new Item(HABIT, "You often slow the phone down in " + in.habitName + ". Do it automatically?", "Yes", in.habitPkg);
