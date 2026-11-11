@@ -319,7 +319,7 @@ final class Smart {
     private static void gameFullSpeed(String p) {
         if (gameFull != null || Global.gint(ctx, G_GAME, 1) != 1 || !limitActive()) return;
         if (ctx.getSystemService(PowerManager.class).isPowerSaveMode()) return;   // battery first: power saving keeps its cap
-        if (Global.gint(ctx, "sbmods_until", 0) > 0) return;                      // a timed limit: leave it, it ends on its own
+        // (a timed limit is fine: the helper clears its timer when the limit is lifted and starts a new one when it comes back)
         String prev = Global.gint(ctx, "sbmods_cpu_pct", 0) + "|" + Global.gint(ctx, "sbmods_gpu_pct", 0);
         prefs.edit().putString(K_GAME, p + "|" + prev + "||").commit();   // saved before anything changes
         gameFull = p; gamePrev = prev;
