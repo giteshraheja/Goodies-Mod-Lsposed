@@ -71,7 +71,7 @@ final class NotifExpand {
                 Class<?> ea = Class.forName(ENTRY_ADAPTER, false, cl);
                 adapterImportance = method(ea, "getImportance");
                 adapterAmbient = method(ea, "isAmbient");
-            } catch (Throwable t) { Log.w("notif expand: silent check unavailable: " + t); }
+            } catch (Throwable t) { Log.w("notif expand: silent check unavailable: " + t); Log.miss("the notification importance check", "skipping silent notifications"); }
 
             Method setSys = ctrl.getDeclaredMethod("setSystemExpanded", boolean.class);
             XposedBridge.hookMethod(setSys, new XC_MethodHook() {
@@ -84,7 +84,7 @@ final class NotifExpand {
                 }
             });
         } catch (Throwable t) {
-            Log.w("notif expand: setSystemExpanded hook failed: " + t);
+            Log.w("notif expand: setSystemExpanded hook failed: " + t); Log.miss("the notification row (ExpandableNotificationRow)", "opening notifications automatically");
         }
         try {
             Class<?> row = Class.forName(ROW, false, cl);
@@ -99,7 +99,7 @@ final class NotifExpand {
                 }
             });
         } catch (Throwable t) {
-            Log.w("notif expand: setChildrenExpanded hook failed: " + t);
+            Log.w("notif expand: setChildrenExpanded hook failed: " + t); Log.miss("setChildrenExpanded", "opening notification groups automatically");
         }
     }
 

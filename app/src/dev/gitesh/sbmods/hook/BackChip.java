@@ -95,6 +95,7 @@ final class BackChip {
         View nb = notifBox.get();
         if (nb == null || !nb.isAttachedToWindow()) {
             int id = c.getResources().getIdentifier("start_side_notif_and_chip_container", "id", Config.SYSUI);
+            Log.missId(id, "start_side_notif_and_chip_container", "the back pill beside live activities");
             nb = id == 0 ? null : c.getRootView().findViewById(id);
             notifBox = new java.lang.ref.WeakReference<>(nb);
         }
@@ -149,6 +150,7 @@ final class BackChip {
         TextView c = chip;
         if (c == null) return null;
         int id = c.getResources().getIdentifier("samsung_ongoing_activity_chip_container", "id", Config.SYSUI);
+        Log.missId(id, "samsung_ongoing_activity_chip_container", "the back pill beside live activities");
         return id == 0 ? null : c.getRootView().findViewById(id);
     }
 
@@ -347,7 +349,7 @@ final class BackChip {
         Context ctx = clock.getContext();
         int rowId = ctx.getResources().getIdentifier("status_bar_start_side_except_heads_up", "id", Config.SYSUI);
         View row = rowId == 0 ? null : clock.getRootView().findViewById(rowId);
-        if (!(row instanceof LinearLayout)) { Log.w("back chip: left row not found"); return; }
+        if (!(row instanceof LinearLayout)) { Log.w("back chip: left row not found"); Log.miss("status_bar_start_side_except_heads_up", "the back pill"); return; }
         if (!owner.config().backEnabled) { detach(); return; } // never touch the layout unless wanted
         if (chip != null && chip.getParent() == row) return;
         detach();
@@ -476,7 +478,7 @@ final class BackChip {
                 Object inst = hub.getField("INSTANCE").get(null);
                 hub.getMethod("registerTaskStackListener", itf).invoke(inst, listener);
             } catch (Throwable t) {
-                Log.w("back chip: task listener failed: " + t);
+                Log.w("back chip: task listener failed: " + t); Log.miss("TaskStackChangeListeners", "the back pill following your apps");
             }
         }
         if (!receiverOn) {

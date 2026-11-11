@@ -142,6 +142,7 @@ public final class SettingsActivity extends Activity {
     private String statusShort = "Checking…", statusDetail = "Checking the status bar…", modVersion = "";
     private String clockSide = "left";
 
+    private String modMisses = "";   // from the status bar's last reply: lookups of Samsung's that failed
     private final BroadcastReceiver pong = new BroadcastReceiver() {
         @Override public void onReceive(Context c, Intent i) {
             gotPong = true;
@@ -1560,6 +1561,7 @@ public final class SettingsActivity extends Activity {
         String shortText, detail;
         int state = 1;
         pingDone = true;
+        String ms = i.getStringExtra("misses"); modMisses = ms == null ? "" : ms;
         modTripped = i.getBooleanExtra("guardTripped", false);
         modDisabled = !modTripped && i.getBooleanExtra("disabled", false);
         if (modTripped) {
@@ -1629,11 +1631,11 @@ public final class SettingsActivity extends Activity {
     /** Re-applies the rules to the cached facts (no root), then redraws the pill and, if the list changed, the System tab. */
     private void rescore() {
         if (scFacts != null) {
-            scFacts.modReplied = gotPong; scFacts.pingDone = pingDone; scFacts.modTripped = modTripped; scFacts.modDisabled = modDisabled;
+            scFacts.modReplied = gotPong; scFacts.pingDone = pingDone; scFacts.modTripped = modTripped; scFacts.modDisabled = modDisabled; scFacts.modMisses = modMisses;
             findings = SelfCheck.evaluate(scFacts);
         }
         StringBuilder sb = new StringBuilder(scFacts == null ? "-" : "+");
-        for (SelfCheck.Finding f : findings) sb.append(f.fix).append(f.severity);
+        for (SelfCheck.Finding f : findings) sb.append(f.fix).append(f.severity).append(f.text.length());
         boolean changed = !sb.toString().equals(scSig);
         scSig = sb.toString();
         refreshStatusPill();
@@ -1647,7 +1649,7 @@ public final class SettingsActivity extends Activity {
         android.text.SpannableString st = new android.text.SpannableString("●  " + f.text);
         st.setSpan(new android.text.style.ForegroundColorSpan(f.severity == SelfCheck.PROBLEM ? cErr : cWarn), 0, 1, 0);
         row.addView(Ui.text(this, st, Ui.T_BODY, cText, 400), new LinearLayout.LayoutParams(0, -2, 1));
-        row.addView(textButton(f.fixLabel, v -> { if (before != null) before.run(); runFix(f.fix); }));
+        if (f.fix != null) row.addView(textButton(f.fixLabel, v -> { if (before != null) before.run(); runFix(f.fix); }));
         return row;
     }
 

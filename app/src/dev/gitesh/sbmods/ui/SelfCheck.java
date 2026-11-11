@@ -48,6 +48,7 @@ final class SelfCheck {
         String bootResult;              // contents of files/boot_result.txt, null = missing
         int cpuPct, gpuPct, cool; String cores; long until;
         String gfx, cmd; int gfxKeep;
+        String modMisses, launcherMisses;   // lookups of Samsung's that failed, one "what|feature" per line (status bar part, launcher part)
     }
 
     static List<Finding> evaluate(Facts f) {
@@ -57,6 +58,14 @@ final class SelfCheck {
         else if (f.modDisabled) out.add(new Finding(PROBLEM, MOD_STOPPED, RESTART_UI, "Restart the status bar"));
         else if (notAlive) out.add(new Finding(PROBLEM, "The status bar part is not running. Restart the status bar.", RESTART_UI, "Restart the status bar"));
         // (the mod rules come first: they are the more serious ones)
+        for (String list : new String[]{f.modMisses, f.launcherMisses}) {   // no root needed for these
+            if (list == null) continue;
+            for (String line : list.split("\n")) {
+                int bar = line.lastIndexOf('|');
+                if (bar <= 0 || bar == line.length() - 1) continue;
+                out.add(new Finding(NOTICE, "Samsung changed something: the mod could not find '" + line.substring(0, bar) + "', so " + line.substring(bar + 1) + " may not work.", null, null));
+            }
+        }
         if (!f.rootOk) {
             out.add(new Finding(PROBLEM, "This app was not given root access, so the helper can't start.", START_HELPER, "Try again"));
             return out;   // every rule below needs root to check or to fix
@@ -116,6 +125,7 @@ final class SelfCheck {
         f.gfx = Settings.Global.getString(cr, "sbmods_gfx");
         f.gfxKeep = Settings.Global.getInt(cr, "sbmods_gfx_keep", 0);
         f.cmd = Settings.Global.getString(cr, "sbmods_cmd");
+        f.launcherMisses = Settings.Global.getString(cr, "sbmods_miss_launcher");
         f.rootOk = Helper.rootGranted();
         if (f.rootOk) {
             f.helperRunning = Helper.isRunning();

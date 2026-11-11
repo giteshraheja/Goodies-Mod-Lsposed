@@ -62,13 +62,14 @@ final class RecentsChip {
                     if (p.thisObject == owner) { main.removeCallbacks(tick); if (PerfPanel.panel != null) { try { PerfPanel.panel.dismiss(); } catch (Throwable ignored) {} PerfPanel.panel = null; } Global.gset(owner, "sbmods_watch", "0"); }   // panel first: closing it must not leave the watch on
                 }
             });
-        } catch (Throwable t) { Log.w("recents chip hook failed: " + t); }
+        } catch (Throwable t) { Log.w("recents chip hook failed: " + t); Log.miss("Activity.onResume hook in the launcher", "the Overview screen chips"); }
     }
 
     // ------------------------------------------------------------------ build
 
     private static void onResume(Activity a) {
         if (!a.getPackageName().equals(Entry.LAUNCHER)) return;
+        Log.bindLauncher(a);
         if (Settings.Global.getInt(a.getContentResolver(), "sbmods_recents_chip", 1) == 0) {   // switched off: take away chips already there
             int rid = a.getResources().getIdentifier("recentContainer", "id", Entry.LAUNCHER);
             View rc = rid == 0 ? null : a.findViewById(rid);
@@ -81,6 +82,7 @@ final class RecentsChip {
             return;
         }
         int cid = a.getResources().getIdentifier("recentContainer", "id", Entry.LAUNCHER);
+        Log.missId(cid, "recentContainer", "the Overview screen chips");
         View c = cid == 0 ? null : a.findViewById(cid);
         if (!(c instanceof FrameLayout)) return;   // not the Overview screen
         FrameLayout box = (FrameLayout) c;
@@ -158,6 +160,7 @@ final class RecentsChip {
     private static void align(Activity a) {
         alignBottom(a);
         int fid = a.getResources().getIdentifier("top_buttons_flow", "id", Entry.LAUNCHER);
+        Log.missId(fid, "top_buttons_flow", "lining up the Overview chips");
         View flow = fid == 0 ? null : a.findViewById(fid);
         if (flow == null || flow.getHeight() <= 0 || !(topRow.getParent() instanceof View) || topRow.getHeight() <= 0) return;
         // Samsung's own pill (for example "1 inactive app") can sit in the same corner: start after it, with short chips

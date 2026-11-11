@@ -332,7 +332,7 @@ final class Mover {
             });
             mergeHooked = true;
             return true;
-        } catch (Throwable t) { mergeHookFailed = true; Log.w("net merge hook: " + t); return false; }
+        } catch (Throwable t) { mergeHookFailed = true; Log.w("net merge hook: " + t); Log.miss("the mobile icon visibility check", "merging the Wi-Fi and mobile icons"); return false; }
     }
 
     private int[] origPad;
@@ -550,7 +550,7 @@ final class Mover {
     /** SystemUI view id by name, looked up once (by-name lookups are slow and this runs every frame). */
     private int id(View root, String name) {
         Integer v = ids.get(name);
-        if (v == null) { v = root.getResources().getIdentifier(name, "id", "com.android.systemui"); ids.put(name, v); }
+        if (v == null) { v = root.getResources().getIdentifier(name, "id", "com.android.systemui"); Log.missId(v, name, "moving status bar items"); ids.put(name, v); }
         return v;
     }
 

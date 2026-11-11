@@ -48,7 +48,7 @@ public final class Entry implements IXposedHookLoadPackage {
                             }
                         });
             } catch (Throwable t) {
-                Log.w("BatteryController hook failed: " + t);
+                Log.w("BatteryController hook failed: " + t); Log.miss("BatteryControllerImpl.updatePowerSave", "the power saving switch");
             }
             // Watch (never consume) touches on the status bar window for taps / long-presses.
             try {
@@ -83,7 +83,7 @@ public final class Entry implements IXposedHookLoadPackage {
                             }
                         });
             } catch (Throwable t) {
-                Log.w("tick hook failed: " + t);
+                Log.w("tick hook failed: " + t); Log.miss("QSClockIndicatorView.notifyTimeChanged", "the custom clock");
             }
             // Follow the clock's light / dark tint immediately (no white-on-white).
             try {
@@ -100,7 +100,7 @@ public final class Entry implements IXposedHookLoadPackage {
                             }
                         });
             } catch (Throwable t) {
-                Log.w("tint hook failed: " + t);
+                Log.w("tint hook failed: " + t); Log.miss("QSClockIndicatorView.onDarkChanged", "the clock colour on light screens");
             }
             // Samsung re-centres the clock by its glyph bounds, so "pm" (descender) lifts the digits.
             try {
@@ -115,7 +115,7 @@ public final class Entry implements IXposedHookLoadPackage {
                                 }
                             }
                         });
-            } catch (Throwable t) { Log.w("realign hook failed: " + t); }
+            } catch (Throwable t) { Log.w("realign hook failed: " + t); Log.miss("QSClockIndicatorView.realignText", "the clock position"); }
             // Notification icon cap: Samsung reads it from an integer resource. Answer with the user's number.
             try {
                 XposedHelpers.findAndHookMethod(android.content.res.Resources.class, "getInteger", int.class,
@@ -159,7 +159,7 @@ public final class Entry implements IXposedHookLoadPackage {
                         } catch (Throwable ignored) {}
                     }
                 });
-            } catch (Throwable t) { Log.w("force-overflow hook failed: " + t); }
+            } catch (Throwable t) { Log.w("force-overflow hook failed: " + t); Log.miss("NotificationIconContainer.shouldForceOverflow", "the number of notification icons"); }
             try {
                 Class<?> vm = Class.forName("com.android.systemui.statusbar.notification.icon.ui.viewmodel.NotificationIconContainerStatusBarViewModel", false, lp.classLoader);
                 for (java.lang.reflect.Constructor<?> c : vm.getDeclaredConstructors())
@@ -174,7 +174,7 @@ public final class Entry implements IXposedHookLoadPackage {
                             } catch (Throwable ignored) {}
                         }
                     });
-            } catch (Throwable t) { Log.w("icon viewmodel hook failed: " + t); }
+            } catch (Throwable t) { Log.w("icon viewmodel hook failed: " + t); Log.miss("NotificationIconContainerStatusBarViewModel", "the number of notification icons"); }
             NotifExpand.install(lp.classLoader);
             Log.i("loaded in " + lp.processName);
         } catch (Throwable t) {
@@ -206,7 +206,7 @@ public final class Entry implements IXposedHookLoadPackage {
                     } catch (Throwable ignored) {}
                 }
             });
-        } catch (Throwable t) { Log.w("lock limit hook failed: " + t); }
+        } catch (Throwable t) { Log.w("lock limit hook failed: " + t); if (LAUNCHER.equals(lp.packageName)) Log.miss("ActivityManagerWrapper.getMaxLongLiveApps", "the Recents keep-open limit"); }
     }
 
     static void unhook() {

@@ -57,7 +57,7 @@ public final class Controller {
     private static final long GUARD_STABLE_MS = 90_000;
     private static final long GUARD_FORGET_MS = 10 * 60_000;   // a tripped guard re-arms itself after this long without a restart
     private static final long ERROR_WINDOW_MS = 60_000;         // MAX_ERRORS only count when they come in a burst
-    private static final String VERSION = "3.12";
+    private static final String VERSION = "3.13";
 
     private static Controller sInstance;
 
@@ -199,6 +199,11 @@ public final class Controller {
         middleContainerId = ctx.getResources().getIdentifier("middle_clock_container", "id", Config.SYSUI);
         batteryId = ctx.getResources().getIdentifier("battery", "id", Config.SYSUI);
         systemIconsId = ctx.getResources().getIdentifier("system_icons", "id", Config.SYSUI);
+        Log.missId(clockId, "clock", "every status bar change");
+        Log.missId(rightContainerId, "right_clock_container", "putting the clock on the right");
+        Log.missId(middleContainerId, "middle_clock_container", "putting the clock in the middle");
+        Log.missId(batteryId, "battery", "battery taps");
+        Log.missId(systemIconsId, "system_icons", "moving the status icons");
         if (clockId == 0) {
             Log.w("status bar clock id not found - doing nothing");
             Entry.unhook();
@@ -515,6 +520,7 @@ public final class Controller {
         View r = statusRoot;
         if (r == null) return null;
         int id = r.getResources().getIdentifier("samsung_ongoing_activity_chip_container", "id", Config.SYSUI);
+        Log.missId(id, "samsung_ongoing_activity_chip_container", "the back pill beside live activities");
         return id == 0 ? null : r.findViewById(id);
     }
 
@@ -576,6 +582,7 @@ public final class Controller {
     private void bindNet(View root) {
         int wid = root.getResources().getIdentifier("wifi_signal", "id", Config.SYSUI);
         int mid = root.getResources().getIdentifier("mobile_signal", "id", Config.SYSUI);
+        Log.missId(wid, "wifi_signal", "taps on the Wi-Fi icon"); Log.missId(mid, "mobile_signal", "merging the Wi-Fi and mobile icons");
         View w = wid == 0 ? null : root.findViewById(wid), m = mid == 0 ? null : root.findViewById(mid);
         if (w != null) wifiTaps.bind(w, cfg); else wifiTaps.unbind();
         if (m != null && !m.isShown()) m = null;
@@ -741,6 +748,7 @@ public final class Controller {
     private void applyShift(boolean on) {
         TextView clock = clockRef.get();
         int id = ctx.getResources().getIdentifier("status_bar_contents", "id", Config.SYSUI);
+        if (clock != null) Log.missId(id, "status_bar_contents", "the burn-in protection");
         View row = clock == null || id == 0 ? null : clock.getRootView().findViewById(id);
         View old = shiftedRef.get();
         if (old != null && old != row) { removeShift(old); shiftedRef = new WeakReference<>(null); }
@@ -1058,6 +1066,7 @@ public final class Controller {
         r.putExtra("polling", polling);
         r.putExtra("errors", errors);
         r.putExtra("lastError", lastError);
+        r.putExtra("misses", Log.misses());
         ctx.sendBroadcast(r);
     }
 
