@@ -175,6 +175,7 @@ public final class Entry implements IXposedHookLoadPackage {
                         }
                     });
             } catch (Throwable t) { Log.w("icon viewmodel hook failed: " + t); }
+            NotifExpand.install(lp.classLoader);
             Log.i("loaded in " + lp.processName);
         } catch (Throwable t) {
             Log.w("init failed: " + t);

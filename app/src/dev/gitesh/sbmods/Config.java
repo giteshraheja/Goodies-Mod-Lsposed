@@ -130,6 +130,14 @@ public final class Config {
     public int backLive = 0;
     public int backSizePct = 100;
 
+    // ---- notification panel ----
+    /** Show every normal notification expanded (the user can still collapse one). */
+    public boolean notifOpen = false;
+    /** One tap on a collapsed group opens it with its notifications already expanded. */
+    public boolean groupOpen = false;
+    /** With "notifOpen": silent notifications stay collapsed. */
+    public boolean openSkipSilent = true;
+
     // ---- burn-in protection ----
     public boolean pixelShift = true;
 
@@ -236,6 +244,7 @@ public final class Config {
         o.i("batteryDouble", batteryDouble); o.i("clockDouble", clockDouble); o.i("tempDouble", tempDouble);
         o.i("backLive", backLive); o.i("edgeDp", edgeDp); o.i("edgeMode", edgeMode); o.i("notifMax", notifMax); o.i("lockMax", lockMax); o.b("dtSleep", dtSleep); o.b("mergeNet", mergeNet); o.i("itemGap", itemGap); o.i("backFadeSec", backFadeSec); o.i("backSizePct", backSizePct); o.i("backStyle", backStyle);
         o.b("dateSeparate", dateSeparate);
+        o.b("notifOpen", notifOpen); o.b("groupOpen", groupOpen); o.b("openSkipSilent", openSkipSilent);
         for (int i = 0; i < ZoneLayout.ELEMENTS; i++) { o.i("pm" + i, plan.mode[i]); o.i("pr" + i, plan.right[i]); o.i("po" + i, plan.off[i]); o.i("pt" + i, plan.to[i]); o.i("ps" + i, plan.side[i]); }
         o.i("cameraTap", cameraTap); o.i("cameraDouble", cameraDouble); o.i("cameraLong", cameraLong);
         for (int i = 0; i < 6; i++) o.i("net" + i, netActs[i]);
@@ -267,6 +276,7 @@ public final class Config {
         backLive = in.i("backLive", backLive); edgeDp = in.i("edgeDp", edgeDp); edgeMode = in.i("edgeMode", edgeMode); notifMax = in.i("notifMax", notifMax); lockMax = in.i("lockMax", lockMax); dtSleep = in.b("dtSleep", dtSleep); mergeNet = in.b("mergeNet", mergeNet); itemGap = in.i("itemGap", itemGap);
         backFadeSec = in.i("backFadeSec", backFadeSec); backSizePct = in.i("backSizePct", backSizePct); backStyle = in.i("backStyle", backStyle);
         dateSeparate = in.b("dateSeparate", dateSeparate);
+        notifOpen = in.b("notifOpen", notifOpen); groupOpen = in.b("groupOpen", groupOpen); openSkipSilent = in.b("openSkipSilent", openSkipSilent);
         if (in.i("pm0", -1) == -1) {   // settings from before free placement: carry the old zones over
             // old order inside a zone (from its anchor inward): back button, clock, temperature, battery
             String[] oldKeys = {"backZone", "clockZone", "tempZone", "batteryZone"};

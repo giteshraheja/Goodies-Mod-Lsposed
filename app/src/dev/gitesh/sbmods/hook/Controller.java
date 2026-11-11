@@ -54,7 +54,7 @@ public final class Controller {
     private static final long GUARD_STABLE_MS = 90_000;
     private static final long GUARD_FORGET_MS = 10 * 60_000;   // a tripped guard re-arms itself after this long without a restart
     private static final long ERROR_WINDOW_MS = 60_000;         // MAX_ERRORS only count when they come in a burst
-    private static final String VERSION = "3.6";
+    private static final String VERSION = "3.7";
 
     private static Controller sInstance;
 
@@ -174,6 +174,7 @@ public final class Controller {
         }, GUARD_STABLE_MS);
 
         cfg = Config.load(prefs);
+        NotifExpand.apply(cfg);
         publishLockMax(cfg);
         gput("sbmods_alive", System.currentTimeMillis());
         gput("sbmods_alive_boot", android.provider.Settings.Global.getInt(ctx.getContentResolver(), android.provider.Settings.Global.BOOT_COUNT, -1));   // which boot: immune to clock jumps
@@ -948,6 +949,7 @@ public final class Controller {
                 if (Config.ACTION_APPLY.equals(a)) {
                     Config n = Config.fromBundle(i.getExtras());
                     cfg = n;
+                    NotifExpand.apply(n);
                     n.save(prefs);
                     publishLockMax(n);
                     if (label != null) place();
