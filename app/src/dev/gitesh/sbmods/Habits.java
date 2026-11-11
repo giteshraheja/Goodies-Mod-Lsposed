@@ -127,6 +127,36 @@ public final class Habits {
         return "slow down (CPU " + (r.cpu > 0 ? r.cpu + " %" : "full speed") + ", GPU " + (r.gpu > 0 ? r.gpu + " %" : "full speed") + ")";
     }
 
+    // ------------------------------------------------------------------ games the owner used (global sbmods_games = "pkg;pkg;...", newest first)
+
+    public static final int MAX_GAMES = 8;
+
+    public static List<String> parseGames(String s) {
+        List<String> out = new ArrayList<>();
+        if (s == null) return out;
+        for (String e : s.split(";")) if (okPkg(e) && !out.contains(e) && out.size() < MAX_GAMES) out.add(e);
+        return out;
+    }
+
+    /** `pkg` came to the front: it moves to the head of the list (at most MAX_GAMES). Returns `games` itself when nothing changed. */
+    public static String addGame(String games, String pkg) {
+        if (!okPkg(pkg)) return games == null ? "" : games;
+        List<String> l = parseGames(games);
+        if (!l.isEmpty() && l.get(0).equals(pkg)) return games;
+        l.remove(pkg);
+        l.add(0, pkg);
+        while (l.size() > MAX_GAMES) l.remove(l.size() - 1);
+        StringBuilder b = new StringBuilder();
+        for (String g : l) b.append(g).append(';');
+        return b.toString();
+    }
+
+    /** The rule for `pkg`, or null. */
+    public static R ruleOf(String rules, String pkg) {
+        for (R r : parseRules(rules)) if (r.pkg.equals(pkg)) return r;
+        return null;
+    }
+
     // ------------------------------------------------------------------ apps kept when cleaning (global sbmods_keep)
 
     /**

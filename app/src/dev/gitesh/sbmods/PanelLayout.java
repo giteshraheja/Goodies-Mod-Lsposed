@@ -34,12 +34,12 @@ public final class PanelLayout {
     public static final String[] TILE_CARDS = {"powersave", "smooth"};
 
     /** Default order. The page of each card is in PAGES, its plain-English name in TITLES (same positions). */
-    public static final String[] DEFAULTS = {"insights", "modes", "cpu", "gpu", "cores", "graphics", "switches",
+    public static final String[] DEFAULTS = {"insights", "modes", "cpu", "gpu", "cores", "graphics", "switches", "games",
             "powersave", "smooth", "battery", "health", "memory", "topapps"};
-    public static final String[] TITLES = {"Insights", "Mode", "CPU", "GPU", "Cores", "Graphics", "Options",
+    public static final String[] TITLES = {"Insights", "Mode", "CPU", "GPU", "Cores", "Graphics", "Options", "Games",
             "Power saving", "Screen smoothness", "Battery report", "Battery health", "Memory", "Busiest apps"};
     /** 0 = All (the cards used last; only Insights lives there, and nowhere else), 1 = Speed, 2 = Battery, 3 = Memory. */
-    public static final int[] PAGES = {0, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3};
+    public static final int[] PAGES = {0, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3};
     public static final String[] PAGE_NAMES = {"All", "Speed", "Battery", "Memory"};
     public static final int PAGE_ALL = 0, PAGE_SPEED = 1, PAGE_BATTERY = 2, PAGE_MEMORY = 3;
 

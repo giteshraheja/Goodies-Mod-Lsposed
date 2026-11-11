@@ -406,6 +406,12 @@ public final class SettingsActivity extends Activity {
             switchRow("Restart apps still on OpenGL", "When Vulkan is on and an app you open is still using the old renderer, it is closed and reopened once so it can switch. Each app at most once until the phone restarts. Unsaved work in that app is lost.",
                     !"0".equals(glStr("sbmods_gfx_restart")), v -> putGl("sbmods_gfx_restart", v ? "1" : "0"));
             divider();
+            switchRow("Game mode: full speed for games", "When you open a game, any speed limit is lifted for as long as it is in front, then your earlier limit comes back. A game with its own automatic rule keeps that rule.",
+                    !"0".equals(glStr("sbmods_game")), v -> putGl("sbmods_game", v ? "1" : "0"));
+            divider();
+            switchRow("Close other apps when a game starts", "Closes background apps once when you open a game, except the ones you keep reopening.",
+                    "1".equals(glStr("sbmods_gamesclean")), v -> putGl("sbmods_gamesclean", v ? "1" : "0"));
+            divider();
             actionRow("Ask about Vulkan again", "Use this after you chose “Don't ask again” on the Vulkan question.", cAccent, v -> {
                 putGl("sbmods_smart_noask", "0");
                 Toast.makeText(this, "It may ask about Vulkan again", Toast.LENGTH_SHORT).show();
