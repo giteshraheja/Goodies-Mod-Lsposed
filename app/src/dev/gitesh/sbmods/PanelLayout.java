@@ -13,6 +13,7 @@ import java.util.Set;
  * and it can be tested on a plain JVM. Three global settings:
  *   sbmods_cards      comma-separated ids, a leading "-" hides one (for example "modes,cpu,-gpu,cores")
  *   sbmods_recent     the cards used last, newest first, at most RECENT_MAX (what the "All" page shows)
+ *   sbmods_pins       cards pinned to the top of the All page, in pin order, at most PIN_MAX
  *   sbmods_panel_tab  the page that was open last (0..PAGE_NAMES.length-1)
  */
 public final class PanelLayout {
@@ -26,6 +27,9 @@ public final class PanelLayout {
     public static final String TILES = "sbmods_tiles";
     /** 1 = the All page fills itself with the cards used last (opt-in); otherwise it lists every shown card in the owner's order. */
     public static final String ALLFILL = "sbmods_allfill";
+    /** Cards pinned to the top of the All page: comma-separated ids in the order they were pinned, at most PIN_MAX. */
+    public static final String PINS = "sbmods_pins";
+    public static final int PIN_MAX = 3;
     /** The cards that are tiles (a tap switches them); their size is the owner's choice. */
     public static final String[] TILE_CARDS = {"powersave", "smooth"};
 
@@ -99,6 +103,40 @@ public final class PanelLayout {
         r.add(0, id);
         while (r.size() > RECENT_MAX) r.remove(r.size() - 1);
         return write(r, null);
+    }
+
+    /** The pinned ids in pin order: known ids only, each once, at most PIN_MAX. */
+    public static List<String> pins(String setting) {
+        List<String> out = new ArrayList<>();
+        if (setting != null) for (String raw : setting.split(",")) {
+            String id = raw.trim();
+            if (indexOf(id) < 0 || out.contains(id)) continue;
+            out.add(id);
+            if (out.size() >= PIN_MAX) break;
+        }
+        return out;
+    }
+
+    /** The pins setting with id added at the end (unchanged if it is already pinned or three are pinned). */
+    public static String withPin(String setting, String id) {
+        List<String> p = pins(setting);
+        if (indexOf(id) >= 0 && !p.contains(id) && p.size() < PIN_MAX) p.add(id);
+        return write(p, null);
+    }
+
+    /** The pins setting with id removed. */
+    public static String withoutPin(String setting, String id) {
+        List<String> p = pins(setting);
+        p.remove(id);
+        return write(p, null);
+    }
+
+    /** The ids of an All page: the pinned ones that are in ids come first, in pin order; the rest follow in their own order. No repeats. */
+    public static List<String> pinnedFirst(List<String> ids, String pinsSetting) {
+        List<String> out = new ArrayList<>();
+        for (String id : pins(pinsSetting)) if (ids.contains(id)) out.add(id);
+        for (String id : ids) if (!out.contains(id)) out.add(id);
+        return out;
     }
 
     public static boolean isTile(String id) { return Arrays.asList(TILE_CARDS).contains(id); }

@@ -24,7 +24,8 @@ glass on the bottom bar, info sheet and the Performance panel, solid cards elsew
   Each card has Reset; less-used options sit behind an "Advanced" row; System > Restore defaults resets everything (with a confirm).
 - Performance panel follows the system day / night setting. Panel cards are reordered with the drag handle in the Panel tab.
   Switch cards are tiles (wide or small icon-only, chosen in the Panel tab). The All page lists every shown card in your order; "Fill it with the cards I use most" brings back the old behaviour.
-- New global settings (written by the app with root, read by the panel): `sbmods_tiles` (small tile ids), `sbmods_allfill` (1 = All page fills itself).
+  Pin up to 3 cards (the pin in the Panel tab, or press and hold a card in the panel) and they stay at the top of the All page, in pin order.
+- New global settings (written by the app with root, read by the panel): `sbmods_tiles` (small tile ids), `sbmods_allfill` (1 = All page fills itself), `sbmods_pins` (pinned card ids, in pin order, up to 3).
 
 ## Signing key
 `build.sh` creates `keys/sbmods.jks` on first run. Provide its password via `SBMODS_KS_PASS` or a

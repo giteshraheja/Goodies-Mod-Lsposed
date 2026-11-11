@@ -271,6 +271,7 @@ public final class Ui {
         ICONS.put("info", circ(12, 12, 9) + "|M12 11v5.2M12 7.8v.01");
         ICONS.put("grip", "*" + circ(9, 6, 1.6f) + "|*" + circ(15, 6, 1.6f) + "|*" + circ(9, 12, 1.6f) + "|*" + circ(15, 12, 1.6f)
                 + "|*" + circ(9, 18, 1.6f) + "|*" + circ(15, 18, 1.6f));
+        ICONS.put("pin", "M9 4h6l-1 6 3 3H7l3-3z|M12 13v7");
         ICONS.put("chev", "M9.5 6l6 6-6 6");
         ICONS.put("chevd", "M6 9.5l6 6 6-6");
         ICONS.put("layout", rr(3, 4, 18, 6, 2) + "|" + rr(3, 14, 8, 6, 2) + "|" + rr(15, 14, 6, 6, 2));

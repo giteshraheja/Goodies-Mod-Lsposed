@@ -260,11 +260,83 @@ final class PerfPanel {
     /** The cards of the current page. The All page keeps the order it was built with until the page is left or the panel reopens. */
     private static List<PanelCards.Card> pageCards(Activity a) {
         if (page != PanelLayout.PAGE_ALL) return PanelCards.visible(a, page);
-        if (!PanelCards.allFill(a)) return PanelCards.allFixed(a);   // the usual All page: every shown card, in the owner's order
-        if (allOrder == null) allOrder = PanelCards.recentVisible(a);   // opt-in: the cards used last, kept while the panel shows
         List<PanelCards.Card> out = new ArrayList<>();
-        for (String id : allOrder) { PanelCards.Card k = PanelCards.byId(id); if (k != null) out.add(k); }
+        if (!PanelCards.allFill(a)) {   // the usual All page: every shown card, in the owner's order, pinned ones first
+            List<String> ids = new ArrayList<>();
+            for (PanelCards.Card k : PanelCards.allFixed(a)) ids.add(k.id);
+            for (String id : PanelLayout.pinnedFirst(ids, Global.gstr(a, PanelLayout.PINS))) { PanelCards.Card k = PanelCards.byId(id); if (k != null) out.add(k); }
+            return out;
+        }
+        if (allOrder == null) allOrder = PanelCards.recentVisible(a);   // opt-in: the cards used last, kept while the panel shows
+        List<String> shownIds = PanelLayout.order(Global.gstr(a, PanelLayout.SETTING), PanelLayout.DEFAULTS);
+        List<String> withPins = new ArrayList<>(allOrder);
+        for (String id : PanelLayout.pins(Global.gstr(a, PanelLayout.PINS))) if (shownIds.contains(id)) withPins.add(id);   // a pinned card shows even if not used lately
+        for (String id : PanelLayout.pinnedFirst(withPins, Global.gstr(a, PanelLayout.PINS))) { PanelCards.Card k = PanelCards.byId(id); if (k != null) out.add(k); }
         return out;
+    }
+
+    /** Pin or unpin a card from the panel; returns a short message when it could not be done (else null). Saved to the same setting the settings app uses. */
+    private static String togglePin(Activity a, PanelCards.Card k) {
+        String cur = Global.gstr(a, PanelLayout.PINS);
+        List<String> pins = PanelLayout.pins(cur);
+        String msg = null;
+        if (pins.contains(k.id)) Global.gset(a, PanelLayout.PINS, PanelLayout.withoutPin(cur, k.id));
+        else if (pins.size() >= PanelLayout.PIN_MAX) msg = "You can pin up to " + PanelLayout.PIN_MAX + ". Unpin one first.";
+        else Global.gset(a, PanelLayout.PINS, PanelLayout.withPin(cur, k.id));
+        rebuild(a);
+        return msg;
+    }
+
+    private static boolean isPinned(Activity a, PanelCards.Card k) { return PanelLayout.pins(Global.gstr(a, PanelLayout.PINS)).contains(k.id); }
+
+    /** Press-and-hold on a card: a small popup with Pin / Unpin (and the card's help, for tiles, whose old long-press showed it). */
+    private static void pinMenu(Activity a, View anchor, PanelCards.Card k, boolean withHelp) {
+        try {
+            anchor.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
+            Ui.Pal p = Ui.cur;
+            final boolean pinned = isPinned(a, k);
+            final boolean full = !pinned && PanelLayout.pins(Global.gstr(a, PanelLayout.PINS)).size() >= PanelLayout.PIN_MAX;
+            LinearLayout box = new LinearLayout(a);
+            box.setOrientation(LinearLayout.VERTICAL);
+            box.setPadding(dp(a, 6), dp(a, 6), dp(a, 6), dp(a, 6));
+            box.setBackground(Ui.panelGlass(a, p, p.sheet, p.sheetBd, Ui.R_TILE));
+            box.setElevation(dp(a, 8));
+            final android.widget.PopupWindow pw = new android.widget.PopupWindow(box, dp(a, 220), -2, true);
+            pw.setOutsideTouchable(true);
+            pw.setElevation(dp(a, 8));
+            if (withHelp) {
+                boolean open = k.id.equals(helpOpen);
+                TextView h = tv(a, open ? "Hide help" : "Show help", 15, p.tx, false);
+                h.setPadding(dp(a, 14), 0, dp(a, 14), 0);
+                h.setGravity(Gravity.CENTER_VERTICAL);
+                h.setOnClickListener(v -> { pw.dismiss(); try { k.toggle.run(); } catch (Throwable x) { Log.w("help: " + x); } });
+                box.addView(h, new LinearLayout.LayoutParams(-1, dp(a, 48)));
+            }
+            TextView e = tv(a, full ? "You can pin up to " + PanelLayout.PIN_MAX + ". Unpin one first." : pinned ? "Unpin" : "Pin to All", full ? 13 : 15, full ? p.tx2 : p.accInk, false);
+            e.setPadding(dp(a, 14), dp(a, 8), dp(a, 14), dp(a, 8));
+            e.setGravity(Gravity.CENTER_VERTICAL);
+            if (!full) e.setOnClickListener(v -> { pw.dismiss(); togglePin(a, k); });
+            box.addView(e, new LinearLayout.LayoutParams(-1, full ? -2 : dp(a, 48)));
+            pw.showAsDropDown(anchor, dp(a, 12), -anchor.getHeight() / 2 - dp(a, 24));
+        } catch (Throwable x) { Log.w("pin menu: " + x); }
+    }
+
+    /** TalkBack / keyboard: Pin or Unpin as a custom action on the card. */
+    private static void pinAction(Activity a, View v, PanelCards.Card k) {
+        v.setAccessibilityDelegate(new View.AccessibilityDelegate() {
+            @Override public void onInitializeAccessibilityNodeInfo(View host, android.view.accessibility.AccessibilityNodeInfo info) {
+                super.onInitializeAccessibilityNodeInfo(host, info);
+                info.addAction(new android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction(0x7f0b0003, isPinned(a, k) ? "Unpin from All page" : "Pin to All page"));
+            }
+            @Override public boolean performAccessibilityAction(View host, int action, android.os.Bundle args) {
+                if (action == 0x7f0b0003) {
+                    String m = togglePin(a, k);
+                    if (m != null) android.widget.Toast.makeText(a, m, android.widget.Toast.LENGTH_SHORT).show();
+                    return true;
+                }
+                return super.performAccessibilityAction(host, action, args);
+            }
+        });
     }
 
     /** One card as a glass tile: header line (title left, live value right), the card, and its help (hidden until the title is tapped). Null if it failed to build. */
@@ -287,8 +359,11 @@ final class PerfPanel {
             t.setMinimumHeight(dp(a, 64));
             t.setGravity(Gravity.CENTER_VERTICAL);
             t.setOnClickListener(PanelCards.safe(() -> { k.tap(a); rebuild(a); }));
-            t.setOnLongClickListener(v -> { try { k.toggle.run(); } catch (Throwable x) { Log.w("help: " + x); } return true; });
+            t.setOnLongClickListener(v -> { pinMenu(a, v, k, true); return true; });
+        } else {
+            t.setOnLongClickListener(v -> { pinMenu(a, v, k, false); return true; });
         }
+        pinAction(a, t, k);
         String h = null;
         try { h = k.help(a); } catch (Throwable x) { Log.w("card " + k.id + " help: " + x); }
         if (!k.ownHeader()) {
@@ -343,7 +418,8 @@ final class PerfPanel {
         t.setClickable(true);
         t.setContentDescription(k.title + ", " + state);
         t.setOnClickListener(PanelCards.safe(() -> { k.tap(a); rebuild(a); }));
-        t.setOnLongClickListener(v -> { try { k.toggle.run(); } catch (Throwable x) { Log.w("help: " + x); } return true; });
+        t.setOnLongClickListener(v -> { pinMenu(a, v, k, true); return true; });
+        pinAction(a, t, k);
         int ink = on ? p.onAcc : p.accInk;
         if (small) {
             android.widget.ImageView ic = Ui.icon(a, k.icon(), on ? p.onAcc : p.tx, 26);

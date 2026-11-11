@@ -1101,10 +1101,12 @@ public final class SettingsActivity extends Activity {
         try { setting = android.provider.Settings.Global.getString(getContentResolver(), PanelLayout.SETTING); } catch (Throwable ignored) {}
         final Set<String> hidden = new HashSet<>();
         final List<String> all = PanelLayout.everything(setting, PanelLayout.DEFAULTS, hidden);
+        final List<String> pinned = PanelLayout.pins(gs(PanelLayout.PINS));
+        pinned.removeAll(hidden);
         int total = PanelLayout.DEFAULTS.length;
 
         group("panelcards", "Panel cards", null, true);
-        cardResetAction(() -> putGl(PanelLayout.SETTING, ""));
+        cardResetAction(() -> putGl(PanelLayout.SETTING, "", PanelLayout.PINS, ""));
         for (int page = PanelLayout.PAGE_SPEED; page < PanelLayout.PAGE_NAMES.length; page++) {
             TextView hd = Ui.text(this, PanelLayout.PAGE_NAMES[page], Ui.T_VALUE, cSub, 600);
             hd.setPadding(0, dp(page == PanelLayout.PAGE_SPEED ? 0 : Ui.S3), 0, dp(2));
@@ -1113,11 +1115,12 @@ public final class SettingsActivity extends Activity {
             for (String id : all) if (PanelLayout.PAGES[PanelLayout.indexOf(id)] == page) ids.add(id);
             for (int i = 0; i < ids.size(); i++) {
                 if (i > 0) divider();
-                panelRow(all, hidden, ids, i);
+                panelRow(all, hidden, ids, i, pinned);
             }
         }
         endGroup((total - hidden.size()) + " of " + total + " cards shown" + (setting == null || setting.isEmpty() ? ", standard order" : ", your order")
                 + ".\n\nSwitch a card off to hide it. Press and hold the handle on the left of a card and drag it up or down to move it within its page. "
+                + "Tap the pin to keep a card at the top of the All page (up to " + PanelLayout.PIN_MAX + "; they show in the order you pinned them). "
                 + "Reset shows every card again in the standard order.");
 
         final String tiles = gs(PanelLayout.TILES);
@@ -1229,7 +1232,7 @@ public final class SettingsActivity extends Activity {
     private static final String[] PANEL_ICONS = {"bolt", "cpu", "gauge", "cpu", "layers", "sys", "leaf", "gauge", "batt", "shield", "mem", "apps"};
 
     /** One card of the Performance panel: a drag handle, its name and a shown / hidden switch. */
-    private void panelRow(final List<String> all, final Set<String> hidden, final List<String> ids, final int i) {
+    private void panelRow(final List<String> all, final Set<String> hidden, final List<String> ids, final int i, final List<String> pinned) {
         final String id = ids.get(i);
         final int n = ids.size();
         Ui.Switch sw = new Ui.Switch(this, pal);
@@ -1286,12 +1289,30 @@ public final class SettingsActivity extends Activity {
         LinearLayout.LayoutParams gp = new LinearLayout.LayoutParams(dp(40), dp(Ui.TAP));
         gp.setMarginStart(dp(-8));
         r.addView(grip, gp);
-        r.addView(labelBlock(PANEL_ICONS[PanelLayout.indexOf(id)], PanelLayout.TITLES[PanelLayout.indexOf(id)], null, cText, dp(56 + 40)), new LinearLayout.LayoutParams(0, -2, 1));
+        final String title = PanelLayout.TITLES[PanelLayout.indexOf(id)];
+        final boolean isPinned = pinned.contains(id);
+        r.addView(labelBlock(PANEL_ICONS[PanelLayout.indexOf(id)], title, isPinned ? "Pinned to the All page" : null, cText, dp(56 + 40 + 40)), new LinearLayout.LayoutParams(0, -2, 1));
+        FrameLayout pin = new FrameLayout(this);
+        ImageView pi = Ui.icon(this, "pin", isPinned ? cAccent : cSub, 20);
+        ((FrameLayout.LayoutParams) pi.getLayoutParams()).gravity = Gravity.CENTER;
+        pin.addView(pi);
+        pin.setBackground(ripple(0));
+        pin.setClickable(true);
+        pin.setContentDescription(isPinned ? "Unpin " + title + " from the All page" : "Pin " + title + " to the All page");
+        pin.setOnClickListener(v -> {
+            String cur = gs(PanelLayout.PINS);
+            if (PanelLayout.pins(cur).contains(id)) putGl(PanelLayout.PINS, PanelLayout.withoutPin(cur, id));   // read fresh: the panel may have changed the pins
+            else if (hidden.contains(id)) Toast.makeText(this, "Switch this card on first.", Toast.LENGTH_SHORT).show();
+            else if (PanelLayout.pins(cur).size() >= PanelLayout.PIN_MAX) Toast.makeText(this, "You can pin up to " + PanelLayout.PIN_MAX + ". Unpin one first.", Toast.LENGTH_SHORT).show();
+            else putGl(PanelLayout.PINS, PanelLayout.withPin(cur, id));
+        });
+        r.addView(pin, new LinearLayout.LayoutParams(dp(40), dp(Ui.TAP)));
         sw.setChecked(!hidden.contains(id));
         sw.setContentDescription(PanelLayout.TITLES[PanelLayout.indexOf(id)]);
         sw.setOnChange(v -> {
             if (v) hidden.remove(id); else hidden.add(id);
-            putGl(PanelLayout.SETTING, PanelLayout.write(all, hidden));
+            if (v) putGl(PanelLayout.SETTING, PanelLayout.write(all, hidden));
+            else putGl(PanelLayout.SETTING, PanelLayout.write(all, hidden), PanelLayout.PINS, PanelLayout.withoutPin(gs(PanelLayout.PINS), id));   // hiding a card unpins it
         });
         LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(dp(56), dp(Ui.TAP));
         sp.setMarginEnd(dp(-4));
@@ -1318,7 +1339,7 @@ public final class SettingsActivity extends Activity {
         for (String k : prefs.getAll().keySet()) if (k.startsWith("adv_") || k.startsWith("open_")) ed.remove(k);
         ed.apply();
         buildPreviewArea();
-        putGl(PanelLayout.SETTING, "", PanelLayout.TILES, "", PanelLayout.ALLFILL, "0");
+        putGl(PanelLayout.SETTING, "", PanelLayout.TILES, "", PanelLayout.ALLFILL, "0", PanelLayout.PINS, "");
     }
 
     private String gs(String key) {
