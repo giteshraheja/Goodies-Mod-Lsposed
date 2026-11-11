@@ -230,16 +230,80 @@ final class BackChip {
         }
         update();
     }
+    // Live-activity tracking is event driven: a listener for media sessions appearing / going away, plus a callback on
+    // each current session for playback-state changes. No timer runs in the normal path and nothing runs with the screen
+    // off. If the listener cannot be registered, the old 3 s poll is used instead, paused while the screen is off.
+    private android.media.session.MediaSessionManager liveMsm;
+    private android.media.session.MediaSessionManager.OnActiveSessionsChangedListener sessListener;
+    private final java.util.ArrayList<android.media.session.MediaController> watched = new java.util.ArrayList<>();
+    private boolean pollFallback, screenOff;
+    private final android.media.session.MediaController.Callback ctlCb = new android.media.session.MediaController.Callback() {
+        @Override public void onPlaybackStateChanged(android.media.session.PlaybackState st) { recheckLive(); }
+        @Override public void onSessionDestroyed() { recheckLive(); }
+    };
+
+    /** Same check the old poll made: refresh only when the live state or the capsule state changed. */
+    private void recheckLive() {
+        if (chip == null) return;
+        Config cfg = owner.config();
+        if (!cfg.backEnabled || cfg.backLive == 0) { lastLive = false; return; }
+        boolean cap = capsuleShown(liveBox());
+        boolean now = cap || liveActive(chip.getContext());
+        if (now != lastLive || cap != lastCap) { lastLive = now; update(); }
+    }
+
+    private void watchControllers(List<android.media.session.MediaController> l) {
+        for (android.media.session.MediaController mc : watched) { try { mc.unregisterCallback(ctlCb); } catch (Throwable ignored) { } }
+        watched.clear();
+        if (l == null) return;
+        for (android.media.session.MediaController mc : l) {
+            try { mc.registerCallback(ctlCb, main); watched.add(mc); } catch (Throwable ignored) { }
+        }
+    }
+
+    /** Start / stop live tracking to match the options. Safe to call repeatedly. */
+    private void syncLiveTracking() {
+        Config cfg = owner.config();
+        boolean want = chip != null && cfg.backEnabled && cfg.backLive != 0;
+        if (!want) { stopLiveTracking(); return; }
+        if (sessListener != null) return;
+        if (!pollFallback) {
+            try {
+                Context ctx = chip.getContext();
+                liveMsm = ctx.getSystemService(android.media.session.MediaSessionManager.class);
+                sessListener = l -> { watchControllers(l); recheckLive(); };
+                liveMsm.addOnActiveSessionsChangedListener(sessListener, null, main);
+                watchControllers(liveMsm.getActiveSessions(null));
+                return;
+            } catch (Throwable t) {
+                Log.w("back chip: session listener failed, polling instead: " + t);
+                sessListener = null;
+                liveMsm = null;
+                pollFallback = true;
+            }
+        }
+        main.removeCallbacks(livePoll);
+        if (!screenOff) main.postDelayed(livePoll, 3000);
+    }
+
+    private void stopLiveTracking() {
+        main.removeCallbacks(livePoll);
+        if (sessListener != null && liveMsm != null) {
+            try { liveMsm.removeOnActiveSessionsChangedListener(sessListener); } catch (Throwable ignored) { }
+        }
+        sessListener = null;
+        liveMsm = null;
+        watchControllers(null);
+    }
+
+    /** Fallback only (listener unavailable). */
     private final Runnable livePoll = new Runnable() {
         @Override public void run() {
             main.removeCallbacks(this);
-            if (chip == null) return;
+            if (chip == null || screenOff) return;
             Config cfg = owner.config();
             if (cfg.backEnabled && cfg.backLive != 0) {
-                View lbp = liveBox();
-                boolean cap = capsuleShown(lbp);
-                boolean now = cap || liveActive(chip.getContext());
-                if (now != lastLive || cap != lastCap) { lastLive = now; update(); }
+                recheckLive();
                 main.postDelayed(this, 3000);
             } else lastLive = false;
         }
@@ -332,6 +396,7 @@ final class BackChip {
             if (p instanceof ViewGroup) ((ViewGroup) p).removeView(chip);
         }
         chip = null;
+        stopLiveTracking();
     }
 
     /** Keep Samsung's left row clear of the overlay chip (only while the chip sits at the left start). */
@@ -418,8 +483,13 @@ final class BackChip {
             IntentFilter f = new IntentFilter();
             f.addAction(Intent.ACTION_USER_PRESENT);
             f.addAction(Intent.ACTION_SCREEN_OFF);
+            f.addAction(Intent.ACTION_SCREEN_ON);
             ctx.registerReceiver(new BroadcastReceiver() {
-                @Override public void onReceive(Context c, Intent i) { shownKey = null; update(); }
+                @Override public void onReceive(Context c, Intent i) {
+                    screenOff = Intent.ACTION_SCREEN_OFF.equals(i.getAction());
+                    if (screenOff) main.removeCallbacks(livePoll);   // fallback poll sleeps with the screen
+                    shownKey = null; update();
+                }
             }, f, null, main, Context.RECEIVER_NOT_EXPORTED);
             receiverOn = true;
         }
@@ -455,9 +525,8 @@ final class BackChip {
                 compactWanted = false;
                 sliverWanted = label != null && cfg.backLive == 3 && shareLive && !peeking;   // "Stack": chip rests behind the live activity
                 if (peeking && (!shareLive || cfg.backLive != 3)) { peeking = false; c.setMinWidth(0); c.setGravity(Gravity.CENTER_VERTICAL); }
-                main.removeCallbacks(livePoll);
-                if (cfg.backLive != 0) main.postDelayed(livePoll, 3000);
             }
+            syncLiveTracking();
             if (label == null) {
                 sliverWanted = false;
                 mergeWanted = false;
