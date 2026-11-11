@@ -287,12 +287,52 @@ final class Mover {
         View wifi = wid == 0 ? null : root.findViewById(wid);
         boolean wifiUp = wifi != null && wifi.isShown() && wifi.getWidth() > 0;
         if (c.mergeNet && wifiUp) {
-            collapse(box);
+            if (hookMobile(box)) {   // Samsung's own layout leaves the icon out: no room kept for it
+                if (origMargins.containsKey(box)) uncollapse(box);
+                if (!mergeHide) { mergeHide = true; relayout(box); }
+            } else collapse(box);
+            mergeApplied = true;
             if (box.getAlpha() != 0f) box.setAlpha(0f);
-        } else if (origMargins.containsKey(box)) {
-            uncollapse(box);
+        } else if (mergeApplied || mergeHide) {
+            mergeApplied = false;
+            if (mergeHide) { mergeHide = false; relayout(box); }
+            if (origMargins.containsKey(box)) uncollapse(box);
             if (box.getAlpha() != 1f) box.setAlpha(1f);
         }
+    }
+
+    private boolean mergeApplied;
+    private static volatile boolean mergeHide;   // read by the hook below
+    private static Class<?> mobileCls;
+    private static boolean mergeHooked, mergeHookFailed;
+
+    private static void relayout(View box) {
+        box.requestLayout();
+        if (box.getParent() instanceof View) ((View) box.getParent()).requestLayout();
+    }
+
+    /**
+     * Samsung's icon row asks every icon "are you visible?" when it measures and places them (it ignores margins, so an icon
+     * can't be folded away from outside). While the connection icons are merged, the mobile icon answers "no" and so gets no
+     * room at all. Hooked once, on the first use; costs one flag read per question. False = not possible on this phone.
+     */
+    private static boolean hookMobile(View box) {
+        if (mergeHooked) return true;
+        if (mergeHookFailed) return false;
+        try {
+            java.lang.reflect.Method m = null;
+            for (Class<?> k = box.getClass(); k != null && m == null; k = k.getSuperclass())
+                try { m = k.getDeclaredMethod("isIconVisible"); } catch (NoSuchMethodException ignored) {}
+            if (m == null || m.getReturnType() != boolean.class || java.lang.reflect.Modifier.isAbstract(m.getModifiers())) { mergeHookFailed = true; return false; }
+            mobileCls = box.getClass();
+            de.robv.android.xposed.XposedBridge.hookMethod(m, new de.robv.android.xposed.XC_MethodHook() {
+                @Override protected void beforeHookedMethod(MethodHookParam p) {
+                    if (mergeHide && mobileCls.isInstance(p.thisObject)) p.setResult(false);
+                }
+            });
+            mergeHooked = true;
+            return true;
+        } catch (Throwable t) { mergeHookFailed = true; Log.w("net merge hook: " + t); return false; }
     }
 
     private int[] origPad;
@@ -529,6 +569,7 @@ final class Mover {
 
     /** Undo item moves (translations, freed space) but leave the edge padding alone. */
     private void releaseZones() {
+        if (mergeHide) { mergeHide = false; View mb = mobileBox.get(); if (mb != null) { relayout(mb); mb.setAlpha(1f); } mergeApplied = false; }
         for (java.lang.ref.WeakReference<View> r : clipped) { View cv = r.get(); if (cv != null && cv.getClipBounds() != null) cv.setClipBounds(null); }
         clipped.clear();
         for (View v : new java.util.ArrayList<>(applied.keySet()))
