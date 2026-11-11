@@ -159,6 +159,12 @@ public final class Controller {
 
         registerControlReceiver();
 
+        // an app update (a new version, or the same one installed again while developing) is not a crash: clear both guard counters once. One read, at start only.
+        try {
+            String build = VERSION + ":" + ctx.getPackageManager().getPackageInfo(Config.PKG, 0).lastUpdateTime;
+            if (!build.equals(prefs.getString("guard_build", ""))) prefs.edit().putInt("guard_starts", 0).putString("guard_slow", "").putString("guard_build", build).apply();
+        } catch (Throwable ignored) {}
+
         int starts = prefs.getInt("guard_starts", 0);
         long lastStart = prefs.getLong("guard_last", 0);
         long nowMs = System.currentTimeMillis();
@@ -904,16 +910,19 @@ public final class Controller {
                             if (screenOn && w == wake && (km == null || !km.isKeyguardLocked())) tryTip(w);
                         } catch (Throwable t) { fail("tip", t); }
                     }, 1500);
+                    Smart.resume();
                     main.post(shiftTick);
                     startPolling();
                     restartClockTick();
                 } else if (Intent.ACTION_USER_PRESENT.equals(a)) {
+                    Smart.resume();
                     final int w = wake;
                     main.postDelayed(() -> {
                         try { tryTip(w); } catch (Throwable t) { fail("tip", t); }
                     }, 1500);
                 } else if (Intent.ACTION_SCREEN_OFF.equals(a)) {
                     screenOn = false;
+                    Smart.screenOff();
                     tips.stop();
                     main.removeCallbacks(shiftTick); // nothing to protect while the screen is off
                 } else {
