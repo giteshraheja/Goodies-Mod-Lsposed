@@ -6,7 +6,8 @@
 #  - a limit is a share of the HARDWARE maximum (cpuinfo_max_freq / top GPU step), never of today's heat-limited value;
 #  - "back to normal" writes the hardware maximum, which only removes our request (Samsung's heat limit keeps working).
 #
-# Battery: idle, it sleeps until the global settings folder reports a change (or checks the file once a second where that is not possible; no Java process). It reads the settings
+# Battery: idle, it sleeps until the global settings folder reports a change (or checks the file once a second where that is not possible; no Java process).
+# With the watcher it also sleeps right up to the next timed job instead of waking every second (see rest()). It reads the settings
 # (one `settings list`) only when that file changed, or every 10 s while a limit is on. Live speeds are NOT published:
 # the Overview chips read them straight from the kernel.
 #
@@ -240,7 +241,11 @@ pubuntil() { [ "$1" != "$UNT" ] && sp sbmods_until $1; UNT=$1; }
 # A truly idle helper (no limit, nothing watching, no core parking, no pending check) does not even wake every second:
 # a small toybox `inotifyd` watches the folder of the global settings file (that file is replaced by renaming, so the
 # folder is watched) and writes a line into the fifo whenever something in it is created, moved in or saved.
-# idle() sleeps until such a line arrives (60 s is only a safety net), nap() waits at most 1 s but also ends early on a line.
+# idle() sleeps until such a line arrives (60 s is only a safety net), nap() waits at most 1 s but also ends early on a line,
+# and waitfor() sleeps for the time to the next timed job (also ending early on a line).
+# Timed jobs (watch load, per-core load, core-parking check, the 10 s look-in while a limit is on) each remember the second
+# ($SECONDS, a shell built-in) they last ran and run again once their own period has passed. So a wake-up that comes early
+# (a settings change) neither makes a job run more often than its period nor makes it skip a turn.
 # The lines are only a wake-up call: whether the settings really changed is still decided by the `-nt $ST/seen` test.
 # Without a fifo or without a working watcher the helper falls back to the plain one-second nap.
 rm -f $ST/wait; mkfifo $ST/wait 2>/dev/null
@@ -248,6 +253,12 @@ IDLE=""; WP=""
 if [ -p $ST/wait ]; then
   exec 9<>$ST/wait   # read-write: writers never block on open, and the fifo never reports end of file
   nap() { read -t 1 _n <&9; }
+  # sleep at most $1 seconds, ending early on a line from the watcher; queued lines are then thrown away (as in idle()).
+  # A full timeout means nothing happened: check that the watcher still lives, else go back to the one-second nap for good.
+  waitfor() {
+    if read -t $1 _n <&9; then while read -t 0.05 _n <&9; do :; done
+    else kill -0 $WP 2>/dev/null || IDLE=""; fi
+  }
   # a watcher left over from an earlier helper run goes first (only if the PID really is an inotifyd)
   wp=$(cat $ST/inotify.pid 2>/dev/null); [ -n "$wp" ] && grep -q inotifyd /proc/$wp/cmdline 2>/dev/null && kill $wp 2>/dev/null
   rm -f $ST/inotify.pid
@@ -265,14 +276,24 @@ if [ -p $ST/wait ]; then
   idle() {
     if read -t 60 _n <&9; then while read -t 0.05 _n <&9; do :; done
     else kill -0 $WP 2>/dev/null || IDLE=""; fi
-    tick=0   # the modulo timers restart from a clean count after a long sleep
   }
 else nap() { sleep 1; }; fi
-# the next wait: idle only when nothing at all depends on the one-second tick (a limit / pending renderer check / watching / parking /
-# a fresh read still due / a settings file newer than our last read); otherwise the normal nap (which still ends early on an event)
+# the next wait. Without the watcher: the plain one-second nap. With it: if a fresh read is due (or we just wrote a setting, or the
+# settings file is newer than our last read) a one-second nap; otherwise sleep until the NEXT timed job is due, i.e. the smallest
+# time left over everything that is on (at least 1 s), and idle (60 s safety net) when nothing is on. All of these end early on a
+# watcher line. Timed jobs: watch load 4 s (lw), per-core load 2 s (lc, watch 2 only), core parking check 5 s (lk), and the 10 s
+# look-in (lr) while a limit / core parking / pending renderer check is on (on=1; the renderer check runs in that look-in).
 rest() {
-  if [ -n "$IDLE" ] && [ "$force" = "0" ] && [ "$on" = "0" ] && [ "$w" != "1" ] && [ "$w" != "2" ] && [ "$pk" = "0" ] \
-    && [ -f $ST/seen ] && [ ! -f $ST/gfx.t ] && ! [ $F -nt $ST/seen ]; then idle; else nap; fi
+  if [ -z "$IDLE" ]; then nap; return; fi
+  if [ "$force" != "0" ] || [ ! -f $ST/seen ] || [ $F -nt $ST/seen ]; then nap; return; fi
+  if [ "$on" = "0" ] && [ "$w" != "1" ] && [ "$w" != "2" ] && [ "$pk" = "0" ]; then idle; return; fi
+  wt=60; n=$SECONDS
+  if [ "$w" = "1" ] || [ "$w" = "2" ]; then r=$((4 - (n - lw))); [ $r -lt $wt ] && wt=$r; fi
+  if [ "$w" = "2" ]; then r=$((2 - (n - lc))); [ $r -lt $wt ] && wt=$r; fi
+  if [ "$pk" = "1" ]; then r=$((5 - (n - lk))); [ $r -lt $wt ] && wt=$r; fi
+  if [ "$on" = "1" ]; then r=$((10 - (n - lr))); [ $r -lt $wt ] && wt=$r; fi
+  [ $wt -lt 1 ] && wt=1
+  waitfor $wt
 }
 # a setting we write ourselves: the next pass must read fresh values (the settings file itself is saved a little later)
 sp() { settings put global "$@"; force=1; }
@@ -282,30 +303,31 @@ if [ "$(settings get global sbmods_gfx_keep)" = "1" ] && [ "$(getprop debug.hwui
   gfx_vulkan; sp sbmods_result "Vulkan is back on after the restart"
 fi
 
-tick=0; on=0; w=0; pk=0; hi=0; force=1; cmd=none
+on=0; w=0; pk=0; hi=0; force=1; cmd=none; lw=0; lc=0; lk=0; lr=0
 while true; do
   ch=0; { [ "$force" = "1" ] || [ ! -f $ST/seen ] || [ $F -nt $ST/seen ]; } && ch=1   # built-in test: no program started
-  tick=$((tick + 1))
+  now=$SECONDS
   # Overview open: publish CPU load every 4 s, only when it moved by 3+ points (apps may not read /proc/stat; each write touches flash)
   # (watch 2 = Performance panel: includes everything watch 1 does)
-  if { [ "$w" = "1" ] || [ "$w" = "2" ]; } && [ $((tick % 4)) = 0 ]; then
-    cpuload
+  if { [ "$w" = "1" ] || [ "$w" = "2" ]; } && [ $((now - lw)) -ge 4 ]; then
+    lw=$now; cpuload
     if [ -n "$L" ] && { [ -z "$pl" ] || [ $((L - pl)) -ge 3 ] || [ $((pl - L)) -ge 3 ]; }; then settings put global sbmods_cpu_load $L; pl=$L; fi
-  elif [ "$w" != "1" ] && [ "$w" != "2" ]; then pt=""; pl=""; fi
+  elif [ "$w" != "1" ] && [ "$w" != "2" ]; then pt=""; pl=""; lw=$now; fi
   # Performance panel open: per-core load every 2 s, published only when some core moved 5+ points
-  if [ "$w" = "2" ]; then [ $((tick % 2)) = 0 ] && coreload; else CS=""; CP=""; fi
+  if [ "$w" = "2" ]; then [ $((now - lc)) -ge 2 ] && { lc=$now; coreload; }; else CS=""; CP=""; lc=$now; fi
   # cores parked: if the phone is working hard (>= 90 % twice in a row, 5 s apart) wake them up again
   if [ "$pk" = "1" ]; then
-    if [ $((tick % 5)) = 0 ]; then
-      kload; if [ -n "$K" ] && [ "$K" -ge 90 ]; then hi=$((hi + 1)); else hi=0; fi
+    if [ $((now - lk)) -ge 5 ]; then
+      lk=$now; kload; if [ -n "$K" ] && [ "$K" -ge 90 ]; then hi=$((hi + 1)); else hi=0; fi
       if [ "$hi" -ge 2 ]; then
         sp sbmods_cores 0; cores_restore; pk=0; hi=0
         sp sbmods_result "Cores woken: the phone was working hard"
       fi
     fi
-  else kt=""; hi=0; fi
+  else kt=""; hi=0; lk=$now; fi
   # nothing changed: sleep (while a limit / parking is on, still look again every 10 s for the timeout / cool-down)
-  if [ "$ch" = "0" ] && { [ "$on" = "0" ] || [ $((tick % 10)) != 0 ]; }; then rest; continue; fi
+  if [ "$ch" = "0" ] && { [ "$on" = "0" ] || [ $((now - lr)) -lt 10 ]; }; then rest; continue; fi
+  lr=$now
   # read the settings only when they changed (or we just wrote one): `settings list` starts a whole Java program.
   # The 10 s look-in while a limit is on re-uses the last read; one-off jobs run only on a fresh read, never twice.
   cmd=none
