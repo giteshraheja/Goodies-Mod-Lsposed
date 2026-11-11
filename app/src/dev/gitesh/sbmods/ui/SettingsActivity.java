@@ -403,6 +403,9 @@ public final class SettingsActivity extends Activity {
                 cfg.smartOn, v -> { cfg.smartOn = v; apply(); putGl("sbmods_smart", v ? "1" : "0"); });   // the Overview panel (launcher process) reads the global
         if (cfg.smartOn) {
             divider();
+            switchRow("Restart apps still on OpenGL", "When Vulkan is on and an app you open is still using the old renderer, it is closed and reopened once so it can switch. Each app at most once until the phone restarts. Unsaved work in that app is lost.",
+                    !"0".equals(glStr("sbmods_gfx_restart")), v -> putGl("sbmods_gfx_restart", v ? "1" : "0"));
+            divider();
             actionRow("Ask about Vulkan again", "Use this after you chose “Don't ask again” on the Vulkan question.", cAccent, v -> {
                 putGl("sbmods_smart_noask", "0");
                 Toast.makeText(this, "It may ask about Vulkan again", Toast.LENGTH_SHORT).show();

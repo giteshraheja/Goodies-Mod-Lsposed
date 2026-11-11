@@ -337,12 +337,79 @@ final class Smart {
             int pid = pidOf(p);
             boolean started = snapOn && pid != 0 && !(snap.containsKey(p) && snap.get(p) == pid);
             if (started) { remember(p, ver, 'x'); toast(name + " can't use Vulkan"); }
+            else if (restartOk(p)) restartApp(p, name, pid);
             else { pidDone.add(p + ":" + pid); toast(name + ": OpenGL"); }   // it predates the switch: tells us nothing
             return;
         }
         remember(p, ver, 'o');
         if (before == null || !before.startsWith(ver + ",")) toast(name + ": OpenGL");
         if (p.equals(top) && askable(p)) offer(p);
+    }
+
+    // ------------------------------------------------------------------ restart an app that predates the Vulkan switch (once per app per boot)
+
+    private static final String K_BOOT = "sm_boot", K_GFXR = "sm_gfxr";
+    private static String bootMark;                 // read once, lazily ("" = unreadable: memory-only set)
+    private static final Set<String> restarted1 = new HashSet<>();   // apps restarted since this boot (mirrors K_GFXR)
+
+    private static boolean protectedPkg(String p) {
+        if (p.equals("android") || p.equals(Config.SYSUI) || p.equals(Entry.LAUNCHER) || p.equals(home()) || p.equals(Config.PKG) || p.equals("com.termux")
+                || p.startsWith("com.android.providers.") || p.startsWith("com.google.android.gms") || p.equals("com.sec.imsservice") || p.equals("com.sec.epdg")) return true;
+        String ime = Settings.Secure.getString(ctx.getContentResolver(), Settings.Secure.DEFAULT_INPUT_METHOD);
+        return ime != null && ime.startsWith(p + "/");
+    }
+
+    /** Loads the once-per-boot set the first time it is needed; drops it when the boot marker changed. */
+    private static void loadBoot() {
+        if (bootMark != null) return;
+        String m = "";
+        try {
+            String id = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get("/proc/sys/kernel/random/boot_id"))).trim();
+            String sc = "";
+            try { sc = String.valueOf(Class.forName("android.os.SystemProperties").getMethod("get", String.class, String.class).invoke(null, "sys.system_server.start_count", "")); } catch (Throwable ignored) {}
+            m = id + ":" + sc;
+        } catch (Throwable t) { Log.w("smart boot marker: " + t); }
+        bootMark = m;
+        if (m.isEmpty()) return;
+        try {
+            if (m.equals(prefs.getString(K_BOOT, ""))) {
+                for (String e : prefs.getString(K_GFXR, "").split(";")) if (!e.isEmpty()) restarted1.add(e);
+            } else prefs.edit().putString(K_BOOT, m).remove(K_GFXR).apply();
+        } catch (Throwable t) { Log.w("smart boot set: " + t); }
+    }
+
+    private static boolean restartOk(String p) {
+        try {
+            if (!on || Global.gint(ctx, "sbmods_gfx_restart", 1) != 1) return false;
+            if (!p.equals(top) || locked() || inCall() || ctx.getSystemService(AudioManager.class).isMusicActive()) return false;
+            if (protectedPkg(p) || ctx.getPackageManager().getLaunchIntentForPackage(p) == null) return false;
+            if (Jobs.pending(ctx)) return false;
+            loadBoot();
+            return !restarted1.contains(p);
+        } catch (Throwable t) { Log.w("smart restartOk: " + t); return false; }
+    }
+
+    private static void restartApp(String p, String name, int pid) {
+        try {
+            restarted1.add(p); pidDone.add(p + ":" + pid);
+            if (!bootMark.isEmpty()) prefs.edit().putString(K_GFXR, String.join(";", restarted1)).apply();
+            toast("Restarting " + name + " to use Vulkan");
+            Global.gput(ctx, "sbmods_result", "");
+            Jobs.send(ctx, "stop:" + p);
+            main.postDelayed(() -> {   // one shot: reopen once the helper has answered, else give up quietly
+                try {
+                    String r = Global.gstr(ctx, "sbmods_result");
+                    if (r == null || r.isEmpty()) {
+                        if (("stop:" + p).equals(Global.gstr(ctx, "sbmods_cmd"))) Global.gput(ctx, "sbmods_cmd", "none");
+                        return;
+                    }
+                    Intent li = ctx.getPackageManager().getLaunchIntentForPackage(p);
+                    if (li == null) return;
+                    top = null;   // so the front-app check runs again for the reopened app
+                    ctx.startActivity(li.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                } catch (Throwable t) { Log.w("smart reopen: " + t); }
+            }, 3000);
+        } catch (Throwable t) { Log.w("smart restart: " + t); }
     }
 
     // ------------------------------------------------------------------ the offer
