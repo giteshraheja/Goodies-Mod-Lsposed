@@ -143,7 +143,7 @@ final class Smart {
         String[] o = p.getString(K_OWN, "").split("\\|");   // a limit of ours that outlived a status bar restart
         if (o.length == 3) try { owned = o[0]; ownCpu = Integer.parseInt(o[1]); ownGpu = Integer.parseInt(o[2]); } catch (NumberFormatException e) { owned = null; }
         String[] g = p.getString(K_GAME, "").split("\\|", -1);   // game full speed that outlived a status bar restart
-        if (g.length == 5) { gameFull = g[0]; gamePrev = g[1] + "|" + g[2] + "|" + g[3] + "|" + g[4]; }
+        if (g.length == 5) { gameFull = g[0]; gamePrev = g[1] + "|" + g[2]; }
         main.post(Smart::onFront);
     }
 
@@ -233,6 +233,7 @@ final class Smart {
     /** An app came to the front (called from onFront only). Cost with no rules and no limit of ours: two field checks. */
     private static void ruleFront(String p, String cls) {
         if (!on) return;
+        if (rules.isEmpty() && owned == null && gameFull == null && !gameOn()) return;   // nothing to do: no rule, no limit of ours, game mode off
         try {
             if (transientSurface(p, cls)) return;
             if (locked()) { ruleTop = null; return; }   // screen off / lock: leave everything; the first event after unlock decides
@@ -275,8 +276,13 @@ final class Smart {
     }
 
     /** A game came to the front (once per front change): list it for the panel's Games card, and send the one clean start per launch if wanted. */
+    private static boolean gameOn() {
+        return Global.gint(ctx, G_GAME, 1) == 1 || Global.gint(ctx, G_GCLEAN, 0) == 1;
+    }
+
     private static void gameStart(String p) {
         try {
+            if (!gameOn()) return;
             String cur = Global.gstr(ctx, G_GAMES);
             String n = Habits.addGame(cur, p);
             if (!n.equals(cur == null ? "" : cur)) Global.gput(ctx, G_GAMES, n);
@@ -295,11 +301,12 @@ final class Smart {
     /** Remember the limits in force, then switch them off (the same four settings as "Full speed"); undone by endGame(). */
     private static void gameFullSpeed(String p) {
         if (gameFull != null || Global.gint(ctx, G_GAME, 1) != 1 || !limitActive()) return;
-        String prev = Global.gint(ctx, "sbmods_cpu_pct", 0) + "|" + Global.gint(ctx, "sbmods_gpu_pct", 0) + "|" + Global.gint(ctx, "sbmods_cool", 0) + "|"
-                + PanelMath.normCores(Global.gstr(ctx, "sbmods_cores"));
-        prefs.edit().putString(K_GAME, p + "|" + prev).commit();   // saved before anything changes
+        if (ctx.getSystemService(PowerManager.class).isPowerSaveMode()) return;   // battery first: power saving keeps its cap
+        if (Global.gint(ctx, "sbmods_until", 0) > 0) return;                      // a timed limit: leave it, it ends on its own
+        String prev = Global.gint(ctx, "sbmods_cpu_pct", 0) + "|" + Global.gint(ctx, "sbmods_gpu_pct", 0);
+        prefs.edit().putString(K_GAME, p + "|" + prev + "||").commit();   // saved before anything changes
         gameFull = p; gamePrev = prev;
-        restoreFull();
+        Global.gset(ctx, "sbmods_cpu_pct", "0"); Global.gset(ctx, "sbmods_gpu_pct", "0");   // only the CPU/GPU caps; heat protection and cores stay
         toast(nameOf(p) + ": full speed");
     }
 
@@ -310,16 +317,10 @@ final class Smart {
         try {
             prefs.edit().remove(K_GAME).apply();
             String[] f = prev == null ? new String[0] : prev.split("\\|", -1);
-            if (f.length != 4 || !fullNow()) return;
+            if (f.length != 2 || Global.gint(ctx, "sbmods_cpu_pct", 0) != 0 || Global.gint(ctx, "sbmods_gpu_pct", 0) != 0) return;   // the owner changed them meanwhile: leave them
             Global.gset(ctx, "sbmods_cpu_pct", f[0]); Global.gset(ctx, "sbmods_gpu_pct", f[1]);
-            Global.gset(ctx, "sbmods_cool", f[2]); Global.gset(ctx, "sbmods_cores", f[3]);
             toast("Back to your earlier speed limit");
         } catch (Throwable t) { Log.w("smart game end: " + t); }
-    }
-
-    private static boolean fullNow() {
-        return Global.gint(ctx, "sbmods_cpu_pct", 0) == 0 && Global.gint(ctx, "sbmods_gpu_pct", 0) == 0 && Global.gint(ctx, "sbmods_cool", 0) == 0
-                && PanelMath.normCores(Global.gstr(ctx, "sbmods_cores")).equals("0");
     }
 
     private static boolean limitActive() {
