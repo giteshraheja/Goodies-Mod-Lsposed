@@ -354,6 +354,7 @@ final class RecentsChip {
         if (gap > 0) { main.postDelayed(() -> command(a, cmd, msg, waitMs), gap); return; }
         PanelCmd.cleaning(true);
         if (!Global.gput(a, "sbmods_result", "")) { PanelCmd.cleaning(false); Toast.makeText(a, "Can't reach the helper", Toast.LENGTH_SHORT).show(); return; }
+        if (cmd.equals("ramclean") || cmd.equals("deepclean")) Global.markClean(a);
         Global.gput(a, "sbmods_cmd", cmd);
         Toast.makeText(a, msg, Toast.LENGTH_SHORT).show();
         // the helper checks every few seconds and the job itself takes a few more: keep looking until it answers

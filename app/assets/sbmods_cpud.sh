@@ -18,6 +18,9 @@
 #   sbmods_limit_min                 limits end by themselves after this many minutes (default 15, max 120)
 #   sbmods_until                     epoch seconds when the running limit / core parking ends by itself (0 = none); follows sbmods_limit_min
 #   sbmods_cmd = ramclean|deepclean  one-off jobs; the answer goes to sbmods_result
+#   sbmods_clean_at, sbmods_keep     written by the status bar mod (not the helper): time of the last clean-up tap, and "pkg|count|day;..." apps the owner
+#                                    reopens right after a clean-up. With Smart suggestions on and kept apps (count >= 2), ramclean / deepclean kill
+#                                    cached apps one by one (am kill) and spare those instead of `am kill-all`; the answer then ends " (kept N apps you reopen)"
 #   sbmods_cmd = battreport          answer in sbmods_batt = left_min|on_sec|off_sec|discharge_mah|off_discharge_mah|capacity_mah (-1 = unknown)
 #   sbmods_cmd = top                 answer in sbmods_top = up to 3 "package:cpu%" comma-separated (empty = nothing above 1 %)
 #   sbmods_cmd = stop:<package>      force-stops one app (strictly validated, protected apps refused); answer in sbmods_result
@@ -233,6 +236,35 @@ gfx_vulkan() {
 stopok() { case "$1" in ''|*[!A-Za-z0-9._]*) return 1;; *.*) ;; *) return 1;; esac
   case "$1" in android|com.android.systemui|com.sec.android.app.launcher|dev.gitesh.sbmods|com.termux|com.android.providers.*|com.google.android.gms.*|com.google.android.gms) return 1;; esac; }
 
+# Clean-up that spares the apps the owner keeps reopening (global sbmods_keep = "pkg|count|day;...", count >= 2 = kept; used only when Smart
+# suggestions is on, sbmods_smart missing = on). Prints the kept packages as " a b c " (just " " = none).
+keptlist() { _r=$(val sbmods_keep); _o=" "
+  case "$(val sbmods_smart)" in 0) echo " "; return;; esac
+  while [ -n "$_r" ]; do
+    _e=${_r%%;*}; case "$_r" in *\;*) _r=${_r#*;};; *) _r=;; esac
+    _p=${_e%%|*}; _c=${_e#*|}; _c=${_c%%|*}
+    case "$_c" in ''|*[!0-9]*) continue;; esac
+    [ "$_c" -ge 2 ] && _o="$_o$_p "
+  done; echo "$_o"; }
+# kill the cached background apps one by one, except kept ones ($1 = " a b "): oom_score_adj >= 900, package from cmdline (":suffix" cut),
+# each package once, nothing stopok refuses (and never the calling services). Sets KILLED and SPARED (kept apps that were running).
+killbg() {
+  _seen=" "; KILLED=0; SPARED=0
+  for _d in /proc/[0-9]*; do
+    _a=; read -r _a 2>/dev/null < $_d/oom_score_adj   # (a failed read is not an error here: cmdline has no final newline, and the pid may be gone)
+    case "$_a" in ''|*[!0-9]*) continue;; esac
+    [ "$_a" -ge 900 ] || continue
+    _n=; read -r _n 2>/dev/null < $_d/cmdline
+    _n=${_n%%:*}
+    case "$_seen" in *" $_n "*) continue;; esac
+    _seen="$_seen$_n "
+    case "$_n" in com.sec.imsservice|com.sec.epdg) continue;; esac
+    stopok "$_n" || continue
+    case "$1" in *" $_n "*) SPARED=$((SPARED+1)); continue;; esac
+    am kill "$_n" >/dev/null 2>&1; KILLED=$((KILLED+1))
+  done
+}
+
 # publish when the limit ends (epoch s, 0 = none), only when it changed
 pubuntil() { [ "$1" != "$UNT" ] && sp sbmods_until $1; UNT=$1; }
 
@@ -341,12 +373,14 @@ while true; do
     ramclean|deepclean)
       sp sbmods_cmd none
       b=$(mem); sb=$(swp)
-      am kill-all >/dev/null 2>&1
+      kp=$(keptlist); kn=""
+      if [ "$kp" = " " ]; then am kill-all >/dev/null 2>&1
+      else killbg "$kp"; [ "$SPARED" -gt 0 ] && kn=" (kept $SPARED app$([ "$SPARED" -gt 1 ] && echo s) you reopen)"; fi
       if [ "$cmd" = "deepclean" ]; then sync; echo 3 > /proc/sys/vm/drop_caches; echo 1 > /proc/sys/vm/compact_memory; fi
       sleep 2
       a=$(mem)
-      if [ "$cmd" = "deepclean" ]; then sp sbmods_result "Deep clean: +$((a-b)) MB RAM free, swap $sb% -> $(swp)%"
-      else sp sbmods_result "Closed background apps: +$((a-b)) MB RAM free"; fi;;
+      if [ "$cmd" = "deepclean" ]; then sp sbmods_result "Deep clean: +$((a-b)) MB RAM free, swap $sb% -> $(swp)%$kn"
+      else sp sbmods_result "Closed background apps: +$((a-b)) MB RAM free$kn"; fi;;
     battreport) sp sbmods_cmd none; sp sbmods_batt "$(battreport)";;
     top) sp sbmods_cmd none; sp sbmods_top "$(topapps)";;
     stop:*)

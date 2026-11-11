@@ -18,9 +18,11 @@ final class Insights {
     static final int TOP_MIN_PCT = 30;          // an app counts as heavy at this share of one CPU core (the helper's "top" list)
     static final int SWAP_MIN_PCT = 70;         // swap this full = memory is tight
     static final int RAM_MIN_PCT = 90;          // memory this full = tight (the Memory card turns red here)
+    static final int IDLE_MIN_DAYS = 7;         // running but not opened for this long = worth a suggestion
+    static final int IDLE_WINDOW_DAYS = 30;     // usage is only looked up this far back
     static final int LIMIT_END_SEC = 60;        // a limit with less than this left is "nearly over"
 
-    static final int HOT = 0, APP = 1, MEMORY = 2, LIMIT = 3, VULKAN = 4, HABIT = 5;   // also the rank: lower comes first
+    static final int HOT = 0, APP = 1, MEMORY = 2, LIMIT = 3, VULKAN = 4, HABIT = 5, IDLE = 6;   // also the rank: lower comes first
 
     static final class Item {
         final int kind;
@@ -44,6 +46,8 @@ final class Insights {
         Predicate<String> canStop;         // false for apps the helper refuses and for ours / the launcher
         Function<String, String> label;    // package -> name shown to the owner
         String habitPkg, habitName;        // an app the owner slows down by hand again and again (no rule, not declined), else null
+        String idlePkg;                    // a running app not opened for IDLE_MIN_DAYS+ (already checked: stoppable, not kept, not last used), else null
+        int idleDays;                      // how many days ago it was last opened; more than IDLE_WINDOW_DAYS = not at all in the window
         boolean gfxKeep, gfxVulkan;        // "keep Vulkan" was chosen / Vulkan is on now
     }
 
@@ -63,6 +67,7 @@ final class Insights {
         if (in.heldBack && !hot && (in.charging || (in.limitSecLeft > 0 && in.limitSecLeft < LIMIT_END_SEC)))
             out.add(new Item(LIMIT, in.charging ? "A speed limit is on while charging" : "A speed limit is about to end", "Full speed", null));   // 4
         if (in.gfxKeep && !in.gfxVulkan) out.add(new Item(VULKAN, "Vulkan is off after the restart", "Turn on", null));   // 5
+        if (in.idlePkg != null) out.add(new Item(IDLE, idleText(in.label.apply(in.idlePkg), in.idleDays), "Stop", in.idlePkg));   // 6: last
         List<Item> res = new ArrayList<>();
         for (Item i : out) if ((skip == null || !skip.test(i.key())) && res.size() < MAX) res.add(i);
         return res;
@@ -82,5 +87,15 @@ final class Insights {
             if (pct > bestPct && !pkg.equals(in.front) && in.canStop.test(pkg)) { best = pkg; bestPct = pct; }
         }
         return best;
+    }
+
+    static String idleText(String name, int days) {
+        return name + " is running but you haven't opened it for " + (days > IDLE_WINDOW_DAYS ? "over " + IDLE_WINDOW_DAYS : String.valueOf(days)) + " days";
+    }
+
+    /** Whole days from lastUsed to now (ms); lastUsed <= 0 (never in the window) counts as just beyond the window. */
+    static int idleDays(long lastUsedMs, long nowMs) {
+        if (lastUsedMs <= 0) return IDLE_WINDOW_DAYS + 1;
+        return (int) Math.max(0, Math.min(IDLE_WINDOW_DAYS + 1, (nowMs - lastUsedMs) / 86_400_000L));
     }
 }

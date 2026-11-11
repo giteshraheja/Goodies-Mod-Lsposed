@@ -141,6 +141,7 @@ final class TapActions {
     private static void closeApps(Context ctx) {
         android.content.ContentResolver cr = ctx.getContentResolver();
         Settings.Global.putString(cr, "sbmods_result", "");
+        Global.markClean(ctx);
         Settings.Global.putString(cr, "sbmods_cmd", "ramclean");
         toast(ctx, "Closing background apps\u2026");
         final android.os.Handler h = new android.os.Handler(android.os.Looper.getMainLooper());

@@ -36,4 +36,7 @@ final class Global {
     static boolean sput(Context c, String key, String val) {
         try { return Settings.Secure.putString(c.getContentResolver(), key, val); } catch (Throwable t) { Log.w("secure " + key + ": " + t); return false; }
     }
+
+    /** A clean-up (close apps / deep clean) was started by the owner: Smart learns which app is opened next. One settings write per tap. */
+    static void markClean(Context c) { if (gint(c, "sbmods_smart", 1) != 0) gput(c, "sbmods_clean_at", String.valueOf(System.currentTimeMillis() / 1000)); }
 }

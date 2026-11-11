@@ -411,8 +411,20 @@ public final class SettingsActivity extends Activity {
                 row.addView(textButton("Remove", v -> putGl("sbmods_rules", Habits.removeRule(glStr("sbmods_rules"), pk))));
             }
             divider();
-            actionRow("Forget what it learned", "Clears the apps it noticed and the ones you said No to. Your automatic rules stay.", cAccent, v -> {
-                putGl("sbmods_habits", "");
+            java.util.List<Habits.K> kl = Habits.kept(glStr("sbmods_keep"));
+            infoRow(kl.isEmpty() ? "Apps kept when cleaning: none yet. An app you open right after cleaning twice is spared by the next clean."
+                    : "Apps kept when cleaning (spared when you close background apps):", null);
+            for (Habits.K k : kl) {
+                LinearLayout row = rowShell(null);
+                String nm = k.pkg;
+                try { nm = getPackageManager().getApplicationInfo(k.pkg, 0).loadLabel(getPackageManager()).toString(); } catch (Throwable ignored) {}
+                row.addView(Ui.text(this, nm, Ui.T_BODY, cText, 400), new LinearLayout.LayoutParams(0, -2, 1));
+                final String pk = k.pkg;
+                row.addView(textButton("Remove", v -> putGl("sbmods_keep", Habits.removeKeep(glStr("sbmods_keep"), pk))));
+            }
+            divider();
+            actionRow("Forget what it learned", "Clears the apps it noticed, the ones you said No to and the apps kept when cleaning. Your automatic rules stay.", cAccent, v -> {
+                putGl("sbmods_habits", "", "sbmods_keep", "");
                 Toast.makeText(this, "Forgotten", Toast.LENGTH_SHORT).show();
             });
         }

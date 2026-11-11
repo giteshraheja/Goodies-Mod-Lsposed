@@ -127,4 +127,67 @@ public final class Habits {
         return "slow down (CPU " + (r.cpu > 0 ? r.cpu + " %" : "full speed") + ", GPU " + (r.gpu > 0 ? r.gpu + " %" : "full speed") + ")";
     }
 
+    // ------------------------------------------------------------------ apps kept when cleaning (global sbmods_keep)
+
+    /**
+     * keep = "pkg|count|lastDay;..."   oldest first, at most MAX_KEEP. count = cleans after which this app was the next one opened
+     * (at most one per clean). From KEEP_AT count on the app is "kept": the clean-up spares it.
+     */
+    public static final int MAX_KEEP = 40, KEEP_AT = 2;
+    public static final long CLEAN_WINDOW_S = 60;
+
+    public static final class K {
+        public final String pkg; public final int count; public final long day;
+        K(String pkg, int count, long day) { this.pkg = pkg; this.count = count; this.day = day; }
+        String str() { return pkg + "|" + count + "|" + day; }
+    }
+
+    public static List<K> parseKeep(String s) {
+        List<K> out = new ArrayList<>();
+        if (s == null) return out;
+        for (String e : s.split(";")) {
+            String[] f = e.split("\\|");
+            if (f.length != 3 || !okPkg(f[0])) continue;
+            try { int c = Integer.parseInt(f[1]); if (c > 0) out.add(new K(f[0], c, Long.parseLong(f[2]))); }
+            catch (NumberFormatException ignored) {}
+        }
+        return out;
+    }
+
+    private static String joinK(List<K> l) { StringBuilder b = new StringBuilder(); for (K k : l) b.append(k.str()).append(';'); return b.toString(); }
+
+    /** Was the last clean-up (epoch seconds) at most CLEAN_WINDOW_S ago, and not yet counted? */
+    public static boolean cleanFresh(long cleanAt, long counted, long now) {
+        return cleanAt > 0 && cleanAt != counted && now >= cleanAt && now - cleanAt <= CLEAN_WINDOW_S;
+    }
+
+    /** `pkg` was the next app opened after a clean-up: count it. Returns the new string (oldest dropped beyond MAX_KEEP). */
+    public static String learnKeep(String keep, String pkg, long day) {
+        if (!okPkg(pkg)) return keep == null ? "" : keep;
+        List<K> l = parseKeep(keep);
+        int c = 1;
+        for (int i = l.size() - 1; i >= 0; i--) if (l.get(i).pkg.equals(pkg)) { c = l.get(i).count + 1; l.remove(i); }
+        l.add(new K(pkg, c, day));
+        while (l.size() > MAX_KEEP) l.remove(0);
+        return joinK(l);
+    }
+
+    public static String removeKeep(String keep, String pkg) {
+        List<K> l = parseKeep(keep);
+        for (int i = l.size() - 1; i >= 0; i--) if (l.get(i).pkg.equals(pkg)) l.remove(i);
+        return joinK(l);
+    }
+
+    /** The kept apps (count >= KEEP_AT). */
+    public static List<K> kept(String keep) {
+        List<K> out = new ArrayList<>();
+        for (K k : parseKeep(keep)) if (k.count >= KEEP_AT) out.add(k);
+        return out;
+    }
+
+    public static boolean isKept(String keep, String pkg) {
+        for (K k : kept(keep)) if (k.pkg.equals(pkg)) return true;
+        return false;
+    }
+
 }

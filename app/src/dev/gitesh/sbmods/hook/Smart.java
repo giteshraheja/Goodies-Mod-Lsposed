@@ -83,6 +83,11 @@ final class Smart {
     private static String owned;            // app whose limit WE set, else null
     private static int ownCpu, ownGpu;
 
+    // apps kept when cleaning (sbmods_keep): the clean time is cached by ONE observer (only while Smart is on), so a front-app event compares two longs
+    private static final String G_CLEAN = "sbmods_clean_at", G_KEEPS = "sbmods_keep", K_KEEPAT = "sm_keepat";
+    private static ContentObserver cleanObs;
+    private static long cleanAt, keepCounted;   // cached sbmods_clean_at (epoch s); the clean_at value already counted
+
     private static final Runnable fire = Smart::fire;
     private static final Runnable timeout = () -> finishCheck(null);
     private static final Runnable dismiss = Smart::dismissPopup;
@@ -120,6 +125,12 @@ final class Smart {
             @Override public void onChange(boolean self) { loadRules(); }
         };
         c.getContentResolver().registerContentObserver(Settings.Global.getUriFor(G_RULES), false, rulesObs);
+        loadClean();
+        keepCounted = p.getLong(K_KEEPAT, 0);
+        cleanObs = new ContentObserver(main) {
+            @Override public void onChange(boolean self) { loadClean(); }
+        };
+        c.getContentResolver().registerContentObserver(Settings.Global.getUriFor(G_CLEAN), false, cleanObs);
         String[] o = p.getString(K_OWN, "").split("\\|");   // a limit of ours that outlived a status bar restart
         if (o.length == 3) try { owned = o[0]; ownCpu = Integer.parseInt(o[1]); ownGpu = Integer.parseInt(o[2]); } catch (NumberFormatException e) { owned = null; }
         main.post(Smart::onFront);
@@ -134,6 +145,8 @@ final class Smart {
         listener = null; top = null; pendingPkg = null;
         try { if (rulesObs != null) ctx.getContentResolver().unregisterContentObserver(rulesObs); } catch (Throwable ignored) {}
         rulesObs = null; rules.clear(); ruleTop = null;
+        try { if (cleanObs != null) ctx.getContentResolver().unregisterContentObserver(cleanObs); } catch (Throwable ignored) {}
+        cleanObs = null; cleanAt = 0;
         if (owned != null) { if (stillOurs()) restoreFull(); forgetOwned(); }   // switched off while our limit is on: give full speed back
     }
 
@@ -149,6 +162,7 @@ final class Smart {
             String p = cn != null ? cn.getPackageName() : null;
             if (p == null) return;
             ruleFront(p, cn.getClassName());
+            keepFront(p, cn.getClassName());
             if (p.equals(top)) return;
             top = p;
             main.removeCallbacks(fire); pendingPkg = null;
@@ -165,6 +179,29 @@ final class Smart {
             pendingPkg = p; pendingMode = mode;
             main.postDelayed(fire, DELAY_MS);
         } catch (Throwable t) { Log.w("smart front: " + t); }
+    }
+
+    // ------------------------------------------------------------------ apps kept when cleaning
+
+    private static void loadClean() {
+        try { String s = Global.gstr(ctx, G_CLEAN); cleanAt = s == null ? 0 : Long.parseLong(s.trim()); } catch (NumberFormatException e) { cleanAt = 0; }
+    }
+
+    /**
+     * The first normal app that comes to the front within a minute after a clean-up is counted in sbmods_keep (once per clean).
+     * Cost on every front-app event: one clock read and two long compares; the settings write happens at most once per clean.
+     */
+    private static void keepFront(String p, String cls) {
+        long now = System.currentTimeMillis() / 1000;
+        if (!Habits.cleanFresh(cleanAt, keepCounted, now)) return;
+        try {
+            if (transientSurface(p, cls) || p.equals(home()) || locked()) return;
+            keepCounted = cleanAt;
+            prefs.edit().putLong(K_KEEPAT, cleanAt).apply();
+            String cur = Global.gstr(ctx, G_KEEPS);
+            if (cur == null) cur = "";
+            Global.gset(ctx, G_KEEPS, Habits.learnKeep(cur, p, today()));
+        } catch (Throwable t) { Log.w("smart keep: " + t); }
     }
 
     // ------------------------------------------------------------------ automatic speed rules

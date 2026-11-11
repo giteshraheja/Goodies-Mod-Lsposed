@@ -901,6 +901,10 @@ final class PanelCards {
             in.label = p -> { try { PackageManager pm = a.getPackageManager(); return pm.getApplicationInfo(p, 0).loadLabel(pm).toString(); } catch (Throwable t) { return p; } };
             Habits.H hb = Habits.candidate(Global.gstr(a, "sbmods_habits"), Global.gstr(a, "sbmods_rules"));
             if (hb != null) { in.habitPkg = hb.pkg; in.habitName = in.label.apply(hb.pkg); }
+            String keep = Global.gstr(a, "sbmods_keep");
+            String front = lastApp(a);
+            String[] idle = IdleApps.find(a, p -> stoppable(a, p) && !p.equals(front) && !Habits.isKept(keep, p));
+            if (idle != null) { in.idlePkg = idle[0]; in.idleDays = Integer.parseInt(idle[1]); }
             in.gfxKeep = Global.gint(a, "sbmods_gfx_keep", 0) == 1;
             in.gfxVulkan = "vulkan".equals(Global.gstr(a, "sbmods_gfx"));
             List<Insights.Item> items = Insights.rank(in, done::contains);
@@ -937,7 +941,7 @@ final class PanelCards {
                     PerfPanel.changed(a);
                     break;
                 }
-                case Insights.APP: PanelCmd.stop(a, it.arg); break;   // shows the helper's answer; the helper checks stopok again
+                case Insights.APP: case Insights.IDLE: PanelCmd.stop(a, it.arg); break;   // shows the helper's answer; the helper checks stopok again
                 case Insights.MEMORY: RecentsChip.command(a, "deepclean", "Deep cleaning memory…", 6000); break;
                 case Insights.LIMIT:   // same as the Options card's Full speed
                     for (String k : new String[]{"sbmods_cpu_pct", "sbmods_gpu_pct", "sbmods_cool", "sbmods_cores"}) Global.gset(a, k, "0");
