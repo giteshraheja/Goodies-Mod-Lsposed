@@ -110,7 +110,7 @@ final class PanelCards {
     }
 
     /** The registry, in default order (must match PanelLayout.DEFAULTS). */
-    static final List<Card> ALL = java.util.Arrays.asList(new Insight(), new Modes(), new Cpu(), new Gpu(), new Cores(), new Graphics(), new Switches(),
+    static final List<Card> ALL = java.util.Arrays.asList(new Insight(), new Modes(), new Cpu(), new Gpu(), new Cores(), new Graphics(), new Switches(), new Games(),
             new PowerSave(), new Smooth(), new Battery(), new Health(), new Memory(), new TopApps());
 
     /** The visible cards of one page, in the owner's order. */
@@ -574,6 +574,54 @@ final class PanelCards {
                 RecentsChip.main.postDelayed(() -> { try { RecentsChip.refresh(a); } catch (Throwable t) { Log.w("toggle refresh: " + t); } }, 1500);
             });
             return self[0];
+        }
+    }
+
+    // ------------------------------------------------------------------ 5b. games (built only when the panel opens; nothing runs while it is closed)
+
+    static final class Games extends Card {
+        Games() { super("games"); }
+        @Override String help(Activity a) {
+            return "The games you opened lately. \"Full speed\" on: the game always runs without a limit. Off: it is slowed down to the level you picked last "
+                    + "(the same automatic rule as in Smart suggestions). Needs Smart suggestions and Game mode in StatusBar Mods.";
+        }
+        @Override View build(Activity a) {
+            LinearLayout col = column(a);
+            List<String> games = Habits.parseGames(Global.gstr(a, "sbmods_games"));
+            if (games.isEmpty()) { col.addView(tv(a, "Open a game and it shows up here.", 14, DIM, false)); return col; }
+            for (int i = 0; i < games.size(); i++) col.addView(row(a, games.get(i)), lp(-1, -2, 0, i == 0 ? 0 : dp(a, 4), 0, 0));
+            return col;
+        }
+        private static String str(String s) { return s == null ? "" : s; }
+        private View row(Activity a, String pkg) {
+            LinearLayout r = new LinearLayout(a);
+            r.setGravity(Gravity.CENTER_VERTICAL);
+            r.setMinimumHeight(dp(a, 44));
+            String label = pkg;
+            try { PackageManager pm = a.getPackageManager(); label = pm.getApplicationInfo(pkg, 0).loadLabel(pm).toString(); } catch (Throwable ignored) {}
+            LinearLayout names = column(a);
+            names.addView(oneLine(tv(a, label, 14, WHITE, false)));
+            TextView st = oneLine(tv(a, "", 12, DIM, false));
+            names.addView(st);
+            r.addView(names, new LinearLayout.LayoutParams(0, -2, 1));
+            TextView[] self = new TextView[1];
+            boolean full = Habits.ruleOf(Global.gstr(a, "sbmods_rules"), pkg) == null;
+            st.setText(full ? "Full" : "Limited");
+            self[0] = pill(a, "Full speed", full, () -> {
+                String rules = str(Global.gstr(a, "sbmods_rules"));
+                boolean wasFull = Habits.ruleOf(rules, pkg) == null;
+                if (wasFull) {   // limited from now on: the level chosen last (55 % if none), applied by Smart like any rule
+                    int pc = Global.gint(a, "sbmods_cpu_pick", 55), pg = Global.gint(a, "sbmods_gpu_pick", 55);
+                    if (pc + pg == 0) { pc = 55; pg = 55; }
+                    Global.gset(a, "sbmods_rules", Habits.addRule(rules, pkg, pc, pg));
+                } else Global.gset(a, "sbmods_rules", Habits.removeRule(rules, pkg));
+                pillStyle(self[0], !wasFull);
+                st.setText(wasFull ? "Limited" : "Full");
+                used(a, "games");
+            });
+            self[0].setMinWidth(dp(a, 96));
+            r.addView(self[0], lp(-2, -2, dp(a, 10), 0, 0, 0));
+            return r;
         }
     }
 

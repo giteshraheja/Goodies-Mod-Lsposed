@@ -8,6 +8,7 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.database.ContentObserver;
@@ -83,6 +84,14 @@ final class Smart {
     private static String owned;            // app whose limit WE set, else null
     private static int ownCpu, ownGpu;
 
+    // game mode: switches sbmods_game (default 1) and sbmods_gamesclean (default 0); sbmods_games = the games used (panel's Games card)
+    private static final String K_GAME = "sm_game", G_GAME = "sbmods_game", G_GAMES = "sbmods_games", G_GCLEAN = "sbmods_gamesclean";
+    private static final Map<String, String> gameCache = new HashMap<>();   // pkg -> "versionCode,0|1" (category Game), per package version
+    private static String gameFull;         // game we gave full speed to, else null (persisted in K_GAME with the limits it replaced)
+    private static String gamePrev;         // "cpu|gpu|cool|cores" as they were before
+    private static String cleanedFor;       // game the clean start was sent for (this launch)
+    private static long awayAt;             // uptime when another app first came to the front after that
+
     // apps kept when cleaning (sbmods_keep): the clean time is cached by ONE observer (only while Smart is on), so a front-app event compares two longs
     private static final String G_CLEAN = "sbmods_clean_at", G_KEEPS = "sbmods_keep", K_KEEPAT = "sm_keepat";
     private static ContentObserver cleanObs;
@@ -133,6 +142,8 @@ final class Smart {
         c.getContentResolver().registerContentObserver(Settings.Global.getUriFor(G_CLEAN), false, cleanObs);
         String[] o = p.getString(K_OWN, "").split("\\|");   // a limit of ours that outlived a status bar restart
         if (o.length == 3) try { owned = o[0]; ownCpu = Integer.parseInt(o[1]); ownGpu = Integer.parseInt(o[2]); } catch (NumberFormatException e) { owned = null; }
+        String[] g = p.getString(K_GAME, "").split("\\|", -1);   // game full speed that outlived a status bar restart
+        if (g.length == 5) { gameFull = g[0]; gamePrev = g[1] + "|" + g[2]; }
         main.post(Smart::onFront);
     }
 
@@ -147,6 +158,8 @@ final class Smart {
         rulesObs = null; rules.clear(); ruleTop = null;
         try { if (cleanObs != null) ctx.getContentResolver().unregisterContentObserver(cleanObs); } catch (Throwable ignored) {}
         cleanObs = null; cleanAt = 0;
+        if (gameFull != null) endGame();
+        gameCache.clear(); cleanedFor = null; awayAt = 0;
         if (owned != null) { if (stillOurs()) restoreFull(); forgetOwned(); }   // switched off while our limit is on: give full speed back
     }
 
@@ -220,7 +233,7 @@ final class Smart {
     /** An app came to the front (called from onFront only). Cost with no rules and no limit of ours: two field checks. */
     private static void ruleFront(String p, String cls) {
         if (!on) return;
-        if (rules.isEmpty() && owned == null) return;
+        if (rules.isEmpty() && owned == null && gameFull == null && !gameOn()) return;   // nothing to do: no rule, no limit of ours, game mode off
         try {
             if (transientSurface(p, cls)) return;
             if (locked()) { ruleTop = null; return; }   // screen off / lock: leave everything; the first event after unlock decides
@@ -231,7 +244,14 @@ final class Smart {
                 if (stillOurs()) { restoreFull(); toast("Back to full speed"); }
                 forgetOwned();   // (if the owner changed the limit meanwhile: just forget, leave it alone)
             }
+            boolean game = isGame(p);
+            if (gameFull != null && !p.equals(gameFull)) endGame();   // a non-game (or another game) came to the front: give the earlier limits back
+            if (cleanedFor != null && awayAt == 0 && !p.equals(cleanedFor)) awayAt = android.os.SystemClock.uptimeMillis();
             Habits.R r = rules.get(p);
+            if (game) {
+                gameStart(p);
+                if (r == null) { gameFullSpeed(p); return; }   // no rule of the owner for this game: full speed while it is open
+            }
             if (r == null || ctx.getSystemService(PowerManager.class).isPowerSaveMode() || limitActive()) return;
             Global.gput(ctx, "sbmods_cpu_pct", String.valueOf(r.cpu));
             Global.gput(ctx, "sbmods_gpu_pct", String.valueOf(r.gpu));
@@ -239,6 +259,85 @@ final class Smart {
             prefs.edit().putString(K_OWN, p + "|" + r.cpu + "|" + r.gpu).apply();
             toast(nameOf(p) + ": slowed down to save battery");
         } catch (Throwable t) { Log.w("smart rules: " + t); }
+    }
+
+    // ------------------------------------------------------------------ game mode
+
+    /** The app's category is Game (cached per package version). Samsung's Game Launcher list is not read: category only. */
+    private static boolean isGame(String p) {
+        long ver = versionOf(p);
+        if (ver >= 0 && !protectedPkg(p) && manualGames().contains(p)) return true;   // the owner's own list (Settings > Smart suggestions)
+        String c = gameCache.get(p);
+        if (c != null && c.startsWith(ver + ",")) return c.endsWith("1");
+        boolean g = false;
+        try { g = ver >= 0 && !protectedPkg(p) && ctx.getPackageManager().getApplicationInfo(p, 0).category == ApplicationInfo.CATEGORY_GAME; }
+        catch (Throwable t) { Log.w("smart game: " + t); }
+        gameCache.put(p, ver + "," + (g ? "1" : "0"));
+        return g;
+    }
+
+    private static String manualRaw = null;
+    private static Set<String> manualSet = new HashSet<>();
+
+    /** The owner's game list (sbmods_gamelist, "pkg;pkg;"), parsed only when the raw string changes; a change also drops the per-package answers. */
+    private static Set<String> manualGames() {
+        String raw = Global.gstr(ctx, "sbmods_gamelist");
+        if (raw == null) raw = "";
+        if (!raw.equals(manualRaw)) {
+            Set<String> s = new HashSet<>();
+            for (String e : raw.split(";")) { e = e.trim(); if (e.matches("[A-Za-z0-9._]+") && e.indexOf('.') > 0) s.add(e); }
+            manualSet = s; manualRaw = raw;
+            gameCache.clear();
+        }
+        return manualSet;
+    }
+
+    /** A game came to the front (once per front change): list it for the panel's Games card, and send the one clean start per launch if wanted. */
+    private static boolean gameOn() {
+        return Global.gint(ctx, G_GAME, 1) == 1 || Global.gint(ctx, G_GCLEAN, 0) == 1;
+    }
+
+    private static void gameStart(String p) {
+        try {
+            if (!gameOn()) return;
+            String cur = Global.gstr(ctx, G_GAMES);
+            String n = Habits.addGame(cur, p);
+            if (!n.equals(cur == null ? "" : cur)) Global.gput(ctx, G_GAMES, n);
+            if (p.equals(cleanedFor)) {
+                if (awayAt > 0 && android.os.SystemClock.uptimeMillis() - awayAt > DELAY_MS) cleanedFor = null;   // away for longer than the debounce: a new launch
+                awayAt = 0;
+            }
+            if (p.equals(cleanedFor) || Global.gint(ctx, G_GCLEAN, 0) != 1) return;
+            cleanedFor = p; awayAt = 0;
+            if (Jobs.pending(ctx)) return;
+            Jobs.send(ctx, "ramclean");   // the job spares the owner's keep list and never touches the app in front
+            toast("Closing background apps for " + nameOf(p));
+        } catch (Throwable t) { Log.w("smart game start: " + t); }
+    }
+
+    /** Remember the limits in force, then switch them off (the same four settings as "Full speed"); undone by endGame(). */
+    private static void gameFullSpeed(String p) {
+        if (gameFull != null || Global.gint(ctx, G_GAME, 1) != 1 || !limitActive()) return;
+        if (ctx.getSystemService(PowerManager.class).isPowerSaveMode()) return;   // battery first: power saving keeps its cap
+        // (a timed limit is fine: the helper clears its timer when the limit is lifted and starts a new one when it comes back)
+        String prev = Global.gint(ctx, "sbmods_cpu_pct", 0) + "|" + Global.gint(ctx, "sbmods_gpu_pct", 0);
+        prefs.edit().putString(K_GAME, p + "|" + prev + "||").commit();   // saved before anything changes
+        gameFull = p; gamePrev = prev;
+        Global.gset(ctx, "sbmods_cpu_pct", "0"); Global.gset(ctx, "sbmods_gpu_pct", "0");   // only the CPU/GPU caps; heat protection and cores stay
+        toast(nameOf(p) + ": full speed");
+    }
+
+    /** Give the earlier limits back, unless the owner changed them meanwhile (then leave them alone). */
+    private static void endGame() {
+        String prev = gamePrev;
+        gameFull = null; gamePrev = null;
+        try {
+            prefs.edit().remove(K_GAME).apply();
+            String[] f = prev == null ? new String[0] : prev.split("\\|", -1);
+            if (f.length != 2 || Global.gint(ctx, "sbmods_cpu_pct", 0) != 0 || Global.gint(ctx, "sbmods_gpu_pct", 0) != 0) return;   // the owner changed them meanwhile: leave them
+            Global.gset(ctx, "sbmods_cpu_pct", f[0]); Global.gset(ctx, "sbmods_gpu_pct", f[1]);
+            toast("Back to your earlier speed limit");
+        } catch (Throwable t) { Log.w("smart game end: " + t); }
     }
 
     private static boolean limitActive() {
