@@ -1372,7 +1372,7 @@ public final class SettingsActivity extends Activity {
 
     // ---------------------------------------------------------------- More tab
 
-    private static final String[] PANEL_ICONS = {"spark", "bolt", "cpu", "gauge", "cpu", "layers", "sys", "leaf", "gauge", "batt", "shield", "mem", "apps"};
+    private static final String[] PANEL_ICONS = {"spark", "bolt", "cpu", "gauge", "cpu", "layers", "sys", "speed", "leaf", "gauge", "batt", "shield", "mem", "apps"};
 
     /** One card of the Performance panel: a drag handle, its name and a shown / hidden switch. */
     private void panelRow(final List<String> all, final Set<String> hidden, final List<String> ids, final int i, final List<String> pinned) {
