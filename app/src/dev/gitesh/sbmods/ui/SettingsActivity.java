@@ -369,9 +369,25 @@ public final class SettingsActivity extends Activity {
         }
     }
 
+    /** Notifications card (System tab): how the notification panel opens its notifications. */
+    private void buildNotifs() {
+        group("Notifications");
+        cardReset((c, d) -> { c.notifOpen = d.notifOpen; c.groupOpen = d.groupOpen; c.openSkipSilent = d.openSkipSilent; });
+        switchRow("Open notifications fully", "Every notification in the notification panel shows its full size right away. You can still close one by hand.",
+                cfg.notifOpen, v -> { cfg.notifOpen = v; apply(); });
+        divider();
+        switchRow("Groups open fully with one tap", "One tap on a group opens it, and the notifications inside are already full size.",
+                cfg.groupOpen, v -> { cfg.groupOpen = v; apply(); });
+        divider();
+        switchRow("Keep silent ones small", "Silent notifications stay closed. The lock screen and pop-ups always stay small.",
+                cfg.openSkipSilent, v -> { cfg.openSkipSilent = v; apply(); });
+        endGroup("Applies the next time the notification panel updates: open it again or wait for a new notification.");
+    }
+
     /** System tab: what taps do, the root helper and speed limits, the Overview chips, help, and starting over. */
     private void buildSystem() {
         buildGestures();
+        buildNotifs();
         buildHelperSpeed();
         buildMore();
     }
@@ -1342,19 +1358,6 @@ public final class SettingsActivity extends Activity {
                 cfg.pixelShift, v -> { cfg.pixelShift = v; apply(); });
         endGroup(null);
 
-        group("notifs", "Notifications", cfg.notifOpen || cfg.groupOpen ? (cfg.notifOpen ? "Open fully" : "") + (cfg.notifOpen && cfg.groupOpen ? " \u00b7 " : "") + (cfg.groupOpen ? "Groups open in one tap" : "") : "Samsung's own", false);
-        switchRow("Open notifications fully", "Every notification in the notification panel shows its full size right away. You can still close one by hand.",
-                cfg.notifOpen, v -> { cfg.notifOpen = v; apply(); refresh(); });
-        if (cfg.notifOpen) {
-            divider();
-            switchRow("Keep silent notifications small", "Silent notifications stay closed. The lock screen and pop-ups always stay small.",
-                    cfg.openSkipSilent, v -> { cfg.openSkipSilent = v; apply(); });
-        }
-        divider();
-        switchRow("Groups open fully with one tap", "One tap on a group opens it, and the notifications inside are already full size.",
-                cfg.groupOpen, v -> { cfg.groupOpen = v; apply(); });
-        endGroup("Applies the next time the notification panel updates; open it again or wait for a new notification.");
-
         group("wrong", "If something looks wrong", "Restart the status bar, turn the mod back on", false);
         actionRow("Restart the status bar", "Reloads it. Use this after installing an update.", cAccent, v -> restartSystemUi());
         divider();
@@ -1720,7 +1723,7 @@ public final class SettingsActivity extends Activity {
                 {"size", "text"}, {"letters", "text"}, {"format", "text"}, {"look", "eye"}, {"style", "eye"}, {"colour", "drop"}, {"color", "drop"},
                 {"vibrate", "tap"}, {"tap", "tap"}, {"press", "tap"}, {"double", "tap"}, {"test", "tap"}, {"remind", "bell"},
                 {"helper", "cpu"}, {"cpu", "cpu"}, {"gpu", "gauge"}, {"speed", "gauge"}, {"limit", "gauge"}, {"full speed", "bolt"},
-                {"restart", "reset"}, {"reset", "reset"}, {"back on", "power"}, {"start", "power"}, {"run", "power"}, {"chips", "layers"}, {"fade", "eye"},
+                {"group", "layers"}, {"silent", "bell"}, {"restart", "reset"}, {"reset", "reset"}, {"back on", "power"}, {"start", "power"}, {"run", "power"}, {"chips", "layers"}, {"fade", "eye"},
                 {"lock", "lock"}, {"protect", "shield"}, {"pattern", "text"}, {"arrange", "layout"}, {"samsung", "layout"}, {"hide", "eye"}, {"icon", "eye"}};
         for (String[] e : m) if (s.contains(e[0])) return e[1];
         return "sys";
