@@ -1291,7 +1291,7 @@ public final class SettingsActivity extends Activity {
         r.addView(grip, gp);
         final String title = PanelLayout.TITLES[PanelLayout.indexOf(id)];
         final boolean isPinned = pinned.contains(id);
-        r.addView(labelBlock(PANEL_ICONS[PanelLayout.indexOf(id)], title, isPinned ? "Pinned to the All page" : null, cText, dp(56 + 40 + 40)), new LinearLayout.LayoutParams(0, -2, 1));
+        r.addView(labelBlock(PANEL_ICONS[PanelLayout.indexOf(id)], title, null, cText, dp(56 + 40 + 40)), new LinearLayout.LayoutParams(0, -2, 1));
         FrameLayout pin = new FrameLayout(this);
         ImageView pi = Ui.icon(this, "pin", isPinned ? cAccent : cSub, 20);
         ((FrameLayout.LayoutParams) pi.getLayoutParams()).gravity = Gravity.CENTER;

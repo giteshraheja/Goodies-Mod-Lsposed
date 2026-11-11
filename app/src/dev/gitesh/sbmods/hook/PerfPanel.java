@@ -299,7 +299,7 @@ final class PerfPanel {
             LinearLayout box = new LinearLayout(a);
             box.setOrientation(LinearLayout.VERTICAL);
             box.setPadding(dp(a, 6), dp(a, 6), dp(a, 6), dp(a, 6));
-            box.setBackground(Ui.panelGlass(a, p, p.sheet, p.sheetBd, Ui.R_TILE));
+            box.setBackground(Ui.round(p.night ? 0xFF2B3136 : 0xFFF6F8F9, dp(a, Ui.R_TILE), 1, p.night ? 0xFF434B52 : 0xFFD5DCE0));   // solid: the popup floats over text
             box.setElevation(dp(a, 8));
             final android.widget.PopupWindow pw = new android.widget.PopupWindow(box, dp(a, 220), -2, true);
             pw.setOutsideTouchable(true);
@@ -375,6 +375,7 @@ final class PerfPanel {
             row.addView(title, new LinearLayout.LayoutParams(-2, -2));
             if (k.val != null) row.addView(k.val, new LinearLayout.LayoutParams(0, -2, 1));
             if (h != null) row.setOnClickListener(PanelCards.safe(k.toggle));
+            row.setOnLongClickListener(v -> { pinMenu(a, t, k, false); return true; });   // the header is clickable, so it needs the long-press too
             t.addView(row, new LinearLayout.LayoutParams(-1, -2));
         }
         t.addView(content, new LinearLayout.LayoutParams(-1, -2));
