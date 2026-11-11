@@ -412,6 +412,19 @@ public final class SettingsActivity extends Activity {
             switchRow("Close other apps when a game starts", "Closes background apps once when you open a game, except the ones you keep reopening.",
                     "1".equals(glStr("sbmods_gamesclean")), v -> putGl("sbmods_gamesclean", v ? "1" : "0"));
             divider();
+            infoRow("Games you added: games that do not announce themselves as games to Android. Add them here and they get full speed and the other game options like any other game.", null);
+            for (String pk : gameList()) {
+                LinearLayout row = rowShell(null);
+                String nm = appLabel(pk);
+                row.addView(Ui.text(this, nm != null ? nm : pk, Ui.T_BODY, cText, 400), new LinearLayout.LayoutParams(0, -2, 1));
+                row.addView(textButton("Remove", v -> {
+                    StringBuilder sb = new StringBuilder();
+                    for (String q : gameList()) if (!q.equals(pk)) sb.append(q).append(';');
+                    putGl("sbmods_gamelist", sb.toString());
+                }));
+            }
+            actionRow("Add a game…", "Pick an installed app to treat as a game.", cAccent, v -> gamePicker());
+            divider();
             actionRow("Ask about Vulkan again", "Use this after you chose “Don't ask again” on the Vulkan question.", cAccent, v -> {
                 putGl("sbmods_smart_noask", "0");
                 Toast.makeText(this, "It may ask about Vulkan again", Toast.LENGTH_SHORT).show();
@@ -1110,6 +1123,63 @@ public final class SettingsActivity extends Activity {
             list.addView(r, new LinearLayout.LayoutParams(-1, -2));
         }
         dlg[0] = new Ui.Dlg(this, pal).title("Which app should open?").view(list)
+                .button(0, "Cancel", null).show();
+    }
+
+    private java.util.List<String> gameList() {
+        java.util.List<String> out = new ArrayList<>();
+        for (String e : glStr("sbmods_gamelist").split(";")) {
+            e = e.trim();
+            if (e.matches("[A-Za-z0-9._]+") && e.indexOf('.') > 0 && !out.contains(e)) out.add(e);
+        }
+        return out;
+    }
+
+    /** Lists the installed launchable apps (same listing as appPicker) and appends the chosen one to sbmods_gamelist. */
+    private void gamePicker() {
+        PackageManager pm = getPackageManager();
+        Intent main = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
+        List<Object[]> apps = new ArrayList<>();
+        for (ResolveInfo ri : pm.queryIntentActivities(main, 0)) {
+            String pkg = ri.activityInfo.packageName;
+            if (pkg.equals(getPackageName())) continue;
+            apps.add(new Object[]{ri.loadLabel(pm).toString(), pkg, ri});
+        }
+        Collections.sort(apps, (a, b) -> ((String) a[0]).compareToIgnoreCase((String) b[0]));
+        Ui.Dlg[] dlg = new Ui.Dlg[1];
+        LinearLayout list = new LinearLayout(this);
+        list.setOrientation(LinearLayout.VERTICAL);
+        java.util.List<String> have = gameList();
+        for (Object[] a : apps) {
+            if (have.contains((String) a[1])) continue;
+            LinearLayout r = new LinearLayout(this);
+            r.setGravity(Gravity.CENTER_VERTICAL);
+            r.setPadding(dp(24), dp(8), dp(24), dp(8));
+            r.setBackground(ripple(0));
+            ImageView icon = new ImageView(this);
+            try { icon.setImageDrawable(((ResolveInfo) a[2]).loadIcon(pm)); } catch (Exception ignored) {}
+            r.addView(icon, new LinearLayout.LayoutParams(dp(32), dp(32)));
+            TextView t = new TextView(this);
+            t.setText((String) a[0]);
+            t.setTextSize(TypedValue.COMPLEX_UNIT_SP, Ui.T_BODY);
+            t.setTextColor(cText);
+            t.setPadding(dp(14), 0, 0, 0);
+            r.addView(t, new LinearLayout.LayoutParams(0, -2, 1));
+            r.setOnClickListener(v -> {
+                dlg[0].dismiss();
+                java.util.List<String> cur = gameList();
+                String pk = (String) a[1];
+                if (cur.contains(pk) || cur.size() >= 30) {
+                    if (cur.size() >= 30) Toast.makeText(this, "The list is full (30 games)", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                StringBuilder sb = new StringBuilder();
+                for (String q : cur) sb.append(q).append(';');
+                putGl("sbmods_gamelist", sb.append(pk).append(';').toString());
+            });
+            list.addView(r, new LinearLayout.LayoutParams(-1, -2));
+        }
+        dlg[0] = new Ui.Dlg(this, pal).title("Which app is a game?").view(list)
                 .button(0, "Cancel", null).show();
     }
 

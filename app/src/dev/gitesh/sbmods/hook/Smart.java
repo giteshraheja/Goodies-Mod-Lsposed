@@ -266,6 +266,7 @@ final class Smart {
     /** The app's category is Game (cached per package version). Samsung's Game Launcher list is not read: category only. */
     private static boolean isGame(String p) {
         long ver = versionOf(p);
+        if (ver >= 0 && !protectedPkg(p) && manualGames().contains(p)) return true;   // the owner's own list (Settings > Smart suggestions)
         String c = gameCache.get(p);
         if (c != null && c.startsWith(ver + ",")) return c.endsWith("1");
         boolean g = false;
@@ -273,6 +274,22 @@ final class Smart {
         catch (Throwable t) { Log.w("smart game: " + t); }
         gameCache.put(p, ver + "," + (g ? "1" : "0"));
         return g;
+    }
+
+    private static String manualRaw = null;
+    private static Set<String> manualSet = new HashSet<>();
+
+    /** The owner's game list (sbmods_gamelist, "pkg;pkg;"), parsed only when the raw string changes; a change also drops the per-package answers. */
+    private static Set<String> manualGames() {
+        String raw = Global.gstr(ctx, "sbmods_gamelist");
+        if (raw == null) raw = "";
+        if (!raw.equals(manualRaw)) {
+            Set<String> s = new HashSet<>();
+            for (String e : raw.split(";")) { e = e.trim(); if (e.matches("[A-Za-z0-9._]+") && e.indexOf('.') > 0) s.add(e); }
+            manualSet = s; manualRaw = raw;
+            gameCache.clear();
+        }
+        return manualSet;
     }
 
     /** A game came to the front (once per front change): list it for the panel's Games card, and send the one clean start per launch if wanted. */
