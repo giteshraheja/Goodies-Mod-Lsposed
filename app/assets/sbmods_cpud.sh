@@ -320,6 +320,7 @@ else nap() { sleep 1; }; fi
 # (idle, limit on, one-second fallback) and never as a wake-up of its own. stopw does nothing when there is no watcher.
 stopw() { [ -n "$WP" ] && kill $WP 2>/dev/null; rm -f $ST/inotify.pid; }
 gone() { [ -d /data/user_de/0/dev.gitesh.sbmods ] && return
+  [ -d /data/user_de/0/com.android.systemui ] || return   # the folder itself can't be seen (not a missing app): do nothing
   [ -f /data/local/tmp/sbmods_restore.sh ] && exec sh /data/local/tmp/sbmods_restore.sh all
   cores_restore; stopw; rm -rf $ST /data/local/tmp/sbmods_cpud.pid /data/local/tmp/sbmods_cpud.sh; exit 0; }
 # the next wait. Without the watcher: the plain one-second nap. With it: if a fresh read is due (or we just wrote a setting, or the
