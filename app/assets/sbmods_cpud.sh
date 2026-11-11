@@ -23,6 +23,9 @@
 #   sbmods_cmd = gfx:vulkan|gfx:opengl   graphics renderer for apps that start AFTER this (debug.hwui.renderer skiavk / skiagl; a reboot returns to
 #                                    default). Nothing is ever killed or restarted. Answers: sbmods_gfx = vulkan|opengl, sbmods_result.
 #                                    After a switch to Vulkan, at ~60 s and ~5 min the helper checks Wi-Fi calling and switches back to OpenGL if it dropped
+#   sbmods_gfx_keep = 1              the user chose "keep Vulkan": at helper start-up (one time) Vulkan is switched on again if the renderer is not skiavk
+#                                    (the property is lost at every reboot), through the same guarded code as gfx:vulkan. Set by the status bar mod;
+#                                    cleared (0) by gfx:opengl and when the Wi-Fi calling guard switches back to OpenGL
 #   sbmods_cmd = appgfx:<package>    which renderer an app uses right now; answer in sbmods_appgfx = <package>:vulkan|opengl|unknown
 #   sbmods_cmd = health              battery health; answer in sbmods_health = asoc%|cycles|charge_limit% (-1 = unknown)
 #   sbmods_cmd = chargelimit:<n>     n = 80, 85, 90, 95 or 100: charging stops at n % (kept until you change it; not a speed limit, so not undone by
@@ -213,10 +216,17 @@ gfxguard() {
   [ -n "${gb#*|}" ] && [ "${gb#*|}" != "${gn#*|}" ] && gx=1
   [ "$gx" = "0" ] && [ "$(cat $ST/gfx.wfc 2>/dev/null)" = "1" ] && [ "$(wfc)" = "0" ] && gx=1
   if [ "$gx" = "1" ]; then
-    setprop debug.hwui.renderer skiagl; sp sbmods_gfx opengl; rm -f $ST/gfx.*
+    setprop debug.hwui.renderer skiagl; sp sbmods_gfx opengl; sp sbmods_gfx_keep 0; rm -f $ST/gfx.*
     sp sbmods_result "Wi-Fi calling dropped after switching to Vulkan, so I switched back to OpenGL"
   elif [ "$gl" = "300" ]; then rm -f $ST/gfx.*
   else echo 1 > $ST/gfx.stage; fi
+}
+# switch to Vulkan (used by gfx:vulkan and by the start-up restore): the guard keeps watching Wi-Fi calling afterwards
+gfx_vulkan() {
+  # remember how calling looked before, so the guard can tell whether OUR switch broke it
+  rm -f $ST/gfx.*; wfc > $ST/gfx.wfc; callpids > $ST/gfx.pids; echo 0 > $ST/gfx.stage; date +%s > $ST/gfx.t
+  setprop debug.hwui.renderer skiavk; sp sbmods_gfx vulkan
+  sp sbmods_result "Vulkan on: apps use it the next time they open"
 }
 # only plain package names may reach `am` and never the ones that would hurt the phone (or this tool)
 stopok() { case "$1" in ''|*[!A-Za-z0-9._]*) return 1;; *.*) ;; *) return 1;; esac
@@ -266,6 +276,11 @@ rest() {
 }
 # a setting we write ourselves: the next pass must read fresh values (the settings file itself is saved a little later)
 sp() { settings put global "$@"; force=1; }
+
+# the user chose "keep Vulkan": the renderer property is gone after a reboot, so switch it on again (one time, here, not in the loop)
+if [ "$(settings get global sbmods_gfx_keep)" = "1" ] && [ "$(getprop debug.hwui.renderer)" != "skiavk" ]; then
+  gfx_vulkan; sp sbmods_result "Vulkan is back on after the restart"
+fi
 
 tick=0; on=0; w=0; pk=0; hi=0; force=1; cmd=none
 while true; do
@@ -319,13 +334,9 @@ while true; do
     gfx:vulkan|gfx:opengl)
       sp sbmods_cmd none
       # never kill or restart anything: apps pick the renderer up when they next start by themselves
-      if [ "$cmd" = "gfx:vulkan" ]; then
-        # remember how calling looked before, so the guard can tell whether OUR switch broke it
-        rm -f $ST/gfx.*; wfc > $ST/gfx.wfc; callpids > $ST/gfx.pids; echo 0 > $ST/gfx.stage; date +%s > $ST/gfx.t
-        setprop debug.hwui.renderer skiavk; sp sbmods_gfx vulkan
-        sp sbmods_result "Vulkan on: apps use it the next time they open"
+      if [ "$cmd" = "gfx:vulkan" ]; then gfx_vulkan
       else
-        rm -f $ST/gfx.*; setprop debug.hwui.renderer skiagl; sp sbmods_gfx opengl
+        rm -f $ST/gfx.*; setprop debug.hwui.renderer skiagl; sp sbmods_gfx opengl; sp sbmods_gfx_keep 0
         sp sbmods_result "Back to OpenGL: apps switch the next time they open"
       fi;;
     appgfx:*)   # (a sleeping app can take 10 s to answer: give up after 4 s -> unknown)
