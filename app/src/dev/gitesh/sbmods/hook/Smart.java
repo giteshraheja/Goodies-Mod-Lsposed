@@ -269,7 +269,7 @@ final class Smart {
             char res = e.charAt(e.length() - 1);
             if (res == 'v' || res == 'x') return 0;
             if (!vk) return askable(p) ? 2 : 0;
-            return restarted(p) ? 1 : 0;        // opengl before the switch: look again once its process restarted
+            return restarted(p) || mayRestart(p) ? 1 : 0;   // opengl before the switch: look again once its process restarted, or once per boot to restart it ourselves
         }
         if (unknownTries.getOrDefault(p, 0) >= 2) return 0;
         if (vk && !pidDone.isEmpty() && pidDone.contains(p + ":" + pidOf(p))) return 0;
@@ -378,6 +378,15 @@ final class Smart {
         } catch (Throwable t) { Log.w("smart boot set: " + t); }
     }
 
+    /** Cheap pre-check for decide(): this app was OpenGL before the switch, its process is unchanged, and we have not restarted it since boot. */
+    private static boolean mayRestart(String p) {
+        try {
+            if (!helperFree() || Global.gint(ctx, "sbmods_gfx_restart", 1) != 1) return false;
+            loadBoot();
+            return !restarted1.contains(p) && !pidDone.contains(p + ":" + pidOf(p));
+        } catch (Throwable t) { return false; }
+    }
+
     private static boolean restartOk(String p) {
         try {
             if (!on || Global.gint(ctx, "sbmods_gfx_restart", 1) != 1) return false;
@@ -399,10 +408,8 @@ final class Smart {
             main.postDelayed(() -> {   // one shot: reopen once the helper has answered, else give up quietly
                 try {
                     String r = Global.gstr(ctx, "sbmods_result");
-                    if (r == null || r.isEmpty()) {
-                        if (("stop:" + p).equals(Global.gstr(ctx, "sbmods_cmd"))) Global.gput(ctx, "sbmods_cmd", "none");
-                        return;
-                    }
+                    // no answer yet: withdraw a request still waiting for the helper script, and reopen anyway (never leave the app closed)
+                    if ((r == null || r.isEmpty()) && ("stop:" + p).equals(Global.gstr(ctx, "sbmods_cmd"))) Global.gput(ctx, "sbmods_cmd", "none");
                     Intent li = ctx.getPackageManager().getLaunchIntentForPackage(p);
                     if (li == null) return;
                     top = null;   // so the front-app check runs again for the reopened app
