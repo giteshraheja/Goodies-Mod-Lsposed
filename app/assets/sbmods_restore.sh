@@ -5,6 +5,8 @@ ST=/data/local/tmp/sbmods_state
 G=/sys/class/kgsl/kgsl-3d0/devfreq
 p=$(cat /data/local/tmp/sbmods_cpud.pid 2>/dev/null); [ -n "$p" ] && grep -q sbmods_cpud /proc/$p/cmdline 2>/dev/null && kill $p   # never a reused PID
 rm -f /data/local/tmp/sbmods_cpud.pid
+w=$(cat $ST/inotify.pid 2>/dev/null); [ -n "$w" ] && grep -q inotifyd /proc/$w/cmdline 2>/dev/null && kill $w   # the helper's settings watcher (never a reused PID)
+rm -f $ST/inotify.pid
 for p in /sys/devices/system/cpu/cpufreq/policy*; do
   m=$(stat -c %a $p/scaling_max_freq); [ -f $ST/$(basename $p).mode ] && m=$(cat $ST/$(basename $p).mode)
   chmod 644 $p/scaling_max_freq; cat $p/cpuinfo_max_freq > $p/scaling_max_freq; chmod $m $p/scaling_max_freq

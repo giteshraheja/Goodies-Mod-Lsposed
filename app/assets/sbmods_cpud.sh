@@ -6,7 +6,7 @@
 #  - a limit is a share of the HARDWARE maximum (cpuinfo_max_freq / top GPU step), never of today's heat-limited value;
 #  - "back to normal" writes the hardware maximum, which only removes our request (Samsung's heat limit keeps working).
 #
-# Battery: idle, it only stats the global settings file once a second (no Java process). It reads the settings
+# Battery: idle, it sleeps until the global settings folder reports a change (or checks the file once a second where that is not possible; no Java process). It reads the settings
 # (one `settings list`) only when that file changed, or every 10 s while a limit is on. Live speeds are NOT published:
 # the Overview chips read them straight from the kernel.
 #
@@ -227,8 +227,43 @@ pubuntil() { [ "$1" != "$UNT" ] && sp sbmods_until $1; UNT=$1; }
 
 # Battery: waiting and "did the settings change?" use shell built-ins only. Starting `sleep` and `stat` every second
 # kept a small core about 5 % busy all the time the phone was awake; this way an idle second costs next to nothing.
+# A truly idle helper (no limit, nothing watching, no core parking, no pending check) does not even wake every second:
+# a small toybox `inotifyd` watches the folder of the global settings file (that file is replaced by renaming, so the
+# folder is watched) and writes a line into the fifo whenever something in it is created, moved in or saved.
+# idle() sleeps until such a line arrives (60 s is only a safety net), nap() waits at most 1 s but also ends early on a line.
+# The lines are only a wake-up call: whether the settings really changed is still decided by the `-nt $ST/seen` test.
+# Without a fifo or without a working watcher the helper falls back to the plain one-second nap.
 rm -f $ST/wait; mkfifo $ST/wait 2>/dev/null
-if [ -p $ST/wait ]; then exec 9<>$ST/wait; nap() { read -t 1 _n <&9; }; else nap() { sleep 1; }; fi
+IDLE=""; WP=""
+if [ -p $ST/wait ]; then
+  exec 9<>$ST/wait   # read-write: writers never block on open, and the fifo never reports end of file
+  nap() { read -t 1 _n <&9; }
+  # a watcher left over from an earlier helper run goes first (only if the PID really is an inotifyd)
+  wp=$(cat $ST/inotify.pid 2>/dev/null); [ -n "$wp" ] && grep -q inotifyd /proc/$wp/cmdline 2>/dev/null && kill $wp 2>/dev/null
+  rm -f $ST/inotify.pid
+  if command -v inotifyd >/dev/null 2>&1; then
+    inotifyd - ${F%/*}:nmw > $ST/wait 2>/dev/null <&- &
+    WP=$!; echo $WP > $ST/inotify.pid
+    sleep 0.3; kill -0 $WP 2>/dev/null && IDLE=1   # (start-up only) one that died at once keeps the one-second nap
+  fi
+  stopw() { [ -n "$WP" ] && kill $WP 2>/dev/null; rm -f $ST/inotify.pid; }
+  trap 'cores_restore; stopw; exit 0' TERM INT HUP
+  trap stopw EXIT
+  # sleep until the settings folder reports something. After a wake-up the queued lines are thrown away (read -t 0.05: -t 0 is
+  # unreliable in this shell, a fractional timeout works; with lines queued it returns at once, so this costs one 50 ms poll).
+  # A timeout means nothing happened: check that the watcher still lives, else go back to the one-second nap for good.
+  idle() {
+    if read -t 60 _n <&9; then while read -t 0.05 _n <&9; do :; done
+    else kill -0 $WP 2>/dev/null || IDLE=""; fi
+    tick=0   # the modulo timers restart from a clean count after a long sleep
+  }
+else nap() { sleep 1; }; fi
+# the next wait: idle only when nothing at all depends on the one-second tick (a limit / pending renderer check / watching / parking /
+# a fresh read still due / a settings file newer than our last read); otherwise the normal nap (which still ends early on an event)
+rest() {
+  if [ -n "$IDLE" ] && [ "$force" = "0" ] && [ "$on" = "0" ] && [ "$w" != "1" ] && [ "$w" != "2" ] && [ "$pk" = "0" ] \
+    && [ -f $ST/seen ] && [ ! -f $ST/gfx.t ] && ! [ $F -nt $ST/seen ]; then idle; else nap; fi
+}
 # a setting we write ourselves: the next pass must read fresh values (the settings file itself is saved a little later)
 sp() { settings put global "$@"; force=1; }
 
@@ -255,7 +290,7 @@ while true; do
     fi
   else kt=""; hi=0; fi
   # nothing changed: sleep (while a limit / parking is on, still look again every 10 s for the timeout / cool-down)
-  if [ "$ch" = "0" ] && { [ "$on" = "0" ] || [ $((tick % 10)) != 0 ]; }; then nap; continue; fi
+  if [ "$ch" = "0" ] && { [ "$on" = "0" ] || [ $((tick % 10)) != 0 ]; }; then rest; continue; fi
   # read the settings only when they changed (or we just wrote one): `settings list` starts a whole Java program.
   # The 10 s look-in while a limit is on re-uses the last read; one-off jobs run only on a fresh read, never twice.
   cmd=none
@@ -349,5 +384,5 @@ while true; do
     if [ "$(val low_power)" != "1" ]; then sp low_power 1; touch $ST/ps.set; fi
   elif [ -f $ST/ps.set ]; then sp low_power 0; rm -f $ST/ps.set; fi
   # (no re-stat here: a change you made while we were busy must still be seen; our own writes cost one extra read at most)
-  nap
+  rest
 done
