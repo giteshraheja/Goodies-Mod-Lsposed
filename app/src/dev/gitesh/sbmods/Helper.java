@@ -99,6 +99,11 @@ public final class Helper {
         return isRunning();
     }
 
+    /** True if this app may use root (`su -c id -u` prints 0). Tells "root refused" apart from "helper not running". Never call on the main thread. */
+    public static boolean rootGranted() {
+        return "0".equals(suOut("id -u"));
+    }
+
     public static boolean isRunning() {
         // the PID file survives a reboot: only count it if that process really is our script
         return su("p=$(cat " + DIR + "/sbmods_cpud.pid 2>/dev/null); [ -n \"$p\" ] && grep -q sbmods_cpud /proc/$p/cmdline") == 0;

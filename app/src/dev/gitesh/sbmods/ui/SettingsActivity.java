@@ -130,7 +130,13 @@ public final class SettingsActivity extends Activity {
     private TextView statusPill;
     private PositionView posView;
     private final Handler h = new Handler(Looper.getMainLooper());
-    private boolean gotPong, simulateHot;
+    private boolean gotPong, simulateHot, pingDone, modTripped, modDisabled, resumed;
+    // self-check (see SelfCheck): the last result is cached; root checks run only on start / resume (at most every 30 s) and on "Check again"
+    private SelfCheck.Facts scFacts;
+    private java.util.List<SelfCheck.Finding> findings = new java.util.ArrayList<>();
+    private boolean scRunning;
+    private long scAt;
+    private String scSig = "";
     private float liveTemp = Float.NaN;
     private int statusState = 0;                 // 0 waiting / needs attention, 1 ok, 2 not running
     private String statusShort = "Checking…", statusDetail = "Checking the status bar…", modVersion = "";
@@ -236,14 +242,17 @@ public final class SettingsActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        resumed = true;
         registerReceiver(pong, new IntentFilter(Config.ACTION_PONG), Context.RECEIVER_EXPORTED);
         ping();
+        selfCheck(false);
         h.post(previewTick);
     }
 
     @Override
     protected void onPause() {
         super.onPause();
+        resumed = false;
         h.removeCallbacks(previewTick);
         try { unregisterReceiver(pong); } catch (Exception ignored) {}
     }
@@ -434,6 +443,7 @@ public final class SettingsActivity extends Activity {
 
     /** System tab: what taps do, the root helper and speed limits, the Overview chips, help, and starting over. */
     private void buildSystem() {
+        buildSelfCheck();
         buildGestures();
         buildNotifs();
         buildSmart();
@@ -1485,10 +1495,12 @@ public final class SettingsActivity extends Activity {
     }
 
     private void ping() {
-        gotPong = false;
+        gotPong = false; pingDone = false;
         setStatus("Checking…", "Checking the status bar…", 0);
         send(new Intent(Config.ACTION_APPLY).putExtras(cfg.toBundle())); // also re-syncs settings
         h.postDelayed(() -> {
+            pingDone = true;
+            if (!gotPong) rescore();
             if (!gotPong) setStatus("Not running",
                     "The mod isn't running inside the status bar.\n\n"
                             + "• Make sure root and Vector are running (they aren't after a restart without root).\n"
@@ -1512,9 +1524,19 @@ public final class SettingsActivity extends Activity {
     private void refreshStatusPill() {
         if (statusPill == null) return;
         int c = statusState == 1 ? pal.accInk : statusState == 2 ? cErr : cWarn;
-        statusPill.setText("●  " + (statusState == 1 && "Working".equals(statusShort) ? "Active" : statusShort));
+        String label = statusState == 1 && "Working".equals(statusShort) ? "Active" : statusShort;
+        boolean tint = statusState != 1;
+        int probs = 0;
+        for (SelfCheck.Finding f : findings) if (f.severity == SelfCheck.PROBLEM) probs++;
+        if (!findings.isEmpty() && !"Checking…".equals(statusShort)) {   // the self-check's worst state wins
+            int n = probs > 0 ? probs : findings.size();
+            label = n + (probs > 0 ? (n == 1 ? " problem" : " problems") : (n == 1 ? " thing to check" : " things to check"));
+            c = probs > 0 ? cErr : cWarn;
+            tint = true;
+        }
+        statusPill.setText("●  " + label);
         statusPill.setTextColor(c);
-        statusPill.setBackground(round(statusState == 1 ? pal.accSoft : (c & 0x00FFFFFF) | 0x22000000, dp(16), 0, 0));
+        statusPill.setBackground(round(tint ? (c & 0x00FFFFFF) | 0x22000000 : pal.accSoft, dp(16), 0, 0));
     }
 
     private void showStatus(Intent i) {
@@ -1523,15 +1545,18 @@ public final class SettingsActivity extends Activity {
         if (side != null && !"-".equals(side)) clockSide = side;
         String shortText, detail;
         int state = 1;
-        if (i.getBooleanExtra("guardTripped", false)) {
+        pingDone = true;
+        modTripped = i.getBooleanExtra("guardTripped", false);
+        modDisabled = !modTripped && i.getBooleanExtra("disabled", false);
+        if (modTripped) {
             state = 2;
             shortText = "Switched off";
             detail = "The mod switched itself off because the status bar crashed three times right after loading it.\n\n"
                     + "Open the System tab, tap “Turn the mod back on”, then restart the status bar.";
-        } else if (i.getBooleanExtra("disabled", false)) {
+        } else if (modDisabled) {
             state = 2;
             shortText = "Stopped";
-            detail = "The mod stopped itself after repeated errors. Restarting the status bar starts it again.";
+            detail = SelfCheck.MOD_STOPPED;
         } else if (i.getBooleanExtra("attached", false)) {
             shortText = "Working";
             detail = "The mod is running in your status bar."
@@ -1550,15 +1575,102 @@ public final class SettingsActivity extends Activity {
         if (errors > 0) detail += "\n\n" + errors + " error(s). The last one: " + i.getStringExtra("lastError");
         detail += "\n\nVersion " + modVersion;
         setStatus(shortText, detail, state);
+        rescore();
         updatePreview();
     }
 
     private void statusDialog() {
-        new Ui.Dlg(this, pal).title("Status").message(statusDetail)
-                .button(2, "Check again", () -> ping())
+        final Ui.Dlg d = new Ui.Dlg(this, pal).title("Status").message(statusDetail)
+                .button(2, "Check again", () -> { ping(); selfCheck(true); })
                 .button(1, "Restart status bar", () -> restartSystemUi())
-                .button(0, "Close", null)
-                .show();
+                .button(0, "Close", null);
+        if (!findings.isEmpty()) {
+            LinearLayout body = new LinearLayout(this);
+            body.setOrientation(LinearLayout.VERTICAL);
+            body.setPadding(dp(Ui.S5), 0, dp(Ui.S4), 0);
+            for (SelfCheck.Finding f : findings) body.addView(findingView(f, d::dismiss));
+            d.view(body);
+        }
+        d.show();
+    }
+
+    // ---------------------------------------------------------------- self-check
+
+    /** Runs the checks on a background thread (several need root) and caches the result. Only while this screen is open. */
+    private void selfCheck(boolean force) {
+        long t = android.os.SystemClock.elapsedRealtime();
+        if (scRunning || !resumed || (!force && scFacts != null && t - scAt < 30000)) return;
+        scRunning = true;
+        final boolean smart = cfg.smartOn;
+        new Thread(() -> {
+            SelfCheck.Facts f = SelfCheck.gather(this, smart);
+            runOnUiThread(() -> {
+                scRunning = false; scFacts = f; scAt = android.os.SystemClock.elapsedRealtime();
+                helperRunning = f.rootOk && f.helperRunning;
+                rescore();
+            });
+        }).start();
+    }
+
+    /** Re-applies the rules to the cached facts (no root), then redraws the pill and, if the list changed, the System tab. */
+    private void rescore() {
+        if (scFacts != null) {
+            scFacts.modReplied = gotPong; scFacts.pingDone = pingDone; scFacts.modTripped = modTripped; scFacts.modDisabled = modDisabled;
+            findings = SelfCheck.evaluate(scFacts);
+        }
+        StringBuilder sb = new StringBuilder(scFacts == null ? "-" : "+");
+        for (SelfCheck.Finding f : findings) sb.append(f.fix).append(f.severity);
+        boolean changed = !sb.toString().equals(scSig);
+        scSig = sb.toString();
+        refreshStatusPill();
+        if (changed && tab == T_SYSTEM) refresh();
+    }
+
+    private View findingView(SelfCheck.Finding f, Runnable before) {
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(0, dp(Ui.S2), 0, dp(Ui.S2));
+        android.text.SpannableString st = new android.text.SpannableString("●  " + f.text);
+        st.setSpan(new android.text.style.ForegroundColorSpan(f.severity == SelfCheck.PROBLEM ? cErr : cWarn), 0, 1, 0);
+        row.addView(Ui.text(this, st, Ui.T_BODY, cText, 400), new LinearLayout.LayoutParams(0, -2, 1));
+        row.addView(textButton(f.fixLabel, v -> { if (before != null) before.run(); runFix(f.fix); }));
+        return row;
+    }
+
+    /** The System tab's Self-check card: the same list as the status dialog. */
+    private void buildSelfCheck() {
+        group("Self-check");
+        if (scFacts == null) statusRow("Checking…", null);
+        else if (findings.isEmpty()) statusRow("Everything is working", null);
+        else for (SelfCheck.Finding f : findings) { cur.addView(findingView(f, null)); divider(); }
+        if (scFacts != null && findings.isEmpty()) divider();
+        actionRow("Check again", null, cAccent, v -> selfCheck(true));
+        endGroup(null);
+    }
+
+    private void runFix(String fix) {
+        if (SelfCheck.RESTART_UI.equals(fix) || SelfCheck.RESET_GUARD.equals(fix)) {
+            if (SelfCheck.RESET_GUARD.equals(fix)) { send(new Intent(Config.ACTION_RESET_GUARD)); send(new Intent(Config.ACTION_RESET_GUARD)); }
+            restartSystemUi();
+            h.postDelayed(() -> selfCheck(true), 9000);   // once, after the status bar has come back and answered
+            return;
+        }
+        new Thread(() -> {
+            boolean ok;
+            switch (fix) {
+                case SelfCheck.START_HELPER: ok = Helper.start(this); break;
+                case SelfCheck.CLEAR_CMD: ok = Helper.putGlobal("sbmods_cmd", "none"); break;
+                case SelfCheck.VULKAN_ON: ok = Helper.putGlobal("sbmods_cmd", "gfx:vulkan"); break;
+                default:   // FULL_SPEED: helper down = the existing restore script; helper up = zero the controls like "Full speed now"
+                    if (Helper.isRunning()) ok = Helper.putGlobal("sbmods_cpu_pct", "0", "sbmods_gpu_pct", "0", "sbmods_cool", "0", "sbmods_cores", "0", "sbmods_until", "0");
+                    else ok = Helper.stopAndRestore() || Helper.putGlobal("sbmods_cpu_pct", "0", "sbmods_gpu_pct", "0", "sbmods_cool", "0", "sbmods_cores", "0", "sbmods_until", "0");
+            }
+            final boolean fOk = ok;
+            runOnUiThread(() -> {
+                if (!fOk) Toast.makeText(this, SelfCheck.START_HELPER.equals(fix) ? "The helper did not start" : "That did not work", Toast.LENGTH_LONG).show();
+                selfCheck(true);
+            });
+        }).start();
     }
 
     /**
