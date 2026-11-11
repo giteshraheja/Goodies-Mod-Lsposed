@@ -42,7 +42,10 @@ import dev.gitesh.sbmods.items.Items;
  * Stability rules:
  *  - every entry point is wrapped; any exception is counted, never thrown into SystemUI;
  *  - too many runtime errors -> the mod removes itself (and restores the clock) until restart;
- *  - SystemUI restarting 3x within 90 s of loading the mod -> crash guard keeps it off;
+ *  - crash guard keeps the mod off in two cases: (a) SystemUI restarted 3x, each time within 90 s of loading the mod (fast loop), or
+ *    (b) SystemUI started 3x within 10 minutes without the app asking for it (slow loop: a crash every few minutes never reaches 90 s).
+ *    The app's own restart button and "Turn the mod back on" clear both counters, so one restart or one reboot never trips it.
+ *    Both re-arm themselves: (a) after 10 min without a start, (b) as soon as the oldest of the 3 starts is 10 min old;
  *  - sensors are read on a background thread; polling stops while the screen is off;
  *  - Samsung's clock is never replaced or removed, only its text is re-formatted, and the
  *    original text comes back as soon as the custom clock is switched off.
@@ -168,7 +171,20 @@ public final class Controller {
             Entry.unhook();
             return;
         }
-        prefs.edit().putInt("guard_starts", starts + 1).putLong("guard_last", nowMs).commit();
+        // slow loop: remember the start times (ms, last 10 min); 2 earlier ones plus this start = 3 unasked starts in 10 min. A tripped start is not recorded.
+        StringBuilder slow = new StringBuilder(); int slowN = 0;
+        for (String t : prefs.getString("guard_slow", "").split(",")) {
+            try { long v = Long.parseLong(t); if (v <= nowMs && nowMs - v <= GUARD_FORGET_MS) { slow.append(v).append(','); slowN++; } } catch (NumberFormatException ignored) {}
+        }
+        prefs.edit().putString("guard_slow", slow.toString()).apply();
+        if (slowN >= GUARD_LIMIT - 1) {
+            guardTripped = true;
+            Log.w("crash guard tripped (" + (slowN + 1) + " starts in " + GUARD_FORGET_MS / 60000 + " min) - mod stays off until the oldest is " + GUARD_FORGET_MS / 60000 + " min old");
+            gput("sbmods_alive", 0L); gput("sbmods_alive_boot", -1L);
+            Entry.unhook();
+            return;
+        }
+        prefs.edit().putInt("guard_starts", starts + 1).putLong("guard_last", nowMs).putString("guard_slow", slow.toString() + nowMs).commit();
         main.postDelayed(() -> {
             try { prefs.edit().putInt("guard_starts", 0).apply(); } catch (Throwable ignored) {}
         }, GUARD_STABLE_MS);
@@ -984,7 +1000,7 @@ public final class Controller {
                 } else if (Config.ACTION_RESTART.equals(a)) {
                     // Asked by the app: not a crash, so clear the guard, then let Android restart us
                     // (SystemUI is persistent, it comes straight back). No root needed.
-                    prefs.edit().putInt("guard_starts", 0).commit();
+                    prefs.edit().putInt("guard_starts", 0).putString("guard_slow", "").commit();
                     Log.i("restart requested by app");
                     main.postDelayed(() -> android.os.Process.killProcess(android.os.Process.myPid()), 300);
                     return;
@@ -994,7 +1010,7 @@ public final class Controller {
                     TapActions.perform(vc, i.getIntExtra("act", 0), i.getStringExtra("app"));
                     return;
                 } else if (Config.ACTION_RESET_GUARD.equals(a)) {
-                    prefs.edit().putInt("guard_starts", 0).commit();
+                    prefs.edit().putInt("guard_starts", 0).putString("guard_slow", "").commit();
                 }
                 sendStatus();
             } catch (Throwable t) { fail("control", t); }
