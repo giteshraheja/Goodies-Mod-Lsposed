@@ -9,7 +9,8 @@ import android.widget.Toast;
 import java.util.ArrayDeque;
 
 /**
- * The root helper reads ONE pending request at a time (sbmods_cmd), so the panel's requests (battery report, busiest apps,
+ * Requests go to the app (Jobs.send), or to the root helper if the app does not take them. The helper reads ONE pending
+ * request at a time (sbmods_cmd), so the panel's requests (battery report, busiest apps,
  * stop an app) wait in a small line and are handed over at least 1.5 s apart, and never while a clean-up is still running.
  */
 final class PanelCmd {
@@ -41,7 +42,7 @@ final class PanelCmd {
                 Job j = queue.poll();
                 lastSent = SystemClock.uptimeMillis();
                 if (j.cmd.startsWith("stop:")) Global.gput(c, "sbmods_result", "");   // so an old answer is never mistaken for this one
-                Global.gput(c, "sbmods_cmd", j.cmd);
+                Jobs.send(c, j.cmd);
                 if (j.sent != null) j.sent.run();
                 pump(c);
             } catch (Throwable t) { Log.w("panel cmd: " + t); }

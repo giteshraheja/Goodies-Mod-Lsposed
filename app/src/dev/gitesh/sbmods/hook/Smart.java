@@ -285,7 +285,7 @@ final class Smart {
             if (p == null || !p.equals(top) || locked() || inCall() || !ctx.getSystemService(PowerManager.class).isInteractive()) return;
             if (pendingMode == 2) { offer(p); return; }
             if (!helperFree() || checkPkg != null) return;
-            if (!"none".equals(Global.gstr(ctx, "sbmods_cmd")) || Global.gstr(ctx, "sbmods_gfx") == null) return;   // helper busy / never ran
+            if (Jobs.pending(ctx) || Global.gstr(ctx, "sbmods_gfx") == null) return;   // helper script busy / root jobs never ran
             checkPkg = p; checkVer = versionOf(p);
             String old = Global.gstr(ctx, "sbmods_appgfx");
             if (old != null && old.startsWith(p + ":")) Global.gput(ctx, "sbmods_appgfx", "-");   // an old answer must not be taken for this one
@@ -294,7 +294,7 @@ final class Smart {
             };
             ctx.getContentResolver().registerContentObserver(Settings.Global.getUriFor("sbmods_appgfx"), false, observer);
             main.postDelayed(timeout, WAIT_MS);
-            Global.gput(ctx, "sbmods_cmd", "appgfx:" + p);
+            Jobs.send(ctx, "appgfx:" + p);
         } catch (Throwable t) { Log.w("smart fire: " + t); finishCheck("error"); }
     }
 

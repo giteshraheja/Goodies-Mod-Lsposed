@@ -51,6 +51,8 @@ public final class BootReceiver extends BroadcastReceiver {
                         ok = Helper.start(app);
                     }
                     outcome = ok ? "started" : "start failed";
+                    // the helper normally brings "keep Vulkan" back when it starts; without it the app's own job does (same guarded switch)
+                    if (!ok) JobReceiver.run(app, "boot");
                 }
             } catch (Throwable t) {
                 outcome = "error: " + t;

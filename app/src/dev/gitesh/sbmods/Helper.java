@@ -32,7 +32,10 @@ public final class Helper {
     }
 
     /** Runs a command as root and returns its trimmed stdout, or null if root is not available / it failed / it timed out. Never call on the main thread. */
-    static String suOut(String cmd) {
+    static String suOut(String cmd) { return suOut(cmd, 20); }
+
+    /** Same, waiting up to `sec` seconds. */
+    static String suOut(String cmd, int sec) {
         try {
             Process p = Runtime.getRuntime().exec(new String[]{"su", "-c", cmd});
             p.getOutputStream().close();
@@ -45,7 +48,7 @@ public final class Helper {
                 } catch (Throwable ignored) {}
             });
             t.start();
-            if (!p.waitFor(20, TimeUnit.SECONDS)) { p.destroyForcibly(); return null; }
+            if (!p.waitFor(sec, TimeUnit.SECONDS)) { p.destroyForcibly(); return null; }
             t.join(2000);
             if (p.exitValue() != 0) return null;
             synchronized (buf) { return buf.toString("UTF-8").trim(); }

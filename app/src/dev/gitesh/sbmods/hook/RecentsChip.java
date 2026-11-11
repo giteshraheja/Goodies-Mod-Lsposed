@@ -355,7 +355,7 @@ final class RecentsChip {
         PanelCmd.cleaning(true);
         if (!Global.gput(a, "sbmods_result", "")) { PanelCmd.cleaning(false); Toast.makeText(a, "Can't reach the helper", Toast.LENGTH_SHORT).show(); return; }
         if (cmd.equals("ramclean") || cmd.equals("deepclean")) Global.markClean(a);
-        Global.gput(a, "sbmods_cmd", cmd);
+        Jobs.send(a, cmd);
         Toast.makeText(a, msg, Toast.LENGTH_SHORT).show();
         // the helper checks every few seconds and the job itself takes a few more: keep looking until it answers
         final long until = android.os.SystemClock.uptimeMillis() + Math.max(15000, waitMs * 3);
@@ -365,7 +365,7 @@ final class RecentsChip {
                 if (r != null && !r.isEmpty()) { PanelCmd.cleaning(false); Toast.makeText(a, r, Toast.LENGTH_LONG).show(); return; }
                 if (android.os.SystemClock.uptimeMillis() < until) { main.postDelayed(this, 400); return; }
                 PanelCmd.cleaning(false);
-                Global.gput(a, "sbmods_cmd", "none");   // withdraw it, so it never runs by surprise later
+                if (cmd.equals(Global.gstr(a, "sbmods_cmd"))) Global.gput(a, "sbmods_cmd", "none");   // (went to the helper script:) withdraw it, so it never runs by surprise later
                 Toast.makeText(a, "No answer from the helper – is it running?", Toast.LENGTH_LONG).show();
             }
         }, 1500);

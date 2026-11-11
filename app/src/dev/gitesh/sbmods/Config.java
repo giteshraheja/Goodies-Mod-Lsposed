@@ -22,6 +22,13 @@ public final class Config {
     public static final String ACTION_RESTART = PKG + ".RESTART";
     public static final String ACTION_TIP = PKG + ".SHOW_TIP";
     public static final String ACTION_TOAST = PKG + ".TOAST";
+    /** One-off root jobs, sent by the status bar / launcher part to the app's JobReceiver (extra EXTRA_JOB = the request, e.g. "ramclean"). */
+    public static final String ACTION_JOB = PKG + ".JOB";
+    /** The app's own second step (and its alarm) for a job it has taken. */
+    public static final String ACTION_JOB_RUN = PKG + ".JOB_RUN";
+    public static final String EXTRA_JOB = "cmd";
+    /** Result code of ACTION_JOB when the app has taken the job (anything else: fall back to the helper script). */
+    public static final int JOB_TAKEN = 1;
 
     // Thermal sensor types (android.os.Temperature.TYPE_*)
     public static final int SENSOR_CPU = 0, SENSOR_BATTERY = 2, SENSOR_SKIN = 3;

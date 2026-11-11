@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="dev.gitesh.sbmods"
-    android:versionCode="16"
-    android:versionName="3.9">
+    android:versionCode="17"
+    android:versionName="3.10">
 
     <uses-sdk android:minSdkVersion="34" android:targetSdkVersion="35" />
 
@@ -41,6 +41,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- One-off root jobs asked for by the status bar / launcher part. Only senders that could already write the old request
+             setting (WRITE_SECURE_SETTINGS: system apps, shell, root) may ask; this app's own second step and alarm are let through as "same app". -->
+        <receiver android:name=".JobReceiver" android:exported="true"
+            android:permission="android.permission.WRITE_SECURE_SETTINGS" />
 
         <receiver android:name=".BootReceiver" android:exported="true">
             <intent-filter>

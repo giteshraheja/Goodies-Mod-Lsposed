@@ -109,7 +109,7 @@ public final class SettingsActivity extends Activity {
         ACT_LABEL[Config.ACT_INTERNET] = "Internet panel";
         ACT_LABEL[Config.ACT_APP] = "Open an app…";
         ACT_LABEL[Config.ACT_FINDER] = "Samsung Finder (search)";
-        ACT_LABEL[Config.ACT_CLOSE_APPS] = "Close background apps (needs the helper)";
+        ACT_LABEL[Config.ACT_CLOSE_APPS] = "Close background apps";
     }
     private static final String[] ITEM_TITLES = {"Battery icon", "Clock", "Temperature", "Front camera hole", "Wi-Fi icon", "Mobile signal icon"};
     private static final String[] GESTURE_TITLES = {"Tap", "Double-tap", "Long-press"};

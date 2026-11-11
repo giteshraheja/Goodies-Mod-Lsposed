@@ -137,12 +137,12 @@ final class TapActions {
 
     // ================================================================ actions
 
-    /** Same as the RAM chip on the Overview screen: the root helper closes background apps and says how much RAM it freed. */
+    /** Same as the RAM chip on the Overview screen: the app (or the root helper) closes background apps and says how much RAM it freed. */
     private static void closeApps(Context ctx) {
         android.content.ContentResolver cr = ctx.getContentResolver();
         Settings.Global.putString(cr, "sbmods_result", "");
         Global.markClean(ctx);
-        Settings.Global.putString(cr, "sbmods_cmd", "ramclean");
+        Jobs.send(ctx, "ramclean");
         toast(ctx, "Closing background apps\u2026");
         final android.os.Handler h = new android.os.Handler(android.os.Looper.getMainLooper());
         final long until = android.os.SystemClock.uptimeMillis() + 15000;
@@ -151,8 +151,8 @@ final class TapActions {
                 String r = Settings.Global.getString(cr, "sbmods_result");
                 if (r != null && !r.isEmpty()) { toast(ctx, r); return; }
                 if (android.os.SystemClock.uptimeMillis() < until) { h.postDelayed(this, 400); return; }
-                Settings.Global.putString(cr, "sbmods_cmd", "none");   // withdraw it, so it never runs by surprise later
-                toast(ctx, "No answer from the helper \u2013 turn it on in StatusBar Mods \u203a More");
+                if ("ramclean".equals(Settings.Global.getString(cr, "sbmods_cmd"))) Settings.Global.putString(cr, "sbmods_cmd", "none");   // (went to the helper script:) withdraw it, so it never runs by surprise later
+                toast(ctx, "Couldn\u2019t close apps \u2013 check that StatusBar Mods has root access");
             }
         }, 1500);
     }
