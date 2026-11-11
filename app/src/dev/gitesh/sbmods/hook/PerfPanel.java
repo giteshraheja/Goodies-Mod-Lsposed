@@ -114,6 +114,7 @@ final class PerfPanel {
         int saved = Global.gint(a, PanelLayout.TAB, PanelLayout.PAGE_SPEED);   // the page that was open last
         page = saved < 0 || saved >= PanelLayout.PAGE_NAMES.length ? PanelLayout.PAGE_SPEED : saved;
         allOrder = null; helpOpen = null;
+        PanelCards.Insight.fresh();   // lines acted on in the last visit may show again
 
         pSwitch = new LinearLayout(a);
         pSwitch.setPadding(0, dp(a, 10), 0, dp(a, 8));
@@ -267,7 +268,7 @@ final class PerfPanel {
             for (String id : PanelLayout.pinnedFirst(ids, Global.gstr(a, PanelLayout.PINS))) { PanelCards.Card k = PanelCards.byId(id); if (k != null) out.add(k); }
             return out;
         }
-        if (allOrder == null) allOrder = PanelCards.recentVisible(a);   // opt-in: the cards used last, kept while the panel shows
+        if (allOrder == null) { allOrder = PanelCards.recentVisible(a); if (!allOrder.contains("insights") && PanelLayout.order(Global.gstr(a, PanelLayout.SETTING), PanelLayout.DEFAULTS).contains("insights")) allOrder.add(0, "insights"); }   // opt-in: the cards used last, kept while the panel shows (Insights always first)
         List<String> shownIds = PanelLayout.order(Global.gstr(a, PanelLayout.SETTING), PanelLayout.DEFAULTS);
         List<String> withPins = new ArrayList<>(allOrder);
         for (String id : PanelLayout.pins(Global.gstr(a, PanelLayout.PINS))) if (shownIds.contains(id)) withPins.add(id);   // a pinned card shows even if not used lately

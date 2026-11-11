@@ -388,9 +388,9 @@ public final class SettingsActivity extends Activity {
     /** Smart suggestions card (System tab): the master switch for everything the mod notices by itself. */
     private void buildSmart() {
         group("Smart suggestions");
-        cardReset((c, d) -> c.smartOn = d.smartOn);
+        cardResetAction(() -> { cfg.smartOn = new Config().smartOn; apply(); putGl("sbmods_smart", cfg.smartOn ? "1" : "0"); });
         switchRow("Smart suggestions", "The mod notices things and offers a fix. Off = it never checks anything.",
-                cfg.smartOn, v -> { cfg.smartOn = v; apply(); refresh(); });
+                cfg.smartOn, v -> { cfg.smartOn = v; apply(); putGl("sbmods_smart", v ? "1" : "0"); });   // the Overview panel (launcher process) reads the global
         if (cfg.smartOn) {
             divider();
             actionRow("Ask about Vulkan again", "Use this after you chose “Don't ask again” on the Vulkan question.", cAccent, v -> {
@@ -1126,9 +1126,9 @@ public final class SettingsActivity extends Activity {
 
         group("panelcards", "Panel cards", null, true);
         cardResetAction(() -> putGl(PanelLayout.SETTING, "", PanelLayout.PINS, ""));
-        for (int page = PanelLayout.PAGE_SPEED; page < PanelLayout.PAGE_NAMES.length; page++) {
-            TextView hd = Ui.text(this, PanelLayout.PAGE_NAMES[page], Ui.T_VALUE, cSub, 600);
-            hd.setPadding(0, dp(page == PanelLayout.PAGE_SPEED ? 0 : Ui.S3), 0, dp(2));
+        for (int page = PanelLayout.PAGE_ALL; page < PanelLayout.PAGE_NAMES.length; page++) {
+            TextView hd = Ui.text(this, page == PanelLayout.PAGE_ALL ? "All page only" : PanelLayout.PAGE_NAMES[page], Ui.T_VALUE, cSub, 600);
+            hd.setPadding(0, dp(page == PanelLayout.PAGE_ALL ? 0 : Ui.S3), 0, dp(2));
             cur.addView(hd);
             List<String> ids = new ArrayList<>();
             for (String id : all) if (PanelLayout.PAGES[PanelLayout.indexOf(id)] == page) ids.add(id);
@@ -1248,7 +1248,7 @@ public final class SettingsActivity extends Activity {
 
     // ---------------------------------------------------------------- More tab
 
-    private static final String[] PANEL_ICONS = {"bolt", "cpu", "gauge", "cpu", "layers", "sys", "leaf", "gauge", "batt", "shield", "mem", "apps"};
+    private static final String[] PANEL_ICONS = {"spark", "bolt", "cpu", "gauge", "cpu", "layers", "sys", "leaf", "gauge", "batt", "shield", "mem", "apps"};
 
     /** One card of the Performance panel: a drag handle, its name and a shown / hidden switch. */
     private void panelRow(final List<String> all, final Set<String> hidden, final List<String> ids, final int i, final List<String> pinned) {

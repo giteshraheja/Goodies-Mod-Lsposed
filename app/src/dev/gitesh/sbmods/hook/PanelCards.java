@@ -23,6 +23,7 @@ import android.view.ViewGroup;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -107,7 +108,7 @@ final class PanelCards {
     }
 
     /** The registry, in default order (must match PanelLayout.DEFAULTS). */
-    static final List<Card> ALL = java.util.Arrays.asList(new Modes(), new Cpu(), new Gpu(), new Cores(), new Graphics(), new Switches(),
+    static final List<Card> ALL = java.util.Arrays.asList(new Insight(), new Modes(), new Cpu(), new Gpu(), new Cores(), new Graphics(), new Switches(),
             new PowerSave(), new Smooth(), new Battery(), new Health(), new Memory(), new TopApps());
 
     /** The visible cards of one page, in the owner's order. */
@@ -816,6 +817,117 @@ final class PanelCards {
         }
     }
 
+    /** May the owner stop this app from the panel? The helper refuses the protected ones too (stopok); also never the calling services. */
+    static boolean stoppable(Activity a, String pkg) {
+        return !(pkg.equals(Entry.LAUNCHER) || pkg.equals("com.android.systemui") || pkg.equals(a.getPackageName())
+                || pkg.startsWith("com.google.android.gms") || pkg.startsWith("com.android.providers.") || pkg.equals("android") || pkg.equals("dev.gitesh.sbmods") || pkg.equals("com.termux")
+                || pkg.equals("com.sec.imsservice") || pkg.equals("com.sec.epdg"));
+    }
+
+    // ------------------------------------------------------------------ insights (a few plain suggestions, worked out only when the panel opens)
+
+    /** "Smart suggestions" from the settings app, mirrored into a global because this runs in the launcher; missing = on. */
+    static boolean smartOn(Context c) { return Global.gint(c, "sbmods_smart", 1) != 0; }
+
+    static final class Insight extends Card {
+        private static final long TOP_KEEP = 20000;   // a busiest-apps answer is reused for this long (a panel closed and opened again at once asks nothing)
+        private static String topRaw;                 // the helper's last "top" answer
+        private static long topAt;
+        private static final java.util.Set<String> done = new java.util.HashSet<>();   // lines already acted on, kept until the panel is opened again
+        private LinearLayout col;
+        private boolean waiting, sent;
+        Insight() { super("insights"); }
+        /** The panel was opened: forget what was acted on. */
+        static void fresh() { done.clear(); }
+        @Override View build(Activity a) {
+            if (!smartOn(a)) return null;   // switched off: the card is simply not there
+            col = column(a);
+            waiting = false; sent = false;
+            if (SystemClock.uptimeMillis() - topAt >= TOP_KEEP) {   // the only extra helper request: one "top", and only when this card is on screen
+                topRaw = null; waiting = true;
+                PanelCmd.post(a, "top", () -> { sent = true; Global.gset(a, "sbmods_top", "-"); });
+            }
+            fill(a);
+            return col;
+        }
+        /** Called every second like all cards, but does nothing except until the one "top" answer has come (then the lines are worked out once more). */
+        @Override void live(Activity a, Perf.Snap s) {
+            if (!waiting || !sent || col == null) return;
+            String r = Global.gstr(a, "sbmods_top");
+            if (r == null || r.equals("-")) return;
+            waiting = false; topRaw = r; topAt = SystemClock.uptimeMillis();
+            fill(a);
+        }
+        @Override String help(Activity a) {
+            return "A few plain checks on numbers the phone already has: heat, busy apps, memory, a forgotten speed limit. "
+                    + "They are worked out when you open the panel, never in the background. Switch them off with Smart suggestions in StatusBar Mods.";
+        }
+        private void fill(Activity a) {
+            col.removeAllViews();
+            Power.read(a);
+            Insights.In in = new Insights.In();
+            in.tempC = Power.tempC; in.coolAtTenths = Global.gint(a, "sbmods_cool_at", 360); in.charging = Power.charging;
+            boolean cool = Global.gint(a, "sbmods_cool", 0) == 1;
+            int cp = Global.gint(a, "sbmods_cpu_pct", 0), gp = Global.gint(a, "sbmods_gpu_pct", 0);
+            boolean parked = !PanelMath.normCores(Global.gstr(a, "sbmods_cores")).equals("0");
+            in.heldBack = !cool && ((cp > 0 && cp < 100) || (gp > 0 && gp < 100) || parked);
+            in.limitOn = cool || in.heldBack;
+            long until = 0;
+            try { String u = Global.gstr(a, "sbmods_until"); if (u != null && !u.isEmpty()) until = Long.parseLong(u.trim()); } catch (NumberFormatException ignored) {}
+            in.limitSecLeft = until > 0 ? until - System.currentTimeMillis() / 1000 : 0;
+            RecentsChip.Mem m = RecentsChip.readMem();
+            in.swapPct = m.swapPct;
+            in.ramUsedPct = m.totalMb > 0 ? (int) Math.round((m.totalMb - m.availMb) * 100.0 / m.totalMb) : 0;
+            in.top = topRaw;
+            in.front = in.top == null ? null : lastApp(a);
+            in.canStop = p -> stoppable(a, p);
+            in.label = p -> { try { PackageManager pm = a.getPackageManager(); return pm.getApplicationInfo(p, 0).loadLabel(pm).toString(); } catch (Throwable t) { return p; } };
+            in.gfxKeep = Global.gint(a, "sbmods_gfx_keep", 0) == 1;
+            in.gfxVulkan = "vulkan".equals(Global.gstr(a, "sbmods_gfx"));
+            List<Insights.Item> items = Insights.rank(in, done::contains);
+            if (items.isEmpty()) { col.addView(tv(a, "Everything looks fine", 14, WHITE, false)); return; }
+            for (int i = 0; i < items.size(); i++) {
+                final Insights.Item it = items.get(i);
+                LinearLayout row = new LinearLayout(a);
+                row.setGravity(Gravity.CENTER_VERTICAL);
+                row.setMinimumHeight(dp(a, 44));
+                row.addView(tv(a, it.text, 14, WHITE, false), new LinearLayout.LayoutParams(0, -2, 1));
+                row.addView(button(a, it.button, () -> {
+                    done.add(it.key());
+                    act(a, it);
+                    col.removeView(row);   // the line is dropped; the result shows as a message
+                    if (col.getChildCount() == 0) col.addView(tv(a, "Everything looks fine", 14, WHITE, false));
+                }), lp(-2, -2, dp(a, 10), 0, 0, 0));
+                col.addView(row, lp(-1, -2, 0, i == 0 ? 0 : dp(a, 4), 0, 0));
+            }
+        }
+        /** Each button runs a path that already exists elsewhere in the panel. */
+        private static void act(Activity a, Insights.Item it) {
+            switch (it.kind) {
+                case Insights.HOT: {   // like the chips' long-press quick limit, for CPU and GPU: the level last chosen, ending after the usual time
+                    int pc = Global.gint(a, "sbmods_cpu_pick", 55), pg = Global.gint(a, "sbmods_gpu_pick", 55);
+                    Global.gput(a, "sbmods_cpu_pct", String.valueOf(pc));
+                    Global.gput(a, "sbmods_gpu_pct", String.valueOf(pg));
+                    Toast.makeText(a, "Cooling down: CPU " + pc + "%, GPU " + pg + "%", Toast.LENGTH_SHORT).show();
+                    PerfPanel.changed(a);
+                    break;
+                }
+                case Insights.APP: PanelCmd.stop(a, it.arg); break;   // shows the helper's answer; the helper checks stopok again
+                case Insights.MEMORY: RecentsChip.command(a, "deepclean", "Deep cleaning memory…", 6000); break;
+                case Insights.LIMIT:   // same as the Options card's Full speed
+                    for (String k : new String[]{"sbmods_cpu_pct", "sbmods_gpu_pct", "sbmods_cool", "sbmods_cores"}) Global.gset(a, k, "0");
+                    Toast.makeText(a, "Full speed", Toast.LENGTH_SHORT).show();
+                    PerfPanel.changed(a);
+                    break;
+                case Insights.VULKAN:   // same as the Graphics card's Vulkan button
+                    PanelCmd.post(a, "gfx:vulkan", null);
+                    Toast.makeText(a, "Vulkan: apps use it the next time they open", Toast.LENGTH_SHORT).show();
+                    break;
+                default: break;
+            }
+        }
+    }
+
     // ------------------------------------------------------------------ 10. busiest apps
 
     static final class TopApps extends Card {
@@ -885,9 +997,7 @@ final class PanelCards {
             TextView name = oneLine(tv(a, label, 14, WHITE, false));
             r.addView(name, new LinearLayout.LayoutParams(0, -2, 1));
             r.addView(tv(a, pct + "%", 14, WHITE, true));
-            boolean protectedApp = pkg.equals(Entry.LAUNCHER) || pkg.equals("com.android.systemui") || pkg.equals(a.getPackageName())
-                    || pkg.startsWith("com.google.android.gms") || pkg.startsWith("com.android.providers.") || pkg.equals("android") || pkg.equals("dev.gitesh.sbmods") || pkg.equals("com.termux");   // the helper refuses these too
-            if (!protectedApp) {
+            if (stoppable(a, pkg)) {
                 TextView stop = tv(a, "Stop", 14, Ui.cur.acc, true);
                 stop.setPadding(dp(a, 14), dp(a, 8), 0, dp(a, 8));
                 stop.setOnClickListener(safe(() -> {
