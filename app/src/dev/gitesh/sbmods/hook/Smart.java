@@ -472,7 +472,7 @@ final class Smart {
     private static final Set<String> restarted1 = new HashSet<>();   // apps restarted since this boot (mirrors K_GFXR)
 
     private static boolean protectedPkg(String p) {
-        if (p.equals("android") || p.equals(Config.SYSUI) || p.equals(Entry.LAUNCHER) || p.equals(home()) || p.equals(Config.PKG) || p.equals("com.termux")
+        if (NeverStop.listed(p) || p.equals("android") || p.equals(Config.SYSUI) || p.equals(Entry.LAUNCHER) || p.equals(home()) || p.equals(Config.PKG) || p.equals("com.termux")
                 || p.startsWith("com.android.providers.") || p.startsWith("com.google.android.gms") || p.equals("com.sec.imsservice") || p.equals("com.sec.epdg")) return true;
         String ime = Settings.Secure.getString(ctx.getContentResolver(), Settings.Secure.DEFAULT_INPUT_METHOD);
         return ime != null && ime.startsWith(p + "/");
@@ -500,7 +500,7 @@ final class Smart {
     /** Cheap pre-check for decide(): this app was OpenGL before the switch, its process is unchanged, and we have not restarted it since boot. */
     private static boolean mayRestart(String p) {
         try {
-            if (!helperFree() || Global.gint(ctx, "sbmods_gfx_restart", 1) != 1) return false;
+            if (!helperFree() || Global.gint(ctx, "sbmods_gfx_restart", 0) != 1) return false;
             loadBoot();
             return !restarted1.contains(p) && !pidDone.contains(p + ":" + pidOf(p));
         } catch (Throwable t) { return false; }
@@ -508,7 +508,7 @@ final class Smart {
 
     private static boolean restartOk(String p) {
         try {
-            if (!on || Global.gint(ctx, "sbmods_gfx_restart", 1) != 1) return false;
+            if (!on || Global.gint(ctx, "sbmods_gfx_restart", 0) != 1) return false;
             if (!p.equals(top) || locked() || inCall() || ctx.getSystemService(AudioManager.class).isMusicActive()) return false;
             if (protectedPkg(p) || ctx.getPackageManager().getLaunchIntentForPackage(p) == null) return false;
             if (Jobs.pending(ctx)) return false;

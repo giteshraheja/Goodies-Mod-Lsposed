@@ -124,6 +124,7 @@ public final class Entry implements IXposedHookLoadPackage {
                             @Override
                             protected void afterHookedMethod(MethodHookParam p) {
                                 try {
+                                    if (Controller.off) return;
                                     int want = Controller.get().config().notifMax;
                                     if (want <= 0) want = 0;
                                     android.content.res.Resources r = (android.content.res.Resources) p.thisObject;
@@ -152,6 +153,7 @@ public final class Entry implements IXposedHookLoadPackage {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam p) {
                         try {
+                            if (Controller.off) return;
                             int want = Controller.get().config().notifMax;
                             if (want <= 0) return;
                             int n = p.args.length;
@@ -167,7 +169,7 @@ public final class Entry implements IXposedHookLoadPackage {
                         @Override
                         protected void afterHookedMethod(MethodHookParam p) {
                             try {
-                                if (Controller.get().config().notifMax <= 0) return;
+                                if (Controller.off || Controller.get().config().notifMax <= 0) return;
                                 java.lang.reflect.Field f = p.thisObject.getClass().getDeclaredField("maxIcons");
                                 f.setAccessible(true);
                                 f.setInt(p.thisObject, Integer.MAX_VALUE);

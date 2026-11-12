@@ -21,7 +21,7 @@ public final class Sensors {
     private Object thermal;           // android.os.IThermalService
     private Method getWithType;       // Temperature[] getCurrentTemperaturesWithType(int)
     private Method getValue;          // float Temperature.getValue()
-    private int thermalFailures;
+    private int thermalFailures, retry;
     public volatile String lastSource = "-";
     public volatile float lastValue = Float.NaN;
 
@@ -32,7 +32,7 @@ public final class Sensors {
     }
 
     private float read(Context ctx, int type) {
-        if (type != Config.SENSOR_BATTERY && thermalFailures < 5) {
+        if (type != Config.SENSOR_BATTERY && (thermalFailures < 5 || ++retry % 20 == 0)) {   // after 5 failures: battery temperature, but try the real sensor again every 20th read
             try {
                 float v = thermal(type);
                 if (!Float.isNaN(v)) {

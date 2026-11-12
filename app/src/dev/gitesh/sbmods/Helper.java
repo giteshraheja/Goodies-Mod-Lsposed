@@ -16,7 +16,14 @@ import java.util.concurrent.TimeUnit;
  * Everything here needs this app to be allowed to use root; nothing runs at boot unless the user switches that on.
  */
 public final class Helper {
-    private static final String DIR = "/data/local/tmp";
+    /** Root-only folder: the adb shell user can write /data/local/tmp, so scripts run as root must not live there. */
+    private static final String DIR = "/data/adb/sbmods";
+    private static final String OLD = "/data/local/tmp";
+    /** Moves what an earlier version kept in the shell-writable folder: stops its helper (which puts parked cores back), then moves state and charge-limit note. */
+    private static final String MIGRATE = "{ p=$(cat " + OLD + "/sbmods_cpud.pid 2>/dev/null); [ -n \"$p\" ] && grep -q sbmods_cpud /proc/$p/cmdline 2>/dev/null && { kill $p; i=0; while [ $i -lt 20 ] && [ -d /proc/$p ]; do sleep 0.1; i=$((i+1)); done; }; "
+            + "[ -d " + OLD + "/sbmods_state ] && [ ! -d " + DIR + "/sbmods_state ] && mv " + OLD + "/sbmods_state " + DIR + "/sbmods_state; "
+            + "[ -f " + OLD + "/sbmods_chg.orig ] && [ ! -f " + DIR + "/sbmods_chg.orig ] && mv " + OLD + "/sbmods_chg.orig " + DIR + "/sbmods_chg.orig; "
+            + "rm -rf " + OLD + "/sbmods_state " + OLD + "/sbmods_chg.orig " + OLD + "/sbmods_job " + OLD + "/sbmods_cpud.pid " + OLD + "/sbmods_cpud.sh " + OLD + "/sbmods_restore.sh; true; }";
 
     private Helper() {}
 
@@ -93,7 +100,7 @@ public final class Helper {
     public static boolean start(Context c) {
         if (!copyAsset(c, "sbmods_cpud.sh") || !copyAsset(c, "sbmods_restore.sh")) return false;
         String cache = c.getCacheDir().getAbsolutePath();
-        int rc = su("cp " + cache + "/sbmods_cpud.sh " + DIR + "/sbmods_cpud.sh && cp " + cache + "/sbmods_restore.sh " + DIR + "/sbmods_restore.sh"
+        int rc = su("mkdir -p " + DIR + " && chmod 700 " + DIR + " && " + MIGRATE + " && cp " + cache + "/sbmods_cpud.sh " + DIR + "/sbmods_cpud.sh && cp " + cache + "/sbmods_restore.sh " + DIR + "/sbmods_restore.sh"
                 + " && chmod 755 " + DIR + "/sbmods_cpud.sh " + DIR + "/sbmods_restore.sh"
                 + " && { p=$(cat " + DIR + "/sbmods_cpud.pid 2>/dev/null); [ -n \"$p\" ] && grep -q sbmods_cpud /proc/$p/cmdline 2>/dev/null && { kill $p; i=0; while [ $i -lt 20 ] && [ -d /proc/$p ]; do sleep 0.1; i=$((i+1)); done; }; true; }"   // wait for it to end: the new helper leaves if the pid file still names a live one
                 + " && { setsid nohup " + DIR + "/sbmods_cpud.sh >/dev/null 2>&1 < /dev/null & }");

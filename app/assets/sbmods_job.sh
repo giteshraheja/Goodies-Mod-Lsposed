@@ -19,11 +19,12 @@
 # so the two never answer the same request. It prints only "ALARM <seconds>" lines for the app (0 = no check pending).
 #
 # Its own notes live in $JS (not the helper's $ST): a renderer check started here is done here, never by the helper as well.
-JS=/data/local/tmp/sbmods_job
-ST=/data/local/tmp/sbmods_state
+B=/data/adb/sbmods   # root-only folder (see sbmods_cpud.sh)
+JS=$B/sbmods_job
+ST=$B/sbmods_state
 cmd=$1; KEEP=$2
 [ -n "$KEEP" ] || KEEP=" "
-mkdir -p $JS
+mkdir -p $JS; chmod 700 $B
 
 sp() { settings put global "$@" >/dev/null 2>&1; }
 num() { case "$1" in ''|*[!0-9]*) echo "$2";; *) echo "$1";; esac; }
@@ -158,7 +159,7 @@ case "$cmd" in
     n=${cmd#chargelimit:}; cf=/sys/class/power_supply/battery/batt_full_capacity
     if chgok "$n" && [ -f $cf ]; then
       # the original stays outside the state folders: a charge limit is meant to last
-      [ -f /data/local/tmp/sbmods_chg.orig ] || cat $cf > /data/local/tmp/sbmods_chg.orig
+      [ -f $B/sbmods_chg.orig ] || cat $cf > $B/sbmods_chg.orig
       echo $n > $cf 2>/dev/null
       if [ "$(cat $cf 2>/dev/null)" = "$n" ]; then sp sbmods_result "Charging now stops at $n%"
       else sp sbmods_result "This phone didn't accept the charge limit"; fi

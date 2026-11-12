@@ -90,6 +90,15 @@ public final class Controller {
     private final TipTicker tips = new TipTicker(this);
     /** Root of the status bar window; Entry forwards its touches to onStatusBarTouch. */
     static volatile View statusRoot;
+    /** True once the mod switched itself off (crash guard or error storm): every hook of ours must then leave Samsung's behaviour alone. */
+    static volatile boolean off;
+
+    /** Called when the mod switches itself off: hooks that read settings go quiet, and the keep-open limit is handed back to Samsung (0 = not ours). */
+    private void markOff() {
+        off = true;
+        NotifExpand.off();
+        try { android.provider.Settings.Global.putInt(ctx.getContentResolver(), Config.LOCK_SETTING, 0); } catch (Throwable ignored) {}
+    }
 
     Config config() { return cfg; }
 
@@ -159,6 +168,8 @@ public final class Controller {
 
         registerControlReceiver();
 
+        // old debugging notes from earlier test builds
+        try { android.content.SharedPreferences.Editor de = prefs.edit(); for (String k : prefs.getAll().keySet()) if (k.startsWith("dbg_")) de.remove(k); de.apply(); } catch (Throwable ignored) {}
         // an app update (a new version, or the same one installed again while developing) is not a crash: clear both guard counters once. One read, at start only.
         try {
             String build = VERSION + ":" + ctx.getPackageManager().getPackageInfo(Config.PKG, 0).lastUpdateTime;
@@ -176,7 +187,7 @@ public final class Controller {
         // Self-healing: the guard only protects against a crash LOOP. If the last start was a while ago, the loop is over: forget it.
         if (starts > 0 && (nowMs - lastStart > GUARD_FORGET_MS || nowMs < lastStart)) starts = 0;
         if (starts >= GUARD_LIMIT) {
-            guardTripped = true;
+            guardTripped = true; markOff();
             Log.w("crash guard tripped (" + starts + " unstable starts) - mod stays off (tries again after " + GUARD_FORGET_MS / 60000 + " min)");
             gput("sbmods_alive", 0L); gput("sbmods_alive_boot", -1L);
             Entry.unhook();
@@ -189,7 +200,7 @@ public final class Controller {
         }
         prefs.edit().putString("guard_slow", slow.toString()).apply();
         if (slowN >= GUARD_LIMIT - 1) {
-            guardTripped = true;
+            guardTripped = true; markOff();
             Log.w("crash guard tripped (" + (slowN + 1) + " starts in " + GUARD_FORGET_MS / 60000 + " min) - mod stays off until the oldest is " + GUARD_FORGET_MS / 60000 + " min old");
             gput("sbmods_alive", 0L); gput("sbmods_alive_boot", -1L);
             Entry.unhook();
@@ -948,35 +959,6 @@ public final class Controller {
 
     // ----------------------------------------------------------- control API
 
-    /** Debugging aid: writes the status bar's view tree (position, width, shift, alpha, visibility, cut) to the "dbg_tree" pref. */
-    private void dumpTree() {
-        try {
-            View root = statusRoot;
-            if (root == null) return;
-            int id = root.getResources().getIdentifier("status_bar_contents", "id", Config.SYSUI);
-            View top = id == 0 ? null : root.findViewById(id);
-            StringBuilder sb = new StringBuilder();
-            dumpInto(top != null ? top : root, 0, sb);
-            prefs.edit().putString("dbg_tree", sb.toString()).commit();
-        } catch (Throwable t) { Log.w("dump: " + t); }
-    }
-
-    private void dumpInto(View v, int depth, StringBuilder sb) {
-        if (depth > 14 || sb.length() > 60000) return;
-        int[] l = new int[2];
-        v.getLocationOnScreen(l);
-        String name = "";
-        try { if (v.getId() > 0) name = v.getResources().getResourceEntryName(v.getId()); } catch (Throwable ignored) {}
-        for (int k = 0; k < depth; k++) sb.append(' ');
-        sb.append(v.getClass().getSimpleName()).append(' ').append(name).append(" x=").append(l[0]).append(" w=").append(v.getWidth())
-                .append(" tx=").append(Math.round(v.getTranslationX())).append(" a=").append(v.getAlpha()).append(" vis=").append(v.getVisibility());
-        if (v.getScaleX() != 1f) sb.append(" sx=").append(v.getScaleX());
-        if (v.getClipBounds() != null) sb.append(" clip=").append(v.getClipBounds().toShortString());
-        if (v instanceof TextView) sb.append(" \"").append(((TextView) v).getText()).append('"');
-        sb.append('\n');
-        if (v instanceof android.view.ViewGroup) { android.view.ViewGroup g = (android.view.ViewGroup) v; for (int k = 0; k < g.getChildCount(); k++) dumpInto(g.getChildAt(k), depth + 1, sb); }
-    }
-
     private void registerControlReceiver() {
         IntentFilter f = new IntentFilter();
         f.addAction(Config.ACTION_APPLY);
@@ -1012,7 +994,6 @@ public final class Controller {
                     startPolling();
                     restartClockTick();
                 } else if (Config.ACTION_TOAST.equals(a)) {   // "3, 2, 1" before the assistant drives the screen (status bar toasts are never blocked)
-                    if (i.getBooleanExtra("dump", false)) { dumpTree(); return; }   // debugging aid: where every status bar item really is
                     String t = i.getStringExtra("t");
                     int n = Math.max(0, Math.min(5, i.getIntExtra("count", 0)));
                     for (int k = n; k >= 0; k--) {
@@ -1112,7 +1093,7 @@ public final class Controller {
             lastError = where + ": " + t;
             Log.w("error #" + errors + " in " + lastError);
             if (windowErrors >= MAX_ERRORS && !disabled) {
-                disabled = true;
+                disabled = true; markOff();
                 Log.w("error storm (" + windowErrors + " in a minute) - removing mod until SystemUI restarts");
                 gput("sbmods_alive", 0L); gput("sbmods_alive_boot", -1L);
                 main.post(() -> {

@@ -211,24 +211,26 @@ final class TapActions {
      */
     private static void togglePowerSaver(Context ctx) {
         boolean on = Settings.Global.getInt(ctx.getContentResolver(), "low_power", 0) == 0;
-        toast(ctx, on ? "Power saving on" : "Power saving off");
+        final String done = on ? "Power saving on" : "Power saving off";
         new Thread(() -> {
             String method = on ? "psm_turn_on" : "psm_turn_off";
             try {
                 Bundle r = ctx.getContentResolver().call(DC_API, method, null, null);
                 Log.i(method + " -> " + r);
-                if (r != null && r.getBoolean("result", false)) return;
+                if (r != null && r.getBoolean("result", false)) { toast(ctx, done); return; }
             } catch (Throwable t) {
                 Log.w(method + " failed: " + t);
             }
             Object bc = batteryController;
-            if (bc == null) return;
+            if (bc == null) { toast(ctx, "Couldn\u2019t change power saving"); return; }
             try {
                 Class<?> exp = bc.getClass().getClassLoader().loadClass("com.android.systemui.animation.Expandable");
                 bc.getClass().getMethod("setPowerSaveMode", boolean.class, exp).invoke(bc, on, null);
                 Log.i("fallback BatteryController.setPowerSaveMode(" + on + ")");
+                toast(ctx, done);
             } catch (Throwable t) {
                 Log.w("fallback failed: " + t);
+                toast(ctx, "Couldn\u2019t change power saving");
             }
         }, "sbmods-psm").start();
     }
@@ -352,7 +354,7 @@ final class TapActions {
 
     private static void open(Context ctx, Intent i) {
         KeyguardManager km = ctx.getSystemService(KeyguardManager.class);
-        if (km != null && km.isKeyguardLocked()) return; // never open things over the lock screen
+        if (km != null && km.isKeyguardLocked()) { toast(ctx, "Unlock the phone first"); return; } // never open things over the lock screen
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         ctx.startActivity(i);
     }

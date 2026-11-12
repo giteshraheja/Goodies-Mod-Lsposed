@@ -152,7 +152,6 @@ public final class Config {
     public int tipsMode = 1; // 0 off, 1 sometimes, 2 often
 
     // ---- battery ----
-    public boolean pauseScreenOff = true;
 
     // ---- smart suggestions ----
     /** The mod notices things (for now: which drawing method an app uses) and offers a fix. On by default; off = it never checks anything. */
@@ -255,7 +254,6 @@ public final class Config {
         o.i("weekday", weekday); o.i("date", date); o.i("year", year);
         o.b("dateAfterTime", dateAfterTime); o.i("dateSizePct", dateSizePct); o.s("pattern", pattern);
         o.i("labelPos", labelPos); o.i("gapDp", gapDp); o.i("sizePct", sizePct);
-        o.b("pauseScreenOff", pauseScreenOff);
         o.i("batteryTap", batteryTap); o.i("batteryLong", batteryLong); o.i("clockTap", clockTap);
         o.i("clockLong", clockLong); o.i("tempTap", tempTap); o.i("tempLong", tempLong);
         o.b("tapHaptic", tapHaptic);
@@ -285,7 +283,7 @@ public final class Config {
         dateAfterTime = in.b("dateAfterTime", dateAfterTime);
         dateSizePct = in.i("dateSizePct", dateSizePct); pattern = in.s("pattern", pattern);
         labelPos = in.i("labelPos", labelPos); gapDp = in.i("gapDp", gapDp);
-        sizePct = in.i("sizePct", sizePct); pauseScreenOff = in.b("pauseScreenOff", pauseScreenOff);
+        sizePct = in.i("sizePct", sizePct);
         batteryTap = in.i("batteryTap", batteryTap); batteryLong = in.i("batteryLong", batteryLong);
         clockTap = in.i("clockTap", clockTap); clockLong = in.i("clockLong", clockLong);
         tempTap = in.i("tempTap", tempTap); tempLong = in.i("tempLong", tempLong);

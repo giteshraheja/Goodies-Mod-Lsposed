@@ -47,6 +47,9 @@ final class NotifExpand {
         skipSilent = c.openSkipSilent;
     }
 
+    /** The mod switched itself off: stop changing notifications. */
+    static void off() { openAll = false; groupOpen = false; skipSilent = false; }
+
     static synchronized void install(ClassLoader cl) {
         if (installed) return;
         installed = true;

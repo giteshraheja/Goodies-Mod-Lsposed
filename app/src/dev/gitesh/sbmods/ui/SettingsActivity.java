@@ -405,7 +405,7 @@ public final class SettingsActivity extends Activity {
         if (cfg.smartOn) {
             divider();
             switchRow("Restart apps still on OpenGL", "When Vulkan is on and an app you open is still using the old renderer, it is closed and reopened once so it can switch. Each app at most once until the phone restarts. Unsaved work in that app is lost.",
-                    !"0".equals(glStr("sbmods_gfx_restart")), v -> putGl("sbmods_gfx_restart", v ? "1" : "0"));
+                    "1".equals(glStr("sbmods_gfx_restart")), v -> putGl("sbmods_gfx_restart", v ? "1" : "0"));
             divider();
             switchRow("Game mode: full speed for games", "When you open a game, any speed limit is lifted for as long as it is in front, then your earlier limit comes back. A game with its own automatic rule keeps that rule.",
                     !"0".equals(glStr("sbmods_game")), v -> putGl("sbmods_game", v ? "1" : "0"));
@@ -857,7 +857,7 @@ public final class SettingsActivity extends Activity {
         endGroup("To put the temperature somewhere else, use the Layout tab.");
 
         group("tmpsave", "Battery saving", null, true);
-        cardReset((c, d) -> { c.intervalSec = d.intervalSec; c.pauseScreenOff = d.pauseScreenOff; });
+        cardReset((c, d) -> { c.intervalSec = d.intervalSec; });
         final int[] secs = {1, 2, 5, 10, 15, 30, 60};
         choiceRow("Refresh every", new String[]{"1 second", "2 seconds", "5 seconds", "10 seconds", "15 seconds", "30 seconds", "1 minute"},
                 idx(secs, cfg.intervalSec), v -> { cfg.intervalSec = secs[v]; apply(); refresh(); });

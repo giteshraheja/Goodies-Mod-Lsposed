@@ -40,16 +40,17 @@
 #   sbmods_cores = S,M,P             core parking (Qualcomm core_ctl): cores to keep awake in the small / mid / prime cluster
 #                                    (clamped to 2..3 / 1..4 / 0..1). Empty, 0 or malformed = no parking. Counts as "a limit is on"
 #                                    (same timeout, never survives a reboot); wakes itself if the load stays >= 90 % for two 5 s samples
-ST=/data/local/tmp/sbmods_state
+B=/data/adb/sbmods   # root-only folder: the adb shell user can write /data/local/tmp, so nothing root runs lives there
+ST=$B/sbmods_state
 CPU=/sys/devices/system/cpu
 F=/data/system/users/0/settings_global.xml
 G=/sys/class/kgsl/kgsl-3d0/devfreq
 # one helper at a time: if the pid file names a live helper that is not us, leave quietly (the app's start kills the old one first and waits for it).
 # Runs once at start; `grep` is the only program started.
-_o=$(cat /data/local/tmp/sbmods_cpud.pid 2>/dev/null)
+_o=$(cat $B/sbmods_cpud.pid 2>/dev/null)
 [ -n "$_o" ] && [ "$_o" != "$$" ] && [ -r /proc/$_o/cmdline ] && grep -q sbmods_cpud /proc/$_o/cmdline 2>/dev/null && exit 0
-mkdir -p $ST
-echo $$ > /data/local/tmp/sbmods_cpud.pid
+mkdir -p $ST; chmod 700 $B
+echo $$ > $B/sbmods_cpud.pid
 
 # a clean-up request nobody answered (helper was off) must not run by itself later
 settings put global sbmods_cmd none
@@ -322,8 +323,8 @@ else nap() { sleep 1; }; fi
 stopw() { [ -n "$WP" ] && kill $WP 2>/dev/null; rm -f $ST/inotify.pid; }
 gone() { [ -d /data/user_de/0/dev.gitesh.sbmods ] && return
   [ -d /data/user_de/0/com.android.systemui ] || return   # the folder itself can't be seen (not a missing app): do nothing
-  [ -f /data/local/tmp/sbmods_restore.sh ] && exec sh /data/local/tmp/sbmods_restore.sh all
-  cores_restore; stopw; rm -rf $ST /data/local/tmp/sbmods_cpud.pid /data/local/tmp/sbmods_cpud.sh; exit 0; }
+  [ -f $B/sbmods_restore.sh ] && exec sh $B/sbmods_restore.sh all
+  cores_restore; stopw; rm -rf $ST $B/sbmods_cpud.pid $B/sbmods_cpud.sh; exit 0; }
 # the next wait. Without the watcher: the plain one-second nap. With it: if a fresh read is due (or we just wrote a setting, or the
 # settings file is newer than our last read) a one-second nap; otherwise sleep until the NEXT timed job is due, i.e. the smallest
 # time left over everything that is on (at least 1 s), and idle (60 s safety net) when nothing is on. All of these end early on a
@@ -418,7 +419,7 @@ while true; do
       sp sbmods_cmd none; n=${cmd#chargelimit:}; cf=/sys/class/power_supply/battery/batt_full_capacity
       if chgok "$n" && [ -f $cf ]; then
         # the original stays outside $ST: the restore script wipes $ST, but a charge limit is meant to last
-        [ -f /data/local/tmp/sbmods_chg.orig ] || cat $cf > /data/local/tmp/sbmods_chg.orig
+        [ -f $B/sbmods_chg.orig ] || cat $cf > $B/sbmods_chg.orig
         echo $n > $cf 2>/dev/null
         if [ "$(cat $cf 2>/dev/null)" = "$n" ]; then sp sbmods_result "Charging now stops at $n%"
         else sp sbmods_result "This phone didn't accept the charge limit"; fi
