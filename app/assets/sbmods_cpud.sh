@@ -69,7 +69,7 @@ if [ ! -f $ST/since ] || [ "$(cat $ST/boot 2>/dev/null)" != "$BOOT" ]; then
   [ "$(cat $ST/boot 2>/dev/null)" = "$BOOT" ] && cores_restore
   for k in sbmods_cpu_pct sbmods_gpu_pct sbmods_cool sbmods_cores sbmods_until sbmods_watch sbmods_game_hold; do settings put global $k 0; done   # (watch / game_hold too: a stale flag from a crashed launcher must not stay)
   [ -f $ST/ps.set ] && settings put global low_power 0   # power saving we turned on goes off with the limit
-  rm -f $ST/since $ST/*.want $ST/ps.set $ST/cc*.min $ST/cc*.max $ST/gfx.*   # (a pending renderer check is dropped too; the renderer itself resets at reboot)
+  rm -f $ST/since $ST/paused $ST/*.want $ST/ps.set $ST/cc*.min $ST/cc*.max $ST/gfx.*   # (a pending renderer check is dropped too; the renderer itself resets at reboot)
   UNT=0
 fi
 
@@ -447,16 +447,20 @@ while true; do
   # safety: a limit (or core parking) never lasts longer than the chosen time
   if [ "$cp" != "0" ] || [ "$gp" != "0" ] || [ "$pr" = "1" ]; then
     on=1
-    [ -f $ST/since ] || { date +%s > $ST/since; echo "$BOOT" > $ST/boot; }
+    [ -f $ST/since ] || { date +%s > $ST/since; echo "$BOOT" > $ST/boot; rm -f $ST/paused; }
+    # a game lifted the limit and it is back: the time the limit was off does not count (the timer was paused)
+    if [ -f $ST/paused ]; then echo $(( $(<$ST/since) + ${EPOCHREALTIME%.*} - $(<$ST/paused) )) > $ST/since; rm -f $ST/paused; fi
     lim=$(num "$(val sbmods_limit_min)" 15); [ "$lim" -gt 120 ] && lim=120; [ "$lim" -lt 1 ] && lim=15
     pubuntil $(( $(<$ST/since) + lim * 60 ))
     el=$(( ${EPOCHREALTIME%.*} - $(<$ST/since) ))   # (negative = the clock was set back: end the limit too)
     if [ $el -lt 0 ] || [ $el -gt $((lim * 60)) ]; then
       for k in sbmods_cpu_pct sbmods_gpu_pct sbmods_cool sbmods_cores; do sp $k 0; done
       sp sbmods_result "Speed limits ended after $lim min"
-      cp=0; gp=0; cv=0; on=0; rm -f $ST/since; pubuntil 0
+      cp=0; gp=0; cv=0; on=0; rm -f $ST/since $ST/paused; pubuntil 0
     fi
-  else on=0; rm -f $ST/since; pubuntil 0; fi
+  elif [ "$(val sbmods_game_hold)" = "1" ] && [ -f $ST/since ]; then   # a game lifted the limit: pause its timer instead of restarting it
+    [ -f $ST/paused ] || echo ${EPOCHREALTIME%.*} > $ST/paused; on=0; pubuntil 0
+  else on=0; rm -f $ST/since $ST/paused; pubuntil 0; fi
   [ -f $ST/gfx.t ] && on=1   # a pending renderer check keeps the loop awake (no limit timeout for it)
 
   cpu_apply $cp
