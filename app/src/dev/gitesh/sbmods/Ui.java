@@ -76,8 +76,28 @@ public final class Ui {
             0xFF6EE7A8, 0xFFFFC857, 0xFFFF7A70,
             0x800C111A, 0xF2161A21, 0x24FFFFFF, 0x33FFFFFF, 0x17FFFFFF, 0x29FFFFFF, 0x1EFFFFFF, 0x47FFFFFF, 0x80000000);
 
+    /**
+     * The settings app's own palette (Lavender, like the Galaxy S23 finish). The Performance panel keeps LIGHT / DARK above;
+     * the panel fields here are copies so the object is complete.
+     */
+    public static final Pal LAV_LIGHT = new Pal(false,
+            0xFFF3F0FB, 0xFFFFFFFF, 0xFFF3F0FB, 0xFF1B1638, 0xFF615B82, 0x171B1638, 0x571B1638,
+            0xFF5A43D6, 0xFF4330B8, 0xFFEBE7FB, 0xFFFFFFFF,
+            0xB8FFFFFF, 0xCCFFFFFF, 0xE6FFFFFF, 0xFFE9E5F6, 0xFF7A73A0, 0xFFE9E5F6, 0xFFC5BDE8,
+            0xFF167A4A, 0xFFA85F00, 0xFFC42B2B,
+            0x75FFFFFF, 0xF2F4F7FA, 0xCCFFFFFF, 0xF2FFFFFF, 0xA3FFFFFF, 0xD9FFFFFF, 0xCCFFFFFF, 0x3812161C, 0x331E3246);
+    public static final Pal LAV_DARK = new Pal(true,
+            0xFF100D20, 0xFF1B1735, 0xFF251F47, 0xFFEFECFF, 0xFFA9A3D1, 0x14FFFFFF, 0x57FFFFFF,
+            0xFFA597FF, 0xFFC9C0FF, 0xFF2B2559, 0xFF14102E,
+            0x94221C45, 0x24FFFFFF, 0x2EFFFFFF, 0xFF2A2450, 0xFF8F89B8, 0xFF1E1A3C, 0xFF4A4380,
+            0xFF6EE7A8, 0xFFFFC857, 0xFFFF7A70,
+            0x800C111A, 0xF2161A21, 0x24FFFFFF, 0x33FFFFFF, 0x17FFFFFF, 0x29FFFFFF, 0x1EFFFFFF, 0x47FFFFFF, 0x80000000);
+
     /** The palette for a context's current day / night setting. */
     public static Pal pal(Context c) { return isNight(c) ? DARK : LIGHT; }
+
+    /** The palette of the settings app (Lavender). */
+    public static Pal appPal(Context c) { return isNight(c) ? LAV_DARK : LAV_LIGHT; }
 
     public static boolean isNight(Context c) {
         return (c.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
@@ -132,6 +152,79 @@ public final class Ui {
 
     /** A solid content card. */
     public static Drawable card(Context c, Pal p) { return round(p.card, dp(c, R_CARD), 0, 0); }
+
+    /** A fill with only the top corners rounded (the sheet that rises over the wallpaper). */
+    public static Drawable topRound(int fill, int radiusPx) {
+        GradientDrawable g = new GradientDrawable();
+        g.setColor(fill);
+        g.setCornerRadii(new float[]{radiusPx, radiusPx, radiusPx, radiusPx, 0, 0, 0, 0});
+        return g;
+    }
+
+    /**
+     * The settings app's wallpaper: a violet gradient, a warm glow, two soft ribbons and four thin contour lines, all
+     * built once when the bounds change (no blur, no animation). It is drawn only when its view is invalidated, which
+     * nothing does on a timer, so it costs no battery.
+     */
+    public static final class Wall extends Drawable {
+        private final boolean night;
+        private final Paint base = new Paint(Paint.ANTI_ALIAS_FLAG), glow = new Paint(Paint.ANTI_ALIAS_FLAG),
+                rib1 = new Paint(Paint.ANTI_ALIAS_FLAG), rib2 = new Paint(Paint.ANTI_ALIAS_FLAG), line = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Path r1 = new Path(), r2 = new Path(), ln = new Path();
+        private final RectF box = new RectF();
+
+        public Wall(boolean night) {
+            this.night = night;
+            line.setStyle(Paint.Style.STROKE);
+            line.setColor(0x4DE9E2FF);
+        }
+
+        @Override protected void onBoundsChange(android.graphics.Rect b) {
+            float w = b.width(), h = b.height();
+            if (w <= 0 || h <= 0) return;
+            float s = w / 430f;
+            box.set(b);
+            base.setShader(new LinearGradient(0, 0, w * 0.55f, h,
+                    night ? new int[]{0xFF0B0824, 0xFF1D1450, 0xFF3A2A9A} : new int[]{0xFF1A1250, 0xFF3A2A9A, 0xFF6C54E6},
+                    new float[]{0, 0.55f, 1}, Shader.TileMode.CLAMP));
+            glow.setShader(new android.graphics.RadialGradient(w * 0.8f, 160 * s, w * 0.6f,
+                    new int[]{night ? 0x66FFC9A8 : 0xCCFFC9A8, night ? 0x1FFF9EC4 : 0x47FF9EC4, 0x00FF9EC4},
+                    new float[]{0, 0.5f, 1}, Shader.TileMode.CLAMP));
+            r1.reset();
+            r1.moveTo(-20 * s, 300 * s);
+            r1.cubicTo(80 * s, 210 * s, 160 * s, 330 * s, 260 * s, 250 * s);
+            r1.cubicTo(360 * s, 170 * s, 400 * s, 160 * s, 460 * s, 230 * s);
+            r1.lineTo(460 * s, h + 10); r1.lineTo(-20 * s, h + 10); r1.close();
+            rib1.setShader(new LinearGradient(0, 200 * s, 0, h, night ? 0x558F7CF5 : 0x998F7CF5, 0x008F7CF5, Shader.TileMode.CLAMP));
+            r2.reset();
+            r2.moveTo(-20 * s, 365 * s);
+            r2.cubicTo(100 * s, 290 * s, 190 * s, 400 * s, 300 * s, 330 * s);
+            r2.cubicTo(410 * s, 260 * s, 420 * s, 285 * s, 460 * s, 322 * s);
+            r2.lineTo(460 * s, h + 10); r2.lineTo(-20 * s, h + 10); r2.close();
+            rib2.setShader(new LinearGradient(0, 280 * s, 0, h, night ? 0x44CBBFFF : 0x80CBBFFF, 0x00CBBFFF, Shader.TileMode.CLAMP));
+            line.setStrokeWidth(Math.max(1f, 1.1f * s));
+            ln.reset();
+            for (int i = 0; i < 4; i++) {
+                float dy = 22 * i * s;
+                ln.moveTo(-20 * s, 262 * s + dy);
+                ln.cubicTo(90 * s, 190 * s + dy, 170 * s, 300 * s + dy, 270 * s, 222 * s + dy);
+                ln.cubicTo(370 * s, 144 * s + dy, 400 * s, 140 * s + dy, 460 * s, 205 * s + dy);
+            }
+        }
+
+        @Override public void draw(Canvas c) {
+            if (box.isEmpty()) return;
+            c.drawRect(box, base);
+            c.drawRect(box, glow);
+            c.drawPath(r1, rib1);
+            c.drawPath(r2, rib2);
+            c.drawPath(ln, line);
+        }
+
+        @Override public void setAlpha(int a) {}
+        @Override public void setColorFilter(ColorFilter f) {}
+        @Override public int getOpacity() { return PixelFormat.OPAQUE; }
+    }
 
     /**
      * The glass recipe: a translucent cool fill, a hairline border and a bright highlight along the top edge that fades
