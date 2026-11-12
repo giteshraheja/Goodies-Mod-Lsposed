@@ -26,7 +26,7 @@ Needs root for the helper (speed limits, clean-up, charge limit). Nothing polls 
 The signing key is kept outside the project: `${SBMODS_KEYS:-$HOME/.sbmods-keys}/sbmods.jks`, with the password in the environment variable
 `SBMODS_KS_PASS` or in `pass.txt` in that folder. If the key is missing, the first build creates one. Updates must be signed with the same key, so back it up.
 
-Install: `cat out/StatusBarMods.apk | su -c "pm install -r -S $(stat -c %s out/StatusBarMods.apk)"`, then restart the status bar (or use the button in the app). Logs: the LSPosed / Vector module log (as root, `/data/adb/lspd/log/modules_*.log`, lines tagged `[SBMods]`); logcat can be empty on this phone. The root helper and its state live in `/data/adb/sbmods` (root only).
+Install: `cat out/StatusBarMods.apk | su -c "pm install -r -S $(stat -c %s out/StatusBarMods.apk)"`, then restart the status bar (or use the button in the app). Logs: the LSPosed / Vector module log (as root, `/data/adb/lspd/log/modules_*.log`, lines tagged `[SBMods]`); logcat can be empty on this phone. The root helper (`sbmods_cpud.sh`, with the shared functions in `sbmods_lib.sh`) and its state live in `/data/adb/sbmods` (root only).
 
 ## Uninstall cleanly
 Either press "Undo everything the mod changed" in the app (More tab), then uninstall it, or run `./uninstall.sh` from this folder: it first runs

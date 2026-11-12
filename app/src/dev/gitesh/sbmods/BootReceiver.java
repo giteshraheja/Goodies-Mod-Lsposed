@@ -29,6 +29,7 @@ public final class BootReceiver extends BroadcastReceiver {
         final Context app = ctx.getApplicationContext();
         final PendingResult pr = goAsync();
         new Thread(() -> {
+            final long t0 = System.currentTimeMillis();
             int boot = -2;
             String outcome;
             try {
@@ -45,14 +46,15 @@ public final class BootReceiver extends BroadcastReceiver {
                 if (!alive) {
                     outcome = "mod off";
                 } else {
+                    // a boot broadcast may only run for about a minute: a second try and the fallback job only while there is time left
                     boolean ok = Helper.start(app);
-                    if (!ok) {
+                    if (!ok && System.currentTimeMillis() - t0 < 25_000) {
                         Thread.sleep(5000);
                         ok = Helper.start(app);
                     }
                     outcome = ok ? "started" : "start failed";
                     // the helper normally brings "keep Vulkan" back when it starts; without it the app's own job does (same guarded switch)
-                    if (!ok) JobReceiver.run(app, "boot");
+                    if (!ok && System.currentTimeMillis() - t0 < 20_000) JobReceiver.run(app, "boot");
                 }
             } catch (Throwable t) {
                 outcome = "error: " + t;

@@ -98,10 +98,10 @@ public final class Helper {
 
     /** Installs the scripts and starts the helper. Returns true if it is running afterwards. */
     public static boolean start(Context c) {
-        if (!copyAsset(c, "sbmods_cpud.sh") || !copyAsset(c, "sbmods_restore.sh")) return false;
+        if (!copyAsset(c, "sbmods_cpud.sh") || !copyAsset(c, "sbmods_restore.sh") || !copyAsset(c, "sbmods_lib.sh")) return false;
         String cache = c.getCacheDir().getAbsolutePath();
-        int rc = su("mkdir -p " + DIR + " && chmod 700 " + DIR + " && " + MIGRATE + " && cp " + cache + "/sbmods_cpud.sh " + DIR + "/sbmods_cpud.sh && cp " + cache + "/sbmods_restore.sh " + DIR + "/sbmods_restore.sh"
-                + " && chmod 755 " + DIR + "/sbmods_cpud.sh " + DIR + "/sbmods_restore.sh"
+        int rc = su("mkdir -p " + DIR + " && chmod 700 " + DIR + " && " + MIGRATE + " && cp " + cache + "/sbmods_cpud.sh " + DIR + "/sbmods_cpud.sh && cp " + cache + "/sbmods_restore.sh " + DIR + "/sbmods_restore.sh && cp " + cache + "/sbmods_lib.sh " + DIR + "/sbmods_lib.sh"
+                + " && chmod 755 " + DIR + "/sbmods_cpud.sh " + DIR + "/sbmods_restore.sh " + DIR + "/sbmods_lib.sh"
                 + " && { p=$(cat " + DIR + "/sbmods_cpud.pid 2>/dev/null); [ -n \"$p\" ] && grep -q sbmods_cpud /proc/$p/cmdline 2>/dev/null && { kill $p; i=0; while [ $i -lt 20 ] && [ -d /proc/$p ]; do sleep 0.1; i=$((i+1)); done; }; true; }"   // wait for it to end: the new helper leaves if the pid file still names a live one
                 + " && { setsid nohup " + DIR + "/sbmods_cpud.sh >/dev/null 2>&1 < /dev/null & }");
         if (rc != 0) return false;
@@ -131,8 +131,9 @@ public final class Helper {
 
     /** True if the running helper is this app version's script (after an update the old one keeps running until restarted). */
     public static boolean isCurrent(Context c) {
-        if (!copyAsset(c, "sbmods_cpud.sh")) return true;
-        return su("cmp -s " + c.getCacheDir().getAbsolutePath() + "/sbmods_cpud.sh " + DIR + "/sbmods_cpud.sh") == 0;
+        if (!copyAsset(c, "sbmods_cpud.sh") || !copyAsset(c, "sbmods_lib.sh")) return true;
+        String cache = c.getCacheDir().getAbsolutePath();
+        return su("cmp -s " + cache + "/sbmods_cpud.sh " + DIR + "/sbmods_cpud.sh && cmp -s " + cache + "/sbmods_lib.sh " + DIR + "/sbmods_lib.sh") == 0;
     }
 
     /** Stops the helper and puts every CPU / GPU speed and the power saving switch back to normal. */

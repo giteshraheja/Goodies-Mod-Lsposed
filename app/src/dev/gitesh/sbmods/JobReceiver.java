@@ -35,7 +35,7 @@ import java.util.regex.Pattern;
  * non-wakeup alarm that the job script asks for ("ALARM n") - it never wakes a sleeping phone, and none is set otherwise.
  */
 public final class JobReceiver extends BroadcastReceiver {
-    private static final String SCRIPT = "sbmods_job.sh";
+    private static final String SCRIPT = "sbmods_job.sh", LIB = "sbmods_lib.sh";
     private static final Pattern OK = Pattern.compile(
             "ramclean|deepclean|battreport|top|health|gfx:vulkan|gfx:opengl|gfxcheck|boot"
                     + "|(stop|appgfx):[A-Za-z0-9._]{1,200}|chargelimit:(80|85|90|95|100)");
@@ -99,19 +99,23 @@ public final class JobReceiver extends BroadcastReceiver {
     /** The job script in the cache folder, copied from the app again after an update (or when the cache was cleared). */
     private static File script(Context c) {
         try {
-            File f = new File(c.getCacheDir(), SCRIPT);
+            File f = new File(c.getCacheDir(), SCRIPT), lib = new File(c.getCacheDir(), LIB);
             long updated = c.getPackageManager().getPackageInfo(c.getPackageName(), 0).lastUpdateTime;
-            if (f.length() > 0 && f.lastModified() >= updated) return f;
-            File tmp = new File(c.getCacheDir(), SCRIPT + ".new");
-            try (InputStream in = c.getAssets().open(SCRIPT); FileOutputStream o = new FileOutputStream(tmp)) {
-                byte[] buf = new byte[4096];
-                int n;
-                while ((n = in.read(buf)) > 0) o.write(buf, 0, n);
-            }
-            return tmp.renameTo(f) ? f : null;
+            if (f.length() > 0 && lib.length() > 0 && f.lastModified() >= updated && lib.lastModified() >= updated) return f;
+            return copy(c, LIB, lib) && copy(c, SCRIPT, f) ? f : null;   // the script sources the shared functions from its own folder
         } catch (Throwable t) {
             return null;
         }
+    }
+
+    private static boolean copy(Context c, String asset, File to) throws java.io.IOException {
+        File tmp = new File(c.getCacheDir(), asset + ".new");
+        try (InputStream in = c.getAssets().open(asset); FileOutputStream o = new FileOutputStream(tmp)) {
+            byte[] buf = new byte[4096];
+            int n;
+            while ((n = in.read(buf)) > 0) o.write(buf, 0, n);
+        }
+        return tmp.renameTo(to);
     }
 
     /**
