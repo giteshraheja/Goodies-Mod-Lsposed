@@ -132,8 +132,7 @@ gfx_vulkan() {
 case "$cmd" in
   ramclean|deepclean)
     b=$(mem); sb=$(swp); kn=""
-    if [ "$KEEP" = " " ]; then am kill-all >/dev/null 2>&1
-    else killbg "$KEEP"; [ "$SPARED" -gt 0 ] && kn=" (kept $SPARED app$([ "$SPARED" -gt 1 ] && echo s) you reopen)"; fi
+    killbg "$KEEP"; [ "$SPARED" -gt 0 ] && kn=" (kept $SPARED app$([ "$SPARED" -gt 1 ] && echo s) you reopen)"   # (always one by one, so the never-stop list applies)
     if [ "$cmd" = "deepclean" ]; then sync; echo 3 > /proc/sys/vm/drop_caches; echo 1 > /proc/sys/vm/compact_memory; fi
     sleep 2
     a=$(mem)

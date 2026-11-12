@@ -66,7 +66,7 @@ trap 'cores_restore; exit 0' TERM INT HUP
 if [ ! -f $ST/since ] || [ "$(cat $ST/boot 2>/dev/null)" != "$BOOT" ]; then
   # (same boot but no stamp = helper died while parked: put the cores back before forgetting the saved values; after a reboot the kernel already reset them)
   [ "$(cat $ST/boot 2>/dev/null)" = "$BOOT" ] && cores_restore
-  for k in sbmods_cpu_pct sbmods_gpu_pct sbmods_cool sbmods_cores sbmods_until; do settings put global $k 0; done
+  for k in sbmods_cpu_pct sbmods_gpu_pct sbmods_cool sbmods_cores sbmods_until sbmods_watch sbmods_game_hold; do settings put global $k 0; done   # (watch / game_hold too: a stale flag from a crashed launcher must not stay)
   [ -f $ST/ps.set ] && settings put global low_power 0   # power saving we turned on goes off with the limit
   rm -f $ST/since $ST/*.want $ST/ps.set $ST/cc*.min $ST/cc*.max $ST/gfx.*   # (a pending renderer check is dropped too; the renderer itself resets at reboot)
   UNT=0
@@ -238,7 +238,8 @@ gfx_vulkan() {
 }
 # only plain package names may reach `am` and never the ones that would hurt the phone (or this tool)
 stopok() { case "$1" in ''|*[!A-Za-z0-9._]*) return 1;; *.*) ;; *) return 1;; esac
-  case "$1" in android|com.android.systemui|com.sec.android.app.launcher|dev.gitesh.sbmods|com.termux|com.android.phone|com.android.server.telecom|com.samsung.android.incallui|com.samsung.android.dialer|com.samsung.android.honeyboard|com.android.settings|com.topjohnwu.magisk|org.lsposed.manager|com.samsung.android.providers.*|com.android.shell|com.android.providers.*|com.google.android.gms.*|com.google.android.gms) return 1;; esac; }
+  # (the calling services, Wi-Fi calling, are refused here too)
+  case "$1" in android|com.android.systemui|com.sec.android.app.launcher|dev.gitesh.sbmods|com.termux|com.android.phone|com.android.server.telecom|com.samsung.android.incallui|com.samsung.android.dialer|com.samsung.android.honeyboard|com.android.settings|com.topjohnwu.magisk|org.lsposed.manager|com.samsung.android.providers.*|com.android.shell|com.android.providers.*|com.google.android.gms.*|com.google.android.gms|com.sec.imsservice|com.sec.epdg) return 1;; esac; }
 
 # Clean-up that spares the apps the owner keeps reopening (global sbmods_keep = "pkg|count|day;...", count >= 2 = kept; used only when Smart
 # suggestions is on, sbmods_smart missing = on). Prints the kept packages as " a b c " (just " " = none).
@@ -388,8 +389,7 @@ while true; do
       sp sbmods_cmd none
       b=$(mem); sb=$(swp)
       kp=$(keptlist); kn=""
-      if [ "$kp" = " " ]; then am kill-all >/dev/null 2>&1
-      else killbg "$kp"; [ "$SPARED" -gt 0 ] && kn=" (kept $SPARED app$([ "$SPARED" -gt 1 ] && echo s) you reopen)"; fi
+      killbg "$kp"; [ "$SPARED" -gt 0 ] && kn=" (kept $SPARED app$([ "$SPARED" -gt 1 ] && echo s) you reopen)"   # (always one by one, so the never-stop list applies)
       if [ "$cmd" = "deepclean" ]; then sync; echo 3 > /proc/sys/vm/drop_caches; echo 1 > /proc/sys/vm/compact_memory; fi
       sleep 2
       a=$(mem)
@@ -449,7 +449,8 @@ while true; do
     [ -f $ST/since ] || { date +%s > $ST/since; echo "$BOOT" > $ST/boot; }
     lim=$(num "$(val sbmods_limit_min)" 15); [ "$lim" -gt 120 ] && lim=120; [ "$lim" -lt 1 ] && lim=15
     pubuntil $(( $(<$ST/since) + lim * 60 ))
-    if [ $(( ${EPOCHREALTIME%.*} - $(<$ST/since) )) -gt $((lim * 60)) ]; then
+    el=$(( ${EPOCHREALTIME%.*} - $(<$ST/since) ))   # (negative = the clock was set back: end the limit too)
+    if [ $el -lt 0 ] || [ $el -gt $((lim * 60)) ]; then
       for k in sbmods_cpu_pct sbmods_gpu_pct sbmods_cool sbmods_cores; do sp $k 0; done
       sp sbmods_result "Speed limits ended after $lim min"
       cp=0; gp=0; cv=0; on=0; rm -f $ST/since; pubuntil 0

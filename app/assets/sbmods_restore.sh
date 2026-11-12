@@ -30,7 +30,7 @@ if [ "$1" = "all" ]; then
   case "$o" in 80|85|90|95|100) [ -f $cf ] && echo $o > $cf 2>/dev/null;; esac
   rm -f /data/local/tmp/sbmods_chg.orig
 fi
-for k in sbmods_cpu_pct sbmods_gpu_pct sbmods_cool sbmods_cores sbmods_cmd sbmods_until; do settings put global $k 0; done
+for k in sbmods_cpu_pct sbmods_gpu_pct sbmods_cool sbmods_cores sbmods_cmd sbmods_until sbmods_watch sbmods_game_hold; do settings put global $k 0; done
 rm -rf $ST /data/local/tmp/sbmods_orig /data/local/tmp/sbmods_cpu_orig
 if [ "$1" = "all" ]; then
   # every other setting the mod keeps, the one-off job notes and our own scripts (this one is deleted last; the shell has it open)
