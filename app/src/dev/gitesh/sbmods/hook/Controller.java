@@ -164,6 +164,11 @@ public final class Controller {
             String build = VERSION + ":" + ctx.getPackageManager().getPackageInfo(Config.PKG, 0).lastUpdateTime;
             if (!build.equals(prefs.getString("guard_build", ""))) prefs.edit().putInt("guard_starts", 0).putString("guard_slow", "").putString("guard_build", build).apply();
         } catch (Throwable ignored) {}
+        // the stamps are time since boot: after a reboot the old ones mean nothing (and could count as recent starts), so a new boot starts the count fresh
+        try {
+            int boot = android.provider.Settings.Global.getInt(ctx.getContentResolver(), android.provider.Settings.Global.BOOT_COUNT, -1);
+            if (boot != prefs.getInt("guard_boot", -2)) prefs.edit().putInt("guard_starts", 0).putString("guard_slow", "").putLong("guard_last", 0).putInt("guard_boot", boot).apply();
+        } catch (Throwable ignored) {}
 
         int starts = prefs.getInt("guard_starts", 0);
         long lastStart = prefs.getLong("guard_last", 0);
