@@ -57,7 +57,7 @@ public final class Controller {
     private static final long GUARD_STABLE_MS = 90_000;
     private static final long GUARD_FORGET_MS = 10 * 60_000;   // a tripped guard re-arms itself after this long without a restart
     private static final long ERROR_WINDOW_MS = 60_000;         // MAX_ERRORS only count when they come in a burst
-    private static final String VERSION = "3.15";
+    private static final String VERSION = "3.16";
 
     private static Controller sInstance;
 
@@ -167,7 +167,7 @@ public final class Controller {
 
         int starts = prefs.getInt("guard_starts", 0);
         long lastStart = prefs.getLong("guard_last", 0);
-        long nowMs = System.currentTimeMillis();
+        long nowMs = SystemClock.elapsedRealtime();   // not wall clock: a network time fix must not reset the count. Restarts at 0 on reboot, and a larger stored value (reboot, or an old wall-clock one) is forgotten below
         // Self-healing: the guard only protects against a crash LOOP. If the last start was a while ago, the loop is over: forget it.
         if (starts > 0 && (nowMs - lastStart > GUARD_FORGET_MS || nowMs < lastStart)) starts = 0;
         if (starts >= GUARD_LIMIT) {
@@ -300,6 +300,9 @@ public final class Controller {
             try { clock.removeTextChangedListener(clockWatcher); } catch (Throwable ignored) {}
         }
         main.removeCallbacks(clockTick);
+        if (pendingBackTap != null) main.removeCallbacks(pendingBackTap);   // must not fire on a stale view
+        pendingBackTap = null;
+        cancelStack();
         batteryTaps.unbind();
         clockTaps.unbind();
         labelTaps.unbind();
@@ -389,6 +392,7 @@ public final class Controller {
     private void syncWithClock() {
         TextView clock = clockRef.get();
         if (clock == null || label == null) return;
+        if (tickIdle && clock.isShown()) { tickIdle = false; restartClockTick(); }   // bar is drawing again: back to the 1 s tick (flag cleared first, so no loop)
         if (followVisibleClock(clock)) return;
         if (!(clock.getParent() instanceof LinearLayout)) {
             if (label.getVisibility() != View.GONE) label.setVisibility(View.GONE);
@@ -452,7 +456,7 @@ public final class Controller {
                         stackPress = () -> {
                             stackPress = null;
                             touchStack = false;
-                            backChip.peek(lb);
+                            try { backChip.peek(lb); } catch (Throwable t) { fail("stack peek", t); }
                             // The live activity must not also "click" when the finger lifts: cancel its touch.
                             try {
                                 View r0 = statusRoot;
@@ -550,7 +554,7 @@ public final class Controller {
                     // while it is swapped in: one tap goes back, a double-tap returns to the live activity
                     if (pendingBackTap != null) { main.removeCallbacks(pendingBackTap); pendingBackTap = null; backChip.endPeek(); }
                     else {
-                        pendingBackTap = () -> { pendingBackTap = null; backChip.switchBack(v); backChip.endPeek(); };
+                        pendingBackTap = () -> { pendingBackTap = null; try { backChip.switchBack(v); backChip.endPeek(); } catch (Throwable th) { fail("back tap", th); } };
                         main.postDelayed(pendingBackTap, android.view.ViewConfiguration.getDoubleTapTimeout());
                     }
                 } else backChip.switchBack(v);
@@ -810,14 +814,19 @@ public final class Controller {
 
     private static String nz(String s) { return s == null ? "" : s; }
 
+    private boolean tickIdle;   // seconds clock is waiting a full minute because the bar is hidden
+
     private final Runnable clockTick = new Runnable() {
         @Override public void run() {
             try {
-                refreshClock();
-                if (disabled || cfg.clockMode == Config.CLOCK_STOCK || clockRef.get() == null) return;
+                TextView ck = clockRef.get();
+                boolean shown = ck != null && ck.isShown();
+                tickIdle = !shown && ClockFormat.needsSeconds(cfg);
+                if (shown || !ClockFormat.needsSeconds(cfg)) refreshClock();   // hidden bar: no 1 s refresh
+                if (disabled || cfg.clockMode == Config.CLOCK_STOCK || ck == null) return;
                 if (!screenOn) return; // restarted on screen-on
                 long now = System.currentTimeMillis();
-                long delay = ClockFormat.needsSeconds(cfg) ? 1000 - (now % 1000) : 60_000 - (now % 60_000);
+                long delay = ClockFormat.needsSeconds(cfg) && shown ? 1000 - (now % 1000) : 60_000 - (now % 60_000);
                 main.postDelayed(this, delay + 15);
             } catch (Throwable t) { fail("clock-tick", t); }
         }
@@ -876,7 +885,7 @@ public final class Controller {
     }
 
     private boolean shouldPoll() {
-        return !disabled && clockRef.get() != null && (screenOn || !cfg.pauseScreenOff);
+        return !disabled && clockRef.get() != null && screenOn;   // never poll with the screen off
     }
 
     private void startPolling() {
@@ -983,6 +992,7 @@ public final class Controller {
                 if (Config.ACTION_APPLY.equals(a)) {
                     Config n = Config.fromBundle(i.getExtras());
                     cfg = n;
+                    if (guardTripped || disabled) { n.save(prefs); return; }   // mod is off: only remember the settings, run no feature code
                     Smart.apply(ctx, prefs, n.smartOn);
                     NotifExpand.apply(n);
                     n.save(prefs);
@@ -1003,10 +1013,12 @@ public final class Controller {
                     for (int k = n; k >= 0; k--) {
                         final int at = k;
                         main.postDelayed(() -> {
-                            String m = at > 0 ? (t != null ? t + " in " : "") + at + "\u2026" : t;
-                            if (lastToast != null) lastToast.cancel();   // one at a time, so each number shows on its own second
-                            lastToast = m == null ? null : android.widget.Toast.makeText(ctx, m, android.widget.Toast.LENGTH_SHORT);
-                            if (lastToast != null) lastToast.show();
+                            try {
+                                String m = at > 0 ? (t != null ? t + " in " : "") + at + "\u2026" : t;
+                                if (lastToast != null) lastToast.cancel();   // one at a time, so each number shows on its own second
+                                lastToast = m == null ? null : android.widget.Toast.makeText(ctx, m, android.widget.Toast.LENGTH_SHORT);
+                                if (lastToast != null) lastToast.show();
+                            } catch (Throwable th) { fail("toast", th); }
                         }, (n - k) * 1000L);
                     }
                     return;
