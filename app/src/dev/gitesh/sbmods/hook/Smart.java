@@ -340,6 +340,7 @@ final class Smart {
         prefs.edit().putString(K_GAME, p + "|" + prev + "||").commit();   // saved before anything changes
         gameFull = p; gamePrev = prev;
         Global.gset(ctx, "sbmods_cpu_pct", "0"); Global.gset(ctx, "sbmods_gpu_pct", "0");   // only the CPU/GPU caps; heat protection and cores stay
+        Global.gput(ctx, "sbmods_game_hold", "1");   // marker: "Undo everything" / restore zero it, then nothing is given back
         toast(nameOf(p) + ": full speed");
     }
 
@@ -349,6 +350,9 @@ final class Smart {
         gameFull = null; gamePrev = null;
         try {
             prefs.edit().remove(K_GAME).apply();
+            boolean hold = Global.gint(ctx, "sbmods_game_hold", 0) == 1;
+            if (hold) Global.gset(ctx, "sbmods_game_hold", "0");   // only written when it is 1 (a deleted key is not re-created)
+            if (!hold) return;   // the owner undid everything while the game ran: give nothing back
             String[] f = prev == null ? new String[0] : prev.split("\\|", -1);
             if (f.length != 2 || Global.gint(ctx, "sbmods_cpu_pct", 0) != 0 || Global.gint(ctx, "sbmods_gpu_pct", 0) != 0) return;   // the owner changed them meanwhile: leave them
             Global.gset(ctx, "sbmods_cpu_pct", f[0]); Global.gset(ctx, "sbmods_gpu_pct", f[1]);

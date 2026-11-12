@@ -239,7 +239,8 @@ final class TapActions {
 
     private static void toggleTorch(Context ctx) throws Exception {
         CameraManager cm = ctx.getSystemService(CameraManager.class);
-        if (torchId == null) {
+        boolean first = torchId == null;
+        if (first) {
             for (String id : cm.getCameraIdList()) {
                 CameraCharacteristics ch = cm.getCameraCharacteristics(id);
                 Boolean flash = ch.get(CameraCharacteristics.FLASH_INFO_AVAILABLE);
@@ -255,6 +256,9 @@ final class TapActions {
                     if (id.equals(torchId)) torchOn = enabled;
                 }
             }, MAIN);
+            // first call: the callback's initial state lands on MAIN first, so toggle from a post (torchOn is right by then)
+            MAIN.post(() -> { try { cm.setTorchMode(torchId, !torchOn); } catch (Throwable t) { Log.w("torch: " + t); } });
+            return;
         }
         cm.setTorchMode(torchId, !torchOn);
     }

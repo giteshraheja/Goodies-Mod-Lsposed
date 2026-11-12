@@ -246,7 +246,7 @@ final class BackChip {
 
     /** Same check the old poll made: refresh only when the live state or the capsule state changed. */
     private void recheckLive() {
-        if (chip == null) return;
+        if (chip == null || screenOff) return;   // nothing runs with the screen off; SCREEN_ON catches up once
         Config cfg = owner.config();
         if (!cfg.backEnabled || cfg.backLive == 0) { lastLive = false; return; }
         boolean cap = capsuleShown(liveBox());
@@ -491,6 +491,7 @@ final class BackChip {
                 @Override public void onReceive(Context c, Intent i) {
                     screenOff = Intent.ACTION_SCREEN_OFF.equals(i.getAction());
                     if (screenOff) main.removeCallbacks(livePoll);   // fallback poll sleeps with the screen
+                    else if (Intent.ACTION_SCREEN_ON.equals(i.getAction())) main.post(() -> recheckLive());   // catch up once
                     shownKey = null; update();
                 }
             }, f, null, main, Context.RECEIVER_NOT_EXPORTED);
@@ -581,7 +582,7 @@ final class BackChip {
         final TextView c = chip;
         if (c == null || faded || c.getVisibility() != View.VISIBLE) return;
         try {
-            if (fadeAnim != null) fadeAnim.cancel();
+            if (fadeAnim != null) { android.animation.ValueAnimator old = fadeAnim; fadeAnim = null; old.cancel(); }
             final int from = pill == null ? 0 : tintForFade();
             fadeAnim = android.animation.ValueAnimator.ofFloat(1f, 0f);
             fadeAnim.setDuration(900);
@@ -591,6 +592,7 @@ final class BackChip {
             });
             fadeAnim.addListener(new android.animation.AnimatorListenerAdapter() {
                 @Override public void onAnimationEnd(android.animation.Animator an) {
+                    if (an != fadeAnim) return;   // cancelled / replaced: do nothing
                     if (chip == c) { setFaded(c, true); update(); }
                 }
             });
@@ -601,7 +603,7 @@ final class BackChip {
     private int tintForFade() { return (owner.config().backStyle == 1 || mergeWanted || compactWanted) ? tint : (pillFor & 0x00FFFFFF) | 0x33000000; }
 
     private void setFaded(TextView c, boolean f) {
-        if (fadeAnim != null) { fadeAnim.cancel(); fadeAnim = null; }
+        if (fadeAnim != null) { android.animation.ValueAnimator old = fadeAnim; fadeAnim = null; old.cancel(); }
         if (faded == f) return;
         faded = f;
         pillFor = 0;

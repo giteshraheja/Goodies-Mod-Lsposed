@@ -146,11 +146,11 @@ final class RecentsChip {
         @Override public void run() {
             try {
                 Activity a = owner;
-                if (a == null || topRow == null || !topRow.isAttachedToWindow()) return;
+                if (a == null || topRow == null || !topRow.isAttachedToWindow()) { if (a != null) Global.gset(a, "sbmods_watch", "0"); return; }
                 boolean shown = topRow.isShown();
                 // CPU load only while Overview is really on screen (not the home screen); 2 = the Performance panel is open (per-core load too)
                 Global.gset(a, "sbmods_watch", !shown ? "0" : PerfPanel.showing() ? "2" : "1");
-                if (shown) { align(a); refresh(a); }
+                if (shown) { try { align(a); refresh(a); } catch (Throwable t) { Log.w("recents chip tick: " + t); } }
                 main.postDelayed(this, 2500);
             } catch (Throwable t) { Log.w("recents chip tick: " + t); }
         }
@@ -435,7 +435,7 @@ final class RecentsChip {
         if (on == 0) PanelCards.learn(a, effPct(a, "cpu", Global.gint(a, "sbmods_cpu_pct", 0), false), effPct(a, "gpu", Global.gint(a, "sbmods_gpu_pct", 0), false));   // turned ON by hand: remember it for the app used last
         PerfPanel.pChangedAt = android.os.SystemClock.uptimeMillis();
         Toast.makeText(a, which.toUpperCase(java.util.Locale.ROOT) + (on > 0 ? ": full speed" : ": limited to " + level + "%"), Toast.LENGTH_SHORT).show();
-        main.postDelayed(() -> refresh(a), 1500);
+        try { main.postDelayed(() -> { try { refresh(a); } catch (Throwable t) { Log.w("recents chip refresh: " + t); } }, 1500); } catch (Throwable t) { Log.w("recents chip: " + t); }
     }
 
 
