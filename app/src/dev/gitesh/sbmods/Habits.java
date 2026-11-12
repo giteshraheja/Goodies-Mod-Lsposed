@@ -164,7 +164,7 @@ public final class Habits {
      * (at most one per clean). From KEEP_AT count on the app is "kept": the clean-up spares it.
      */
     public static final int MAX_KEEP = 40, KEEP_AT = 2;
-    public static final long CLEAN_WINDOW_S = 60;
+    public static final long CLEAN_WINDOW_S = 60, KEEP_DAYS = 60;
 
     public static final class K {
         public final String pkg; public final int count; public final long day;
@@ -198,6 +198,7 @@ public final class Habits {
         int c = 1;
         for (int i = l.size() - 1; i >= 0; i--) if (l.get(i).pkg.equals(pkg)) { c = l.get(i).count + 1; l.remove(i); }
         l.add(new K(pkg, c, day));
+        for (int i = l.size() - 1; i >= 0; i--) if (day - l.get(i).day > KEEP_DAYS) l.remove(i);   // not reopened after a clean-up for 60 days: forgotten
         while (l.size() > MAX_KEEP) l.remove(0);
         return joinK(l);
     }

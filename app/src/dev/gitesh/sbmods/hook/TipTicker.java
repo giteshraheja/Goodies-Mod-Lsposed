@@ -50,7 +50,7 @@ final class TipTicker {
             "New: long-press CPU or GPU on Overview to turn your quick limit on or off",
             "New: tap RAM on Overview to close background apps, Swap for a deep clean",
             "New: drag network speed and the date anywhere in StatusBar Mods \u203a Layout",
-            "New: the Performance panel has three pages \u2013 Performance, Battery and Memory",
+            "New: the Performance panel has four pages \u2013 All, Speed, Battery and Memory",
             "New: one-tap modes in the Performance panel \u2013 Full, Balanced, Cool or Saver",
             "New: the Battery page shows time left, screen-on time and standby drain",
             "New: the Memory page shows which apps work hardest, with a Stop button",
