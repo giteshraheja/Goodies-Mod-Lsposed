@@ -188,6 +188,13 @@ public final class Config {
             plan.side[i] = clamp(plan.side[i], 0, 1);
             if (plan.mode[i] == ZoneLayout.LINK && plan.to[i] == i) plan.mode[i] = ZoneLayout.STOCK;
         }
+        // a loop of links (A on B, B on A...) has no position: break it
+        for (int i = 0; i < ZoneLayout.ELEMENTS; i++) {
+            if (plan.mode[i] != ZoneLayout.LINK) continue;
+            int a = plan.to[i], n = 0;
+            while (n++ < ZoneLayout.ELEMENTS && a != i && plan.mode[a] == ZoneLayout.LINK) a = plan.to[a];
+            if (a == i) plan.mode[i] = ZoneLayout.STOCK;
+        }
         edgeDp = clamp(edgeDp, 0, 24);
         edgeMode = clamp(edgeMode, 0, 2);
         itemGap = clamp(itemGap, -1, 16);

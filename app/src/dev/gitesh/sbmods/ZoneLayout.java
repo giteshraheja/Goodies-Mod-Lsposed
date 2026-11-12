@@ -64,6 +64,25 @@ public final class ZoneLayout {
         return x;
     }
 
+    /**
+     * Stuck to an item that isn't showing: take that item's place in the chain (stick to whatever IT was stuck to, or its edge spot).
+     * Only an item whose missing neighbour sat in Samsung's place goes back there; items stuck to the back button are left alone.
+     * plan is changed; orig is the plan as saved; shown[t] says whether item t is showing. Used by the status bar and the preview alike.
+     */
+    public static void resolveHidden(Plan plan, Plan orig, boolean[] shown, boolean dateSeparate) {
+        for (int i = 0; i < ELEMENTS; i++) {
+            for (int hop = 0; hop < ELEMENTS && plan.mode[i] == LINK; hop++) {
+                int t = plan.to[i];
+                if (t == BACK) break;
+                if (t >= 0 && t < ELEMENTS && shown[t]) break;   // the neighbour is there
+                if (t < 0 || t >= ELEMENTS) { plan.mode[i] = STOCK; break; }
+                if (orig.mode[t] == LINK && orig.to[t] != i && !(t == DATE && !dateSeparate)) { plan.to[i] = orig.to[t]; plan.side[i] = orig.side[t]; }
+                else if (orig.mode[t] == FREE && !(t == DATE && !dateSeparate)) { plan.mode[i] = FREE; plan.right[i] = orig.right[t]; plan.off[i] = orig.off[t]; }
+                else plan.mode[i] = STOCK;
+            }
+        }
+    }
+
     private static void resolve(Plan pl, float[] w, float screenW, float holeL, float holeR, float holeGap, float edgeL, float edgeR, float gap,
                                 int i, float[] x, boolean[] done, boolean[] busy, float[] nat) {
         if (done[i]) return;

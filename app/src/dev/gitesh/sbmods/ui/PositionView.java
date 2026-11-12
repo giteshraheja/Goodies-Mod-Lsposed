@@ -119,11 +119,10 @@ final class PositionView extends View {
     private Plan live() {
         Plan pl = (cand != null ? cand : cfg.plan).copy();
         if (!cfg.dateSeparate) pl.mode[ZoneLayout.DATE] = ZoneLayout.STOCK;
-        // same as the status bar: stuck to an item that isn't showing -> back in Samsung's place (the back button's spot is kept)
-        for (int i = 0; i < ZoneLayout.ELEMENTS; i++) {
-            int t = pl.to[i];
-            if (pl.mode[i] == ZoneLayout.LINK && t != ZoneLayout.BACK && t >= 0 && t < ZoneLayout.ELEMENTS && width(t) <= 0) pl.mode[i] = ZoneLayout.STOCK;
-        }
+        // same rule as the status bar: stuck to an item that isn't showing -> takes its place in the chain
+        boolean[] shown = new boolean[ZoneLayout.ELEMENTS];
+        for (int t = 0; t < shown.length; t++) shown[t] = width(t) > 0;
+        ZoneLayout.resolveHidden(pl, cand != null ? cand : cfg.plan, shown, cfg.dateSeparate);
         return pl;
     }
 
@@ -272,8 +271,10 @@ final class PositionView extends View {
         for (int j = 0; j < ZoneLayout.ELEMENTS; j++) {
             if (j == i || w[j] <= 0 || Float.isNaN(x[j]) || dependsOn(after, j, i)) continue;
             float ll = x[j] - g - wi, lr = x[j] + w[j] + g;
-            if (ll >= 0 && ll + wi <= screenW && (d = Math.abs(left - ll)) < best) { best = d; kind = 4; arg = j * 2; guide = x[j] - g / 2; }
-            if (lr >= 0 && lr + wi <= screenW && (d = Math.abs(left - lr)) < best) { best = d; kind = 4; arg = j * 2 + 1; guide = x[j] + w[j] + g / 2; }
+            // j's own side facing the item it is stuck to is where that item sits: the real slot there is that item's own (the back button's too)
+            boolean skipL = after.mode[j] == ZoneLayout.LINK && after.side[j] == 1, skipR = after.mode[j] == ZoneLayout.LINK && after.side[j] == 0;
+            if (!skipL && ll >= 0 && ll + wi <= screenW && (d = Math.abs(left - ll)) < best) { best = d; kind = 4; arg = j * 2; guide = x[j] - g / 2; }
+            if (!skipR && lr >= 0 && lr + wi <= screenW && (d = Math.abs(left - lr)) < best) { best = d; kind = 4; arg = j * 2 + 1; guide = x[j] + w[j] + g / 2; }
         }
         snapGuide = guide;
         if (kind == 4) link(after, i, arg / 2, arg % 2);
@@ -310,7 +311,11 @@ final class PositionView extends View {
         else if (choice >= 1 && choice <= 4) edgePlace(pl, i, choice == 1 ? 0 : choice == 2 ? 2 : choice == 3 ? 3 : 1);
         else if (choice >= 10) {
             int j = (choice - 10) / 2, side = (choice - 10) % 2;
-            if (j != i && !dependsOn(pl, j, i)) link(pl, i, j, side);
+            if (j != i && !dependsOn(pl, j, i)) {
+                // the slot on j's side that faces what j is stuck to is where that item sits: insert there instead (between the two)
+                if (pl.mode[j] == ZoneLayout.LINK && pl.side[j] == 1 - side && pl.to[j] != i && !dependsOn(pl, pl.to[j], i)) { side = pl.side[j]; j = pl.to[j]; }
+                link(pl, i, j, side);
+            }
         }
         cfg.plan = pl;
         invalidate();

@@ -30,6 +30,8 @@ final class Mover {
     private final WeakHashMap<ViewGroup, Boolean> clipOrig = new WeakHashMap<>();
     private final int[] loc = new int[2], rloc = new int[2];
     private int endId = -1, startId = -1;
+    private boolean zonesDirty;   // we collapsed items / clipped icons and have not released yet (origMargins is shared with the net merge, so not usable here)
+    private final boolean[] shownBuf = new boolean[ZoneLayout.ELEMENTS];
 
     /** views: clock, temperature label, battery, back button, date (any may be null), in ZoneLayout element order. */
     void update(Config c, View root, View... viewsIn) {
@@ -45,29 +47,20 @@ final class Mover {
         ZoneLayout.Plan plan = c.plan.copy();
         if ((c.backLive == 3 || c.backLive == 4) && BackChip.stackLive) plan.mode[ZoneLayout.BACK] = ZoneLayout.STOCK;   // Stack: shares the live activity's spot
         if (!c.dateSeparate) plan.mode[ZoneLayout.DATE] = ZoneLayout.STOCK;
-        // stuck to an item that isn't showing: take that item's place in the chain (stick to whatever IT was stuck to, or its edge spot).
-        // Going back to Samsung's own place instead put it on top of the items that are still placed (the temperature over the battery
-        // whenever the date was not showing). Only an item whose missing neighbour sat in Samsung's place goes back there.
-        // (except the back button: without it, things stuck to it take its spot, right after the live activity)
+        // stuck to an item that isn't showing: take that item's place in the chain (see ZoneLayout.resolveHidden; same rule as the preview)
         for (int i = 0; i < ZoneLayout.ELEMENTS; i++) {
-            for (int hop = 0; hop < ZoneLayout.ELEMENTS && plan.mode[i] == ZoneLayout.LINK; hop++) {
-                int t = plan.to[i];
-                if (t == ZoneLayout.BACK) break;
-                View tv = t >= 0 && t < ZoneLayout.ELEMENTS ? views[t] : null;
-                if (tv != null && tv.isShown() && tv.getWidth() > 0 && tv.getAlpha() >= 0.05f) break;   // the neighbour is there
-                if (t < 0 || t >= ZoneLayout.ELEMENTS) { plan.mode[i] = ZoneLayout.STOCK; break; }
-                if (c.plan.mode[t] == ZoneLayout.LINK && c.plan.to[t] != i && !(t == ZoneLayout.DATE && !c.dateSeparate)) { plan.to[i] = c.plan.to[t]; plan.side[i] = c.plan.side[t]; }
-                else if (c.plan.mode[t] == ZoneLayout.FREE && !(t == ZoneLayout.DATE && !c.dateSeparate)) { plan.mode[i] = ZoneLayout.FREE; plan.right[i] = c.plan.right[t]; plan.off[i] = c.plan.off[t]; }
-                else plan.mode[i] = ZoneLayout.STOCK;
-            }
+            View tv = views[i];
+            shownBuf[i] = tv != null && tv.isShown() && tv.getWidth() > 0 && tv.getAlpha() >= 0.05f;
         }
+        ZoneLayout.resolveHidden(plan, c.plan, shownBuf, c.dateSeparate);
         rightReserve = 0;
         netPlaced = plan.mode[ZoneLayout.NETSPEED] != ZoneLayout.STOCK;
         java.util.Arrays.fill(movedViews, null);
         boolean any = plan.any();
-        if (!any && applied.isEmpty()) return;
+        if (!any && applied.isEmpty() && !zonesDirty) return;   // nothing outstanding to release
         if (!any || root == null) { BackChip.extraPad = 0; releaseZones(); return; }
 
+        zonesDirty = true;
         if (endId == -1) {
             endId = id(root, "status_bar_end_side_content");
             startId = id(root, "status_bar_start_side_except_heads_up");
@@ -168,6 +161,8 @@ final class Mover {
             }
         }
         float[] x = ZoneLayout.solve(px, w, screenW, holeL, holeR, 8 * density, leftEdge, rightEdge, gapPx, nat);
+        for (int i = 0; i < ZoneLayout.ELEMENTS; i++)   // no position (a loop of links): treat as not moved, give its width back
+            if (mv[i] && Float.isNaN(x[i])) { mv[i] = false; if (views[i] != null) uncollapse(views[i]); }
         // (the blank inside the speed's box is taken off only when it is positioned, further down: until then x is where its drawn text starts,
         //  so the room Samsung's icons give up is measured from the text - measuring from the box left the first icon on top of the numbers)
         float safe = 0;   // keep inside the screen only: the edge distance you chose is honoured exactly (burn-in protection may still nudge the bar up to 3 px)
@@ -569,6 +564,7 @@ final class Mover {
 
     /** Undo item moves (translations, freed space) but leave the edge padding alone. */
     private void releaseZones() {
+        zonesDirty = false;
         if (mergeHide) { mergeHide = false; View mb = mobileBox.get(); if (mb != null) { relayout(mb); mb.setAlpha(1f); } mergeApplied = false; }
         for (java.lang.ref.WeakReference<View> r : clipped) { View cv = r.get(); if (cv != null && cv.getClipBounds() != null) cv.setClipBounds(null); }
         clipped.clear();
