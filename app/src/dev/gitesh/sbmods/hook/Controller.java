@@ -992,7 +992,7 @@ public final class Controller {
                 if (Config.ACTION_APPLY.equals(a)) {
                     Config n = Config.fromBundle(i.getExtras());
                     cfg = n;
-                    if (guardTripped || disabled) { n.save(prefs); return; }   // mod is off: only remember the settings, run no feature code
+                    if (guardTripped || disabled) { n.save(prefs); sendStatus(); return; }   // mod is off: only remember the settings, run no feature code
                     Smart.apply(ctx, prefs, n.smartOn);
                     NotifExpand.apply(n);
                     n.save(prefs);
