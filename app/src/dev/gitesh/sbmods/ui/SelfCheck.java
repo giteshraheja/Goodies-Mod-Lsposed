@@ -67,7 +67,7 @@ final class SelfCheck {
             }
         }
         if (!f.rootOk) {
-            out.add(new Finding(PROBLEM, "This app was not given root access, so the helper can't start.", START_HELPER, "Try again"));
+            out.add(new Finding(f.atBoot ? PROBLEM : NOTICE, "This app was not given root access, so the helper can't start.", START_HELPER, "Try again"));
             return out;   // every rule below needs root to check or to fix
         }
         boolean needed = f.atBoot || f.smartOn;
@@ -93,7 +93,8 @@ final class SelfCheck {
             }
         }
         if (!f.helperRunning && needed && !bootMissed)
-            out.add(new Finding(PROBLEM, "The helper is not running.", START_HELPER, "Start it"));
+            out.add(f.atBoot ? new Finding(PROBLEM, "The helper is not running.", START_HELPER, "Start it")
+                    : new Finding(NOTICE, "The helper is off, so Smart suggestions that need it are paused.", START_HELPER, "Start it"));
         if (bootMissed) out.add(new Finding(PROBLEM, bootText, START_HELPER, "Start the helper"));
         if (f.helperOutdatedFailed)
             out.add(new Finding(NOTICE, "The helper is from an older version of this app and could not be restarted.", START_HELPER, "Restart it"));

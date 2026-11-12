@@ -556,6 +556,7 @@ public final class SettingsActivity extends Activity {
     private String hiddenIcons;          // cached list of hidden icons; null = not read yet
     private boolean hiddenIconsNoRoot;   // reading failed: root unavailable
     private boolean hiddenIconsLoading;
+    private boolean hiddenIconsWriting;  // a change is being written; further toggles are ignored until it ends
 
     private void loadHiddenIcons() {
         hiddenIconsLoading = true;
@@ -607,10 +608,14 @@ public final class SettingsActivity extends Activity {
                     boolean shown = true;
                     for (String sl : slots) if (have.contains(sl)) shown = false;
                     switchRow(ICONS[i][0], null, shown, v -> {
-                        final String next = mergeHidden(hiddenIcons, slots, !v);
+                        if (hiddenIconsWriting) { refresh(); return; }   // one change at a time; redraw shows the real state
+                        hiddenIconsWriting = true;
                         new Thread(() -> {
-                            boolean ok = Helper.putSecure("icon_blacklist", next);
+                            String fresh = Helper.readSecure("icon_blacklist");   // merge into the current value, other tools may have changed it
+                            final String next = fresh == null ? null : mergeHidden(fresh, slots, !v);
+                            boolean ok = next != null && Helper.putSecure("icon_blacklist", next);
                             runOnUiThread(() -> {
+                                hiddenIconsWriting = false;
                                 if (ok) hiddenIcons = next;
                                 else Toast.makeText(this, "Couldn't change that – is root allowed?", Toast.LENGTH_LONG).show();
                                 refresh();
@@ -856,11 +861,6 @@ public final class SettingsActivity extends Activity {
         final int[] secs = {1, 2, 5, 10, 15, 30, 60};
         choiceRow("Refresh every", new String[]{"1 second", "2 seconds", "5 seconds", "10 seconds", "15 seconds", "30 seconds", "1 minute"},
                 idx(secs, cfg.intervalSec), v -> { cfg.intervalSec = secs[v]; apply(); refresh(); });
-        if (advanced("tmpsave")) {
-            divider();
-            switchRow("Pause while the screen is off", "Saves a little battery", cfg.pauseScreenOff,
-                    v -> { cfg.pauseScreenOff = v; apply(); refresh(); });
-        }
         endGroup(null);
     }
 
@@ -1482,7 +1482,7 @@ public final class SettingsActivity extends Activity {
         for (String k : prefs.getAll().keySet()) if (k.startsWith("adv_") || k.startsWith("open_")) ed.remove(k);
         ed.apply();
         buildPreviewArea();
-        putGl(PanelLayout.SETTING, "", PanelLayout.TILES, "", PanelLayout.ALLFILL, "0", PanelLayout.PINS, "");
+        putGl(PanelLayout.SETTING, "", PanelLayout.TILES, "", PanelLayout.ALLFILL, "0", PanelLayout.PINS, "", "sbmods_smart", cfg.smartOn ? "1" : "0");
     }
 
     private String gs(String key) {
@@ -1544,11 +1544,11 @@ public final class SettingsActivity extends Activity {
                 new Ui.Dlg(this, pal)
                         .title("Undo everything?")
                         .message("This stops the helper and puts back every speed limit, the battery charge limit you had before, the graphics setting, and every setting and file the mod made. "
-                                + "Needs root. Afterwards, restart the status bar. You can't undo this.")
+                                + "The list of hidden status icons is not changed. Needs root. Afterwards, restart the status bar. You can't undo this.")
                         .button(0, "Cancel", null)
                         .button(2, "Undo everything", () -> new Thread(() -> {
                             String r = Helper.undoEverything(this);
-                            runOnUiThread(() -> Toast.makeText(this, r == null ? "That did not work: root was not available" : r.isEmpty() ? "Done" : r, Toast.LENGTH_LONG).show());
+                            runOnUiThread(() -> { if (r != null) { prefs.edit().putBoolean("helperAtBoot", false).apply(); Helper.setAtBoot(this, false); helperRunning = false; scFacts = null; scAt = 0; findings = new java.util.ArrayList<>(); refresh(); selfCheck(true); } Toast.makeText(this, r == null ? "That did not work: root was not available" : r.isEmpty() ? "Done" : r, Toast.LENGTH_LONG).show(); });
                         }).start()).show());
         endGroup(modVersion.isEmpty() ? "StatusBar Mods for the Galaxy S23 Ultra"
                 : "StatusBar Mods  v" + modVersion + "  ·  for the Galaxy S23 Ultra");
