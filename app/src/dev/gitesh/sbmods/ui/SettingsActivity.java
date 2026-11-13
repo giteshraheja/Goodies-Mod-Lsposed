@@ -1359,8 +1359,8 @@ public final class SettingsActivity extends Activity {
             segmentedBlock(PanelLayout.TITLES[PanelLayout.indexOf(id)], new String[]{"Wide", "Small (icon only)"}, PanelLayout.small(tiles, id) ? 1 : 0,
                     v -> putGl(PanelLayout.TILES, PanelLayout.withSmall(tiles, id, v == 1)));
         }
-        endGroup("Switch cards show as tiles in the panel. Wide shows an icon, the name and the state, two to a row; Small shows only the icon, four to a row. "
-                + "A tile is solid when it is on and frosted glass when it is off. Tap a tile to switch it; tap the \u201ci\u201d on a wide tile, or press and hold a small one, for help.");
+        endGroup("Switch cards show as tiles in the panel. Wide shows an icon, the name and the state, two to a row. Small shows only the icon, four to a row. "
+                + "A tile is solid when it is on and frosted glass when it is off. Tap a tile to switch it. Press and hold a small tile for help.");
 
         group("allpage", "The All page", null, true);
         cardResetAction(() -> putGl(PanelLayout.ALLFILL, "0"));
@@ -1443,9 +1443,9 @@ public final class SettingsActivity extends Activity {
             for (int i = 0; i < temps.length; i++) if (temps[i] == gl("sbmods_cool_at", 360)) ti = i;
             choiceRow("Cool-down stops at", new String[]{"34°C", "35°C", "36°C", "37°C", "38°C"}, ti, i -> putGl("sbmods_cool_at", String.valueOf(temps[i])));
         }
-        endGroup("A limit is a share of the chip's real maximum, and only speeds the phone lists are used. "
-                + "Samsung lowers the maximum by itself when the phone is warm – that's the “heat limit” you may see; this app never removes it. "
-                + "The quick limit is what a long-press on the CPU / GPU chip turns on; the Performance panel (tap) lets you pick any level.");
+        endGroup("A limit is a share of the chip's real maximum. It only uses the speeds the phone lists. "
+                + "When the phone gets warm, Samsung lowers that maximum by itself. You may see this as a “heat limit”. This app never removes it. "
+                + "The quick limit is what a long-press on the CPU or GPU chip turns on. The Performance panel (tap) lets you pick any level.");
 
         group("Overview screen");
         cardResetAction(() -> putGl("sbmods_recents_chip", "1"));
