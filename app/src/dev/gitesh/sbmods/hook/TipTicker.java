@@ -37,7 +37,8 @@ final class TipTicker {
             "switch dark mode", "switch between sound, vibrate and mute", "play or pause music", "lock the screen",
             "open quick settings", "open your notifications", "open the camera", "open the timer",
             "open the calculator", "open the internet panel", "open %s", "open Samsung Finder", "close background apps",
-            "take a screenshot", "make the screen brighter", "make the screen darker"};
+            "take a screenshot", "make the screen brighter", "make the screen darker",
+            "open Modes and Routines", "open Samsung Notes", "open Gallery"};
     private String lastTip;
 
     /**

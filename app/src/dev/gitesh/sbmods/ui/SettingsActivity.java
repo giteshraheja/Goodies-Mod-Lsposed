@@ -87,7 +87,7 @@ public final class SettingsActivity extends Activity {
                     Config.ACT_SCREENSHOT, Config.ACT_BRIGHT_UP, Config.ACT_BRIGHT_DOWN}},
             {"Open", new int[]{Config.ACT_FINDER, Config.ACT_BATTERY_USAGE, Config.ACT_INTERNET, Config.ACT_CAMERA,
                     Config.ACT_ALARMS, Config.ACT_TIMER, Config.ACT_CALENDAR, Config.ACT_CALCULATOR,
-                    Config.ACT_SETTINGS, Config.ACT_APP}},
+                    Config.ACT_SETTINGS, Config.ACT_APP, Config.ACT_ROUTINES, Config.ACT_NOTES, Config.ACT_GALLERY}},
     };
     static {
         ACT_LABEL[Config.ACT_NONE] = "Do nothing";
@@ -117,6 +117,9 @@ public final class SettingsActivity extends Activity {
         ACT_LABEL[Config.ACT_SCREENSHOT] = "Screenshot";
         ACT_LABEL[Config.ACT_BRIGHT_UP] = "Brightness up";
         ACT_LABEL[Config.ACT_BRIGHT_DOWN] = "Brightness down";
+        ACT_LABEL[Config.ACT_ROUTINES] = "Modes and Routines";
+        ACT_LABEL[Config.ACT_NOTES] = "Samsung Notes";
+        ACT_LABEL[Config.ACT_GALLERY] = "Gallery";
     }
     private static final String[] ITEM_TITLES = {"Battery icon", "Clock", "Temperature", "Front camera hole", "Wi-Fi icon", "Mobile signal icon"};
     private static final String[] GESTURE_TITLES = {"Tap", "Double-tap", "Long-press"};

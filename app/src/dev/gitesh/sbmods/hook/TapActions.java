@@ -174,6 +174,13 @@ final class TapActions {
         }, 800);
     }
 
+    /** Opens an installed app by package name; says so when it isn't there. */
+    private static void openPackage(Context ctx, String pkg) {
+        Intent i = ctx.getPackageManager().getLaunchIntentForPackage(pkg);
+        if (i == null) { toast(ctx, "That app isn’t installed"); return; }
+        open(ctx, i);
+    }
+
     /** One step (16 of 255) of manual brightness; dir = +1 or -1. */
     private static void brightness(Context ctx, int dir) {
         android.content.ContentResolver cr = ctx.getContentResolver();
@@ -220,6 +227,9 @@ final class TapActions {
                 case Config.ACT_SCREENSHOT: screenshot(ctx); break;
                 case Config.ACT_BRIGHT_UP: brightness(ctx, 1); break;
                 case Config.ACT_BRIGHT_DOWN: brightness(ctx, -1); break;
+                case Config.ACT_ROUTINES: openPackage(ctx, "com.samsung.android.app.routines"); break;
+                case Config.ACT_NOTES: openPackage(ctx, "com.samsung.android.app.notes"); break;
+                case Config.ACT_GALLERY: openPackage(ctx, "com.sec.android.gallery3d"); break;
                 default: break;
             }
             Log.i("performed action " + action);
