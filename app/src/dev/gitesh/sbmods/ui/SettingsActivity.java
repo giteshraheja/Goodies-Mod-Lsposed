@@ -477,7 +477,7 @@ public final class SettingsActivity extends Activity {
         divider();
         switchRow("Keep silent ones small", "Silent notifications stay closed. The lock screen and pop-ups always stay small.",
                 cfg.openSkipSilent, v -> { cfg.openSkipSilent = v; apply(); });
-        endGroup("Applies the next time the notification panel updates: open it again or wait for a new notification.");
+        endGroup("Changes apply the next time the notification panel updates. Open it again, or wait for a new notification.");
     }
 
     /** Smart suggestions card (System tab): the master switch for everything the mod notices by itself. */
@@ -584,13 +584,13 @@ public final class SettingsActivity extends Activity {
             slider("Space between items", -1, 16, cfg.itemGap, v -> v < 0 ? "Samsung's" : v + " dp",
                     v -> { cfg.itemGap = v; posView.invalidate(); }, -1);
         }
-        endGroup("Less space leaves more room for icons. “Tight” and “Custom” let the status bar reach the curved edges of your screen.");
+        endGroup("Less space leaves more room for icons. Tight and Custom let the status bar reach the curved edges of your screen.");
 
         group("notif", "Notification icons", null, true);
         cardReset((c, d) -> c.notifMax = d.notifMax);
         slider("Icons before the “•” dot", 0, 12, cfg.notifMax, v -> v == 0 ? "Samsung's (3)" : v + " icons",
                 v -> cfg.notifMax = v, 0);
-        endGroup("Samsung shows 3 app icons, then a dot for the rest. It applies after the next status bar restart.");
+        endGroup("Samsung shows 3 app icons, then a dot for the rest. This takes effect after the next status bar restart.");
 
         buildStatusIcons();
 
@@ -598,7 +598,7 @@ public final class SettingsActivity extends Activity {
         cardReset((c, d) -> c.lockMax = d.lockMax);
         slider("Apps you can keep open", 0, 12, cfg.lockMax, v -> v == 0 ? "Samsung's (3)" : v + " apps",
                 v -> cfg.lockMax = v, 0);
-        endGroup("Samsung allows 3 locked apps in the recent apps screen. Apps you keep open use memory.");
+        endGroup("Samsung allows 3 locked apps in Recents. Each app you keep open uses memory.");
 
         group("Connection icon");
         cardReset((c, d) -> c.mergeNet = d.mergeNet);
@@ -709,7 +709,7 @@ public final class SettingsActivity extends Activity {
                 }
             }
         }
-        endGroup("Hidden icons still work – only the picture in the status bar goes away. Changes show up within a few seconds.");
+        endGroup("Hidden icons still work. Only the picture in the status bar goes away. Changes show within a few seconds.");
     }
 
     private boolean elementOn(int element) {
@@ -938,7 +938,7 @@ public final class SettingsActivity extends Activity {
             divider();
             slider("Space between temperature and clock", 0, 16, cfg.gapDp, v -> v + " dp", v -> cfg.gapDp = v, 4);
         }
-        endGroup("To put the temperature somewhere else, use the Layout tab.");
+        endGroup("To move the temperature elsewhere, use the Layout tab.");
 
         group("tmpsave", "Battery saving", null, true);
         cardReset((c, d) -> { c.intervalSec = d.intervalSec; });
@@ -1024,7 +1024,7 @@ public final class SettingsActivity extends Activity {
         segmentedBlock("Fade to plain text after", new String[]{"Never", "5 s", "10 s", "30 s"},
                 cfg.backFadeSec <= 0 ? 0 : cfg.backFadeSec <= 5 ? 1 : cfg.backFadeSec <= 10 ? 2 : 3,
                 v -> { cfg.backFadeSec = new int[]{0, 5, 10, 30}[v]; apply(); });
-        endGroup("The pill melts into dim text after this long, as if it's been too long to go back. It returns in full when you switch apps.");
+        endGroup("The pill fades to plain text after this long. It comes back in full when you switch apps.");
 
         final String[] liveNames = {"Keep both side by side", "Back button as plain text", "Hide the back button",
                 "Stack (flick to swap)", "Merge (a small back tab on the live activity)"};
@@ -1032,7 +1032,7 @@ public final class SettingsActivity extends Activity {
         cardReset((c, d) -> c.backLive = d.backLive);
         choiceRow("While one is showing", liveNames, cfg.backLive,
                 v -> { cfg.backLive = v; apply(); refresh(); });
-        endGroup("Music and other live activities share the left side with this button. More about Stack and Merge is in the cheat sheet (System tab).");
+        endGroup("Music and other live activities share the left side with this button. Stack and Merge are explained in the cheat sheet on the System tab.");
     }
 
     // ---------------------------------------------------------------- Gestures tab
@@ -1410,7 +1410,7 @@ public final class SettingsActivity extends Activity {
             switchRow("Start it when the phone starts", "Only if the status bar mod is on. Speed limits never survive a restart.",
                     prefs.getBoolean("helperAtBoot", false), v -> { prefs.edit().putBoolean("helperAtBoot", v).apply(); Helper.setAtBoot(this, v); });
         }
-        endGroup("Idle, it only checks once a second whether you pressed something; it doesn't keep the phone awake.");
+        endGroup("While idle, it checks once a second whether you pressed something. It does not keep the phone awake.");
 
         // ---- speed limits
         final int[] pcts = {85, 70, 55, 40};
