@@ -554,7 +554,7 @@ final class BackChip {
                 float dk = c.getResources().getDisplayMetrics().density * cfg.backSizePct / 100f;
                 c.setCompoundDrawablePadding(0);
                 // attached to a capsule: the first 11 dp hide under its rounded end; on its own: normal small padding
-                c.setPadding(Math.round((mergeWanted ? 10 + 1 : 4) * c.getResources().getDisplayMetrics().density), Math.round(1.5f * dk), Math.round(4 * dk), Math.round(1.5f * dk));
+                c.setPadding(Math.round((mergeWanted ? 9 + 1 : 3) * c.getResources().getDisplayMetrics().density), Math.round(1.5f * dk), Math.round(2.5f * dk), Math.round(1.5f * dk));
             } else if (capsule) {
                 SpannableStringBuilder sb = new SpannableStringBuilder(label);
                 c.setText(sb);
@@ -656,7 +656,7 @@ final class BackChip {
         c.setCompoundDrawables(shownIcon, null, null, null);
         c.setCompoundDrawablePadding(Math.round(3 * dk));
         // once the pill has faded there is nothing to pad against: close the empty space on the right (and a little on the left)
-        c.setPadding(Math.round((faded ? 1.5f : 2) * dk), Math.round(1.5f * dk), Math.round((faded ? 1.5f : 6) * dk), Math.round(1.5f * dk));
+        c.setPadding(Math.round((faded ? 1.5f : 1) * dk), Math.round(1.5f * dk), Math.round((faded ? 1.5f : 4) * dk), Math.round(1.5f * dk));
         if (pill != null) { setPill(faded ? 0 : tint); c.invalidate(); }
     }
 
