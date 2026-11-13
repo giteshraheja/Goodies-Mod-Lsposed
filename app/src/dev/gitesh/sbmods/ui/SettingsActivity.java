@@ -502,10 +502,10 @@ public final class SettingsActivity extends Activity {
                 cfg.smartOn, v -> { cfg.smartOn = v; apply(); putGl("sbmods_smart", v ? "1" : "0"); });   // the Overview panel (launcher process) reads the global
         if (cfg.smartOn) {
             divider();
-            switchRow("Restart apps still on OpenGL", "When Vulkan is on and an app you open is still using the old renderer, it is closed and reopened once so it can switch. Each app at most once until the phone restarts. Unsaved work in that app is lost.",
+            switchRow("Restart apps still on OpenGL", "When Vulkan is on, an app you open may still use the old renderer. If so, it is closed and reopened once so it can switch. Each app is restarted at most once until the phone restarts. Unsaved work in that app is lost.",
                     "1".equals(glStr("sbmods_gfx_restart")), v -> putGl("sbmods_gfx_restart", v ? "1" : "0"));
             divider();
-            switchRow("Game mode: full speed for games", "When you open a game, any speed limit is lifted for as long as it is in front, then your earlier limit comes back. A game with its own automatic rule keeps that rule.",
+            switchRow("Game mode: full speed for games", "When you open a game, any speed limit is lifted while the game is in front. Your earlier limit comes back when you leave it. A game with its own automatic rule keeps that rule.",
                     !"0".equals(glStr("sbmods_game")), v -> putGl("sbmods_game", v ? "1" : "0"));
             divider();
             switchRow("Close other apps when a game starts", "Closes background apps once when you open a game. Apps you keep reopening are spared.",
@@ -558,8 +558,8 @@ public final class SettingsActivity extends Activity {
                 Toast.makeText(this, "Forgotten", Toast.LENGTH_SHORT).show();
             });
         }
-        endGroup("When an app comes to the front, the mod asks the root helper (see below) how that app draws the screen, once per app, and tells you in a short message. "
-                + "If it uses the older OpenGL, it can offer to switch the phone to Vulkan. If you often slow the phone down by hand in the same app, the Overview panel can offer to do it for you (nothing happens until you say Yes; each time it does, a message tells you). It only looks when you open an app, never in the background, and it needs the root helper to be running.");
+        endGroup("When an app comes to the front, the mod asks the root helper (see below) how that app draws the screen. It does this once per app and tells you in a short message. "
+                + "If an app uses the older OpenGL, it can offer to switch the phone to Vulkan. If you often slow the phone down by hand in the same app, the Overview panel can offer to do it for you. Nothing happens until you say Yes, and each time it does, a message tells you. It only checks when you open an app, never in the background. It needs the root helper to be running.");
     }
 
     /** System tab: what taps do, the root helper and speed limits, the Overview chips, help, and starting over. */
@@ -1014,8 +1014,8 @@ public final class SettingsActivity extends Activity {
     private void buildBack() {
         group("Back button");
         cardReset((c, d) -> c.backEnabled = d.backEnabled);
-        switchRow("Show a back button", "Shows the app you used before. Tap it to jump back to that app. It appears at the left of the status bar and only updates when you switch apps, so it costs no battery. "
-                + "You can move it with the Layout tab; it stays hidden on the home screen and the lock screen.", cfg.backEnabled,
+        switchRow("Show a back button", "Shows the app you used before. Tap it to jump back to that app. It appears at the left of the status bar and only updates when you switch apps, so it uses no battery. "
+                + "You can move it on the Layout tab. It stays hidden on the home screen and the lock screen.", cfg.backEnabled,
                 v -> { cfg.backEnabled = v; apply(); refresh(); });
         endGroup(null);
         if (!cfg.backEnabled) return;
@@ -1054,7 +1054,7 @@ public final class SettingsActivity extends Activity {
     private void buildGestures() {
         group("Status bar");
         cardReset((c, d) -> c.dtSleep = d.dtSleep);
-        switchRow("Double-tap to turn the screen off", "Double-tap any empty spot in the status bar to lock the screen. Swiping down still opens the notification panel as usual. Items such as the clock keep their own tap actions below.", cfg.dtSleep,
+        switchRow("Double-tap to turn the screen off", "Double-tap any empty spot in the status bar to lock the screen. Swiping down still opens the notification panel. Items such as the clock keep their own tap actions.", cfg.dtSleep,
                 v -> { cfg.dtSleep = v; apply(); });
         endGroup(null);
         for (int item = 0; item < ITEM_TITLES.length; item++) {
