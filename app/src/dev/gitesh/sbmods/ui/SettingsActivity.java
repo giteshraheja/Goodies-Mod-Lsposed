@@ -218,6 +218,16 @@ public final class SettingsActivity extends Activity {
         previewHolder.setOrientation(LinearLayout.VERTICAL);
         topBox.addView(previewHolder, new LinearLayout.LayoutParams(-1, -2));
         content.addView(topBox, new LinearLayout.LayoutParams(-1, -2));
+        // the chip row sits outside the scrolling list, so it stays on screen while the cards scroll
+        chipHost = new HorizontalScrollView(this);
+        chipHost.setHorizontalScrollBarEnabled(false);
+        chipHost.setVisibility(View.GONE);
+        chipHost.setBackground(Ui.topRound(cBg, dp(30)));
+        chipRow = new LinearLayout(this);
+        chipRow.setOrientation(LinearLayout.HORIZONTAL);
+        chipRow.setPadding(dp(Ui.S4), dp(14), dp(Ui.S4), dp(Ui.S2));
+        chipHost.addView(chipRow);
+        content.addView(chipHost, new LinearLayout.LayoutParams(-1, -2));
         final View wall = new View(this);
         wall.setBackground(new Ui.Wall(night));
         topBox.addOnLayoutChangeListener((v, l, t, r, bt, ol, ot, or, ob) -> {
@@ -226,7 +236,7 @@ public final class SettingsActivity extends Activity {
             if (wl != null && wl.height != hgt) { wl.height = hgt; wall.setLayoutParams(wl); }
         });
         scroll = new ScrollView(this);
-        scroll.setBackground(Ui.topRound(cBg, dp(30)));
+        scroll.setBackgroundColor(cBg);
         scroll.setClipToPadding(false);
         scroll.setVerticalScrollBarEnabled(false);
         scroll.setOnScrollChangeListener((v, x, y, ox, oy) -> updateChipActive(y));
@@ -235,7 +245,6 @@ public final class SettingsActivity extends Activity {
         page.setPadding(dp(Ui.S4), dp(4), dp(Ui.S4), dp(Ui.NAV_H + 32));
         scroll.addView(page);
         LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-1, 0, 1);
-        sp.topMargin = -dp(30);   // the sheet's rounded top overlaps the wallpaper
         content.addView(scroll, sp);
         root.addView(wall, new FrameLayout.LayoutParams(-1, dp(300)));
         root.addView(content, new FrameLayout.LayoutParams(-1, -1));
@@ -394,13 +403,6 @@ public final class SettingsActivity extends Activity {
         chipViews.clear();
         chipActive = -1;
         resetNow.clear();
-        chipHost = new HorizontalScrollView(this);
-        chipHost.setHorizontalScrollBarEnabled(false);
-        chipRow = new LinearLayout(this);
-        chipRow.setOrientation(LinearLayout.HORIZONTAL);
-        chipRow.setPadding(dp(Ui.S4), dp(4), dp(Ui.S4), dp(Ui.S3));
-        chipHost.addView(chipRow);
-        page.addView(chipHost, new LinearLayout.LayoutParams(-1, -2));
         cur = page;
         previewHolder.setVisibility(tab == T_LAYOUT || tab == T_CLOCK ? View.VISIBLE : View.GONE);   // the preview only helps these two
         switch (tab) {
