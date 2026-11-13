@@ -104,7 +104,9 @@ public final class Backup {
             else if (v instanceof Double) ed.putFloat(k, ((Double) v).floatValue());
             else if (v instanceof String) ed.putString(k, (String) v);
         }
-        ed.commit();
+        boolean wrote = ed.commit();
+        int now = prefs.getAll().size();
+        if (!wrote) return "Restore: the settings file could not be written (" + p.length() + " keys in the backup)";
         JSONObject g = root.optJSONObject("globals");
         if (g != null && g.length() > 0) {
             java.util.List<String> kv = new java.util.ArrayList<>();
@@ -116,6 +118,6 @@ public final class Backup {
             if (!kv.isEmpty() && !Helper.putGlobal(kv.toArray(new String[0])))
                 return "Options restored, but the panel settings need root";
         }
-        return null;
+        return "Restored: " + now + " settings written (backup had " + p.length() + ")";
     }
 }
