@@ -633,7 +633,7 @@ final class BackChip {
         if (!iconKey.equals(iconPkg)) {
             try {
                 int px = Math.max(8, Math.round(14 * dk));   // the app icon, in a circle
-                int chev = Math.max(4, Math.round(7 * dk));                // room for the back chevron in front of it
+                int chev = Math.max(5, Math.round(10 * dk));               // room for the back chevron in front of it
                 android.graphics.drawable.Drawable ic = ctx.getPackageManager().getApplicationIcon(lastPkg);
                 android.graphics.Bitmap icon = android.graphics.Bitmap.createBitmap(px, px, android.graphics.Bitmap.Config.ARGB_8888);
                 android.graphics.Canvas ic2 = new android.graphics.Canvas(icon);
