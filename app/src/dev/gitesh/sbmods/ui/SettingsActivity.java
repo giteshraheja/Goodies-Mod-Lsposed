@@ -469,10 +469,10 @@ public final class SettingsActivity extends Activity {
     private void buildNotifs() {
         group("Notifications");
         cardReset((c, d) -> { c.notifOpen = d.notifOpen; c.groupOpen = d.groupOpen; c.openSkipSilent = d.openSkipSilent; });
-        switchRow("Open notifications fully", "Every notification in the notification panel shows its full size right away. You can still close one by hand.",
+        switchRow("Open notifications fully", "Every notification shows at full size right away. You can still close one by hand.",
                 cfg.notifOpen, v -> { cfg.notifOpen = v; apply(); });
         divider();
-        switchRow("Groups open fully with one tap", "One tap on a group opens it, and the notifications inside are already full size.",
+        switchRow("Groups open fully with one tap", "One tap opens a group, and its notifications already show at full size.",
                 cfg.groupOpen, v -> { cfg.groupOpen = v; apply(); });
         divider();
         switchRow("Keep silent ones small", "Silent notifications stay closed. The lock screen and pop-ups always stay small.",
@@ -484,7 +484,7 @@ public final class SettingsActivity extends Activity {
     private void buildSmart() {
         group("Smart suggestions");
         cardResetAction(() -> { cfg.smartOn = new Config().smartOn; apply(); putGl("sbmods_smart", cfg.smartOn ? "1" : "0"); });
-        switchRow("Smart suggestions", "The mod notices things and offers a fix. Off = it never checks anything.",
+        switchRow("Smart suggestions", "The mod notices things and offers a fix. When it is off, it never checks anything.",
                 cfg.smartOn, v -> { cfg.smartOn = v; apply(); putGl("sbmods_smart", v ? "1" : "0"); });   // the Overview panel (launcher process) reads the global
         if (cfg.smartOn) {
             divider();
@@ -494,7 +494,7 @@ public final class SettingsActivity extends Activity {
             switchRow("Game mode: full speed for games", "When you open a game, any speed limit is lifted for as long as it is in front, then your earlier limit comes back. A game with its own automatic rule keeps that rule.",
                     !"0".equals(glStr("sbmods_game")), v -> putGl("sbmods_game", v ? "1" : "0"));
             divider();
-            switchRow("Close other apps when a game starts", "Closes background apps once when you open a game, except the ones you keep reopening.",
+            switchRow("Close other apps when a game starts", "Closes background apps once when you open a game. Apps you keep reopening are spared.",
                     "1".equals(glStr("sbmods_gamesclean")), v -> putGl("sbmods_gamesclean", v ? "1" : "0"));
             divider();
             infoRow("Games you added: games that do not announce themselves as games to Android. Add them here and they get full speed and the other game options like any other game.", null);
@@ -602,7 +602,7 @@ public final class SettingsActivity extends Activity {
 
         group("Connection icon");
         cardReset((c, d) -> c.mergeNet = d.mergeNet);
-        switchRow("One icon for Wi-Fi and mobile data", "While Wi-Fi is connected only the Wi-Fi icon shows. When it drops, the mobile signal icon comes back by itself.",
+        switchRow("One icon for Wi-Fi and mobile data", "While Wi-Fi is connected, only the Wi-Fi icon shows. When Wi-Fi drops, the mobile signal icon returns by itself.",
                 cfg.mergeNet, v -> { cfg.mergeNet = v; apply(); });
         endGroup(null);
     }
@@ -812,7 +812,7 @@ public final class SettingsActivity extends Activity {
                         v -> { cfg.dateFirst = v == 1; apply(); refresh(); });
             }
             divider();
-            switchRow("Date as its own item", "Lets you place the day and date anywhere, apart from the time (Layout tab)", cfg.dateSeparate,
+            switchRow("Date as its own item", "Lets you place the day and date anywhere, apart from the time. Set the place on the Layout tab.", cfg.dateSeparate,
                     v -> { cfg.dateSeparate = v; apply(); refresh(); });
             divider();
             String dd = hasDay ? sample(cfg.weekday, 0) : sample(-1, cfg.date);
@@ -923,7 +923,7 @@ public final class SettingsActivity extends Activity {
         if (cfg.warnAt > 0 && advanced("tmpheat")) {
             colorDots();
             divider();
-            switchRow("Preview the warning", "Shows the preview as if the phone were hot", simulateHot,
+            switchRow("Preview the warning", "Shows the warning colour in the preview, as if the phone were hot", simulateHot,
                     v -> { simulateHot = v; updatePreview(); });
         }
         endGroup("The number turns this colour when the phone gets that warm.");
@@ -1407,7 +1407,7 @@ public final class SettingsActivity extends Activity {
                 });
         if (advanced("helper")) {
             divider();
-            switchRow("Start it when the phone starts", "Only if the status bar mod is on. Speed limits never survive a restart.",
+            switchRow("Start it when the phone starts", "Only if the status bar mod is on. Speed limits do not survive a restart.",
                     prefs.getBoolean("helperAtBoot", false), v -> { prefs.edit().putBoolean("helperAtBoot", v).apply(); Helper.setAtBoot(this, v); });
         }
         endGroup("While idle, it checks once a second whether you pressed something. It does not keep the phone awake.");
@@ -1430,7 +1430,7 @@ public final class SettingsActivity extends Activity {
                 putGl("sbmods_cpu_pct", "0", "sbmods_gpu_pct", "0", "sbmods_cool", "0"));
         if (advanced("speed")) {
             divider();
-            switchRow("Power saving while the CPU is limited", "Also turns on Samsung's power saving mode for as long as the CPU limit is on.",
+            switchRow("Power saving while the CPU is limited", "Also turns on Samsung's power saving mode while the CPU limit is on.",
                     gl("sbmods_cpu_ps", 0) == 1, v -> putGl("sbmods_cpu_ps", v ? "1" : "0"));
             divider();
             final int[] mins = {15, 30, 60, 120};
@@ -1449,7 +1449,7 @@ public final class SettingsActivity extends Activity {
 
         group("Overview screen");
         cardResetAction(() -> putGl("sbmods_recents_chip", "1"));
-        switchRow("Show the chips", "RAM, swap and temperature at the top; CPU and GPU at the bottom of the recent apps screen.",
+        switchRow("Show the chips", "RAM, swap and temperature show at the top of Recents. CPU and GPU show at the bottom.",
                 gl("sbmods_recents_chip", 1) != 0, v -> putGl("sbmods_recents_chip", v ? "1" : "0"));
         endGroup(null);
     }
@@ -1602,7 +1602,7 @@ public final class SettingsActivity extends Activity {
         endGroup(null);
 
         group("Screen care");
-        switchRow("Protect against screen burn-in", "Nudges the status bar a few pixels every couple of minutes so fixed icons don't leave marks. Only runs while the screen is on.",
+        switchRow("Protect against screen burn-in", "Moves the status bar a few pixels every couple of minutes so fixed icons don't leave marks. Runs only while the screen is on.",
                 cfg.pixelShift, v -> { cfg.pixelShift = v; apply(); });
         endGroup(null);
 

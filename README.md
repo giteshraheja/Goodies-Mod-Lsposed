@@ -1,7 +1,7 @@
 # StatusBar Mods
 
 An LSPosed / Vector module for the Samsung status bar (and the Recents screen) on a rooted Galaxy S23 Ultra, plus a settings app.
-Package `dev.gitesh.sbmods`, version 3.18.4.
+Package `dev.gitesh.sbmods`, version 3.18.5.
 
 ## What it does
 - **Status bar items and positions:** a phone temperature next to the clock (skin, battery or CPU sensor, optional warning colour), a custom clock
