@@ -29,6 +29,7 @@ import android.text.format.DateFormat;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
@@ -180,16 +181,16 @@ public final class SettingsActivity extends Activity {
         getWindow().setNavigationBarContrastEnforced(false);
         boolean night = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
                 == Configuration.UI_MODE_NIGHT_YES;
-        pal = Ui.pal(this);
+        pal = Ui.appPal(this);
         cBg = pal.bg; cCard = pal.card; cText = pal.tx; cSub = pal.tx2;
         cAccent = pal.acc; cAccentSoft = pal.accSoft; cOnAccent = pal.onAcc;
         cDivider = pal.line; cOk = pal.ok; cErr = pal.err; cWarn = pal.warn; cField = pal.card2;
 
-        int light = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
-                | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+        // The status bar sits over the dark wallpaper in both themes, so its icons stay light; the bottom bar follows the theme.
+        int lightNav = WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
         getWindow().getDecorView().setBackgroundColor(cBg);
         WindowInsetsController ic = getWindow().getInsetsController();
-        if (ic != null) ic.setSystemBarsAppearance(night ? 0 : light, light);
+        if (ic != null) ic.setSystemBarsAppearance(night ? 0 : lightNav, lightNav | WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS);
 
         prefs = getSharedPreferences("settings", MODE_PRIVATE);
         Helper.setAtBoot(this, prefs.getBoolean("helperAtBoot", false));
@@ -207,18 +208,34 @@ public final class SettingsActivity extends Activity {
         root.setBackgroundColor(cBg);
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
-        content.addView(buildHeader(), new LinearLayout.LayoutParams(-1, -2));
+        // The wallpaper sits behind the header and the live preview; the settings rise over it as a rounded sheet.
+        final LinearLayout topBox = new LinearLayout(this);
+        topBox.setOrientation(LinearLayout.VERTICAL);
+        topBox.setPadding(0, 0, 0, dp(36));
+        topBox.addView(buildHeader(), new LinearLayout.LayoutParams(-1, -2));
         previewHolder = new LinearLayout(this);
         previewHolder.setOrientation(LinearLayout.VERTICAL);
-        content.addView(previewHolder, new LinearLayout.LayoutParams(-1, -2));
+        topBox.addView(previewHolder, new LinearLayout.LayoutParams(-1, -2));
+        content.addView(topBox, new LinearLayout.LayoutParams(-1, -2));
+        final View wall = new View(this);
+        wall.setBackground(new Ui.Wall(night));
+        topBox.addOnLayoutChangeListener((v, l, t, r, bt, ol, ot, or, ob) -> {
+            int hgt = content.getPaddingTop() + bt;   // from the very top of the screen, under the status bar
+            ViewGroup.LayoutParams wl = wall.getLayoutParams();
+            if (wl != null && wl.height != hgt) { wl.height = hgt; wall.setLayoutParams(wl); }
+        });
         scroll = new ScrollView(this);
+        scroll.setBackground(Ui.topRound(cBg, dp(30)));
         scroll.setClipToPadding(false);
         scroll.setVerticalScrollBarEnabled(false);
         page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
         page.setPadding(dp(Ui.S4), dp(4), dp(Ui.S4), dp(Ui.NAV_H + 32));
         scroll.addView(page);
-        content.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-1, 0, 1);
+        sp.topMargin = -dp(30);   // the sheet's rounded top overlaps the wallpaper
+        content.addView(scroll, sp);
+        root.addView(wall, new FrameLayout.LayoutParams(-1, dp(300)));
         root.addView(content, new FrameLayout.LayoutParams(-1, -1));
         final View nav = buildNav();
         final FrameLayout.LayoutParams np = new FrameLayout.LayoutParams(-1, dp(Ui.NAV_H), Gravity.BOTTOM);
@@ -269,7 +286,7 @@ public final class SettingsActivity extends Activity {
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(dp(20), dp(12), dp(16), dp(8));
-        titleView = Ui.text(this, TAB_TITLES[tab], Ui.T_TITLE, cText, 700);
+        titleView = Ui.text(this, TAB_TITLES[tab], 34, 0xFFFFFFFF, 300);
         titleView.setLetterSpacing(-0.02f);
         titleView.setSingleLine(true);
         row.addView(titleView, new LinearLayout.LayoutParams(0, -2, 1));
@@ -1840,7 +1857,7 @@ public final class SettingsActivity extends Activity {
         LinearLayout hdr = new LinearLayout(this);
         hdr.setGravity(Gravity.CENTER_VERTICAL);
         hdr.setMinimumHeight(dp(44));
-        hdr.addView(Ui.text(this, title == null ? "" : title, Ui.T_SECTION, cSub, 600), new LinearLayout.LayoutParams(-2, -2));
+        hdr.addView(Ui.text(this, title == null ? "" : title, Ui.T_SECTION, pal.accInk, 600), new LinearLayout.LayoutParams(-2, -2));
         infoSlot = Ui.infoButton(this, pal, title == null ? "this card" : title, null);
         infoSlot.setVisibility(View.GONE);
         hdr.addView(infoSlot, new LinearLayout.LayoutParams(dp(Ui.TAP), dp(44)));
