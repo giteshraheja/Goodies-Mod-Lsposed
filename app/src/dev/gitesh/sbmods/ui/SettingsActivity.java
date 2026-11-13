@@ -196,6 +196,7 @@ public final class SettingsActivity extends Activity {
         prefs = getSharedPreferences("settings", MODE_PRIVATE);
         Helper.setAtBoot(this, prefs.getBoolean("helperAtBoot", false));
         cfg = Config.load(prefs);
+        lastCfg = cfg.copy();
         tab = prefs.getInt("tab", T_LAYOUT);
         int tabv = prefs.getInt("tabv", 1);
         if (tabv < 3) {   // older versions had 6 or 7 tabs; fold the saved one into the four we have now
@@ -252,6 +253,10 @@ public final class SettingsActivity extends Activity {
         final FrameLayout.LayoutParams np = new FrameLayout.LayoutParams(-1, dp(Ui.NAV_H), Gravity.BOTTOM);
         np.setMargins(dp(Ui.S4), 0, dp(Ui.S4), dp(Ui.S4));
         root.addView(nav, np);
+        undoBar = buildUndoBar();
+        FrameLayout.LayoutParams up = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
+        up.setMargins(dp(Ui.S4), 0, dp(Ui.S4), dp(Ui.NAV_H + 28));
+        root.addView(undoBar, up);
         root.setOnApplyWindowInsetsListener((v, in) -> {
             Insets bars = in.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
             Insets ime = in.getInsets(WindowInsets.Type.ime());
@@ -283,6 +288,7 @@ public final class SettingsActivity extends Activity {
         super.onPause();
         resumed = false;
         h.removeCallbacks(previewTick);
+        h.removeCallbacks(hideUndo);
         try { unregisterReceiver(pong); } catch (Exception ignored) {}
     }
 
@@ -1659,8 +1665,62 @@ public final class SettingsActivity extends Activity {
     private void apply() {
         cfg.sanitize();
         cfg.save(prefs);
+        if (lastCfg != null && !sameCfg(lastCfg, cfg)) showUndo(lastCfg);
+        lastCfg = cfg.copy();
         send(new Intent(Config.ACTION_APPLY).putExtras(cfg.toBundle()));
         updatePreview();
+    }
+
+    /** The bar at the bottom: "Change saved" and Undo. A run of changes (a slider drag) is one entry: Undo goes back to before the run. */
+    private View buildUndoBar() {
+        LinearLayout bar = new LinearLayout(this);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        bar.setPadding(dp(Ui.S5), dp(Ui.S1), dp(Ui.S2), dp(Ui.S1));
+        bar.setBackground(round(pal.card, dp(28), dp(1), pal.line));
+        bar.setElevation(dp(6));
+        undoMsg = Ui.text(this, "Change saved", Ui.T_LABEL, cText, 500);
+        bar.addView(undoMsg, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView undo = Ui.text(this, "Undo", Ui.T_LABEL, cAccent, 600);
+        undo.setGravity(Gravity.CENTER);
+        undo.setMinHeight(dp(Ui.TAP));
+        undo.setPadding(dp(Ui.S4), 0, dp(Ui.S4), 0);
+        undo.setBackground(ripple2(null, dp(24)));
+        undo.setContentDescription("Undo the change");
+        undo.setOnClickListener(v -> undoTo(undoTarget));
+        bar.addView(undo, new LinearLayout.LayoutParams(-2, dp(Ui.TAP)));
+        bar.setVisibility(View.GONE);
+        return bar;
+    }
+
+    private void showUndo(Config before) {
+        if (undoBar.getVisibility() != View.VISIBLE) {          // a new run: remember where it started
+            undoTarget = before;
+            undoBar.setVisibility(View.VISIBLE);
+            undoBar.setTranslationY(dp(90));
+            undoBar.setAlpha(0f);
+            undoBar.animate().translationY(0).alpha(1f).setDuration(220).start();
+        }
+        h.removeCallbacks(hideUndo);
+        h.postDelayed(hideUndo, 5000);                          // one delayed callback, cancelled on pause: no polling
+    }
+
+    private void hideUndoBar() {
+        if (undoBar == null || undoBar.getVisibility() != View.VISIBLE) return;
+        undoBar.animate().translationY(dp(90)).alpha(0f).setDuration(180)
+                .withEndAction(() -> undoBar.setVisibility(View.GONE)).start();
+    }
+
+    private void undoTo(Config before) {
+        h.removeCallbacks(hideUndo);
+        hideUndoBar();
+        if (before == null) return;
+        cfg = before.copy();
+        lastCfg = cfg.copy();
+        cfg.save(prefs);
+        send(new Intent(Config.ACTION_APPLY).putExtras(cfg.toBundle()));
+        buildPreviewArea();
+        refresh();
     }
 
     private void ping() {
@@ -1894,6 +1954,12 @@ public final class SettingsActivity extends Activity {
     private View infoSlot;                // the card header's info button (hidden until endGroup gets a help text)
     private View resetSlot;               // the card header's Reset button (hidden until cardReset / cardResetAction)
     private String cardTitle;
+    // Undo: the settings as they were before the last change; the bar offers to restore them for a few seconds
+    private Config lastCfg;
+    private Config undoTarget;
+    private View undoBar;
+    private TextView undoMsg;
+    private final Runnable hideUndo = () -> hideUndoBar();
     private TextView subSlot;             // the card's one-line description (see endGroup)
     // jump chips and "Reset only when changed"
     private final java.util.List<Object[]> anchors = new java.util.ArrayList<>();   // {title, card view}, in build order
@@ -1952,7 +2018,7 @@ public final class SettingsActivity extends Activity {
         subSlot = Ui.text(this, "", Ui.T_CAPTION, cSub, 400);
         subSlot.setMaxLines(2);
         subSlot.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        subSlot.setPadding(dp(4), 0, dp(4), dp(10));
+        subSlot.setPadding(0, 0, 0, dp(10));
         subSlot.setVisibility(View.GONE);
         c.addView(subSlot, new LinearLayout.LayoutParams(-1, -2));
         LinearLayout body = new LinearLayout(this);
