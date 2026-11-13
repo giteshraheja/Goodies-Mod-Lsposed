@@ -212,7 +212,7 @@ public final class SettingsActivity extends Activity {
         // The wallpaper sits behind the header and the live preview; the settings rise over it as a rounded sheet.
         final LinearLayout topBox = new LinearLayout(this);
         topBox.setOrientation(LinearLayout.VERTICAL);
-        topBox.setPadding(0, 0, 0, dp(36));
+        topBox.setPadding(0, 0, 0, dp(20));
         topBox.addView(buildHeader(), new LinearLayout.LayoutParams(-1, -2));
         previewHolder = new LinearLayout(this);
         previewHolder.setOrientation(LinearLayout.VERTICAL);
@@ -317,12 +317,7 @@ public final class SettingsActivity extends Activity {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setBackground(Ui.card(this, pal));
-        card.setPadding(dp(Ui.S4), 0, dp(Ui.S4), dp(Ui.S3));
-        LinearLayout head = new LinearLayout(this);
-        head.setGravity(Gravity.CENTER_VERTICAL);
-        head.addView(Ui.text(this, "Live preview", Ui.T_SECTION, cSub, 600), new LinearLayout.LayoutParams(0, dp(40), 1));
-        head.addView(Ui.text(this, "Drag to reorder", Ui.T_CAPTION, cSub, 500));
-        card.addView(head, new LinearLayout.LayoutParams(-1, -2));
+        card.setPadding(dp(Ui.S3), dp(Ui.S3), dp(Ui.S3), dp(Ui.S2));   // compact: the bar and its tray only
         float d = getResources().getDisplayMetrics().density;
         android.view.WindowMetrics wm = getWindowManager().getMaximumWindowMetrics();
         float screenW = Math.min(wm.getBounds().width(), wm.getBounds().height()) / d;
