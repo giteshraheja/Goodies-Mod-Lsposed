@@ -1894,6 +1894,7 @@ public final class SettingsActivity extends Activity {
     private View infoSlot;                // the card header's info button (hidden until endGroup gets a help text)
     private View resetSlot;               // the card header's Reset button (hidden until cardReset / cardResetAction)
     private String cardTitle;
+    private TextView subSlot;             // the card's one-line description (see endGroup)
     // jump chips and "Reset only when changed"
     private final java.util.List<Object[]> anchors = new java.util.ArrayList<>();   // {title, card view}, in build order
     private final java.util.List<TextView> chipViews = new java.util.ArrayList<>();
@@ -1947,6 +1948,13 @@ public final class SettingsActivity extends Activity {
         rp.setMargins(0, dp(-2), dp(-10), dp(-2));
         hdr.addView(reset, rp);
         c.addView(hdr, new LinearLayout.LayoutParams(-1, -2));
+        // one line under the title says what the card does; tap it for the full text (replaces the old "i" button)
+        subSlot = Ui.text(this, "", Ui.T_CAPTION, cSub, 400);
+        subSlot.setMaxLines(2);
+        subSlot.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        subSlot.setPadding(dp(4), 0, dp(4), dp(10));
+        subSlot.setVisibility(View.GONE);
+        c.addView(subSlot, new LinearLayout.LayoutParams(-1, -2));
         LinearLayout body = new LinearLayout(this);
         body.setOrientation(LinearLayout.VERTICAL);
         c.addView(body, new LinearLayout.LayoutParams(-1, -2));
@@ -2005,10 +2013,12 @@ public final class SettingsActivity extends Activity {
     /** Closes the card. The plain-English help that used to sit under it opens from the "i" in its header. */
     private void endGroup(String help) {
         cur = page;
-        if (help != null && groupOpen && infoSlot != null) {
+        if (help != null && groupOpen && subSlot != null) {
             final String title = cardTitle == null || cardTitle.isEmpty() ? "About this" : cardTitle, text = help;
-            infoSlot.setVisibility(View.VISIBLE);
-            infoSlot.setOnClickListener(v -> showInfo(title, text));
+            int end = help.indexOf(". ");
+            subSlot.setText(end > 0 ? help.substring(0, end + 1) : help);
+            subSlot.setVisibility(View.VISIBLE);
+            subSlot.setOnClickListener(v -> showInfo(title, text));
         }
         groupOpen = true;
     }
