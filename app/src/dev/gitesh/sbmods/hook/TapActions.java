@@ -181,6 +181,18 @@ final class TapActions {
         open(ctx, i);
     }
 
+    /** Switches automatic brightness on or off; the current level is kept for manual use. */
+    private static void toggleAutoBrightness(Context ctx) {
+        android.content.ContentResolver cr = ctx.getContentResolver();
+        try {
+            boolean auto = Settings.System.getInt(cr, Settings.System.SCREEN_BRIGHTNESS_MODE, 0) == 1;
+            Settings.System.putInt(cr, Settings.System.SCREEN_BRIGHTNESS_MODE, auto ? 0 : 1);
+            toast(ctx, auto ? "Auto brightness off" : "Auto brightness on");
+        } catch (Throwable t) {
+            toast(ctx, "Couldn’t change auto brightness");
+        }
+    }
+
     /** One step (16 of 255) of manual brightness; dir = +1 or -1. */
     private static void brightness(Context ctx, int dir) {
         android.content.ContentResolver cr = ctx.getContentResolver();
@@ -230,6 +242,11 @@ final class TapActions {
                 case Config.ACT_ROUTINES: openPackage(ctx, "com.samsung.android.app.routines"); break;
                 case Config.ACT_NOTES: openPackage(ctx, "com.samsung.android.app.notes"); break;
                 case Config.ACT_GALLERY: openPackage(ctx, "com.sec.android.gallery3d"); break;
+                case Config.ACT_MESSAGES: openPackage(ctx, "com.samsung.android.messaging"); break;
+                case Config.ACT_CHROME: openPackage(ctx, "com.android.chrome"); break;
+                case Config.ACT_MAPS: openPackage(ctx, "com.google.android.apps.maps"); break;
+                case Config.ACT_REMINDERS: openPackage(ctx, "com.samsung.android.app.reminder"); break;
+                case Config.ACT_AUTO_BRIGHT: toggleAutoBrightness(ctx); break;
                 default: break;
             }
             Log.i("performed action " + action);

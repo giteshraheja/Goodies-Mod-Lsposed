@@ -84,10 +84,11 @@ public final class SettingsActivity extends Activity {
             {"Turn on or off", new int[]{Config.ACT_POWER_SAVER, Config.ACT_FLASHLIGHT, Config.ACT_WIFI,
                     Config.ACT_BLUETOOTH, Config.ACT_DND, Config.ACT_ROTATE, Config.ACT_DARK, Config.ACT_SOUND}},
             {"Do something", new int[]{Config.ACT_MEDIA, Config.ACT_LOCK, Config.ACT_CLOSE_APPS, Config.ACT_QS, Config.ACT_NOTIFS,
-                    Config.ACT_SCREENSHOT, Config.ACT_BRIGHT_UP, Config.ACT_BRIGHT_DOWN}},
+                    Config.ACT_SCREENSHOT, Config.ACT_BRIGHT_UP, Config.ACT_BRIGHT_DOWN, Config.ACT_AUTO_BRIGHT}},
             {"Open", new int[]{Config.ACT_FINDER, Config.ACT_BATTERY_USAGE, Config.ACT_INTERNET, Config.ACT_CAMERA,
                     Config.ACT_ALARMS, Config.ACT_TIMER, Config.ACT_CALENDAR, Config.ACT_CALCULATOR,
-                    Config.ACT_SETTINGS, Config.ACT_APP, Config.ACT_ROUTINES, Config.ACT_NOTES, Config.ACT_GALLERY}},
+                    Config.ACT_SETTINGS, Config.ACT_APP, Config.ACT_ROUTINES, Config.ACT_NOTES, Config.ACT_GALLERY,
+                    Config.ACT_MESSAGES, Config.ACT_CHROME, Config.ACT_MAPS, Config.ACT_REMINDERS}},
     };
     static {
         ACT_LABEL[Config.ACT_NONE] = "Do nothing";
@@ -120,6 +121,11 @@ public final class SettingsActivity extends Activity {
         ACT_LABEL[Config.ACT_ROUTINES] = "Modes and Routines";
         ACT_LABEL[Config.ACT_NOTES] = "Samsung Notes";
         ACT_LABEL[Config.ACT_GALLERY] = "Gallery";
+        ACT_LABEL[Config.ACT_MESSAGES] = "Messages";
+        ACT_LABEL[Config.ACT_CHROME] = "Chrome";
+        ACT_LABEL[Config.ACT_MAPS] = "Maps";
+        ACT_LABEL[Config.ACT_REMINDERS] = "Reminders";
+        ACT_LABEL[Config.ACT_AUTO_BRIGHT] = "Auto brightness on / off";
     }
     private static final String[] ITEM_TITLES = {"Battery icon", "Clock", "Temperature", "Front camera hole", "Wi-Fi icon", "Mobile signal icon"};
     private static final String[] GESTURE_TITLES = {"Tap", "Double-tap", "Long-press"};

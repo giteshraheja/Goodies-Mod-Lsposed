@@ -38,7 +38,8 @@ final class TipTicker {
             "open quick settings", "open your notifications", "open the camera", "open the timer",
             "open the calculator", "open the internet panel", "open %s", "open Samsung Finder", "close background apps",
             "take a screenshot", "make the screen brighter", "make the screen darker",
-            "open Modes and Routines", "open Samsung Notes", "open Gallery"};
+            "open Modes and Routines", "open Samsung Notes", "open Gallery",
+            "open Messages", "open Chrome", "open Maps", "open Reminders", "switch auto brightness on or off"};
     private String lastTip;
 
     /**

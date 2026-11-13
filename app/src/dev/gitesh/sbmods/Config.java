@@ -46,15 +46,17 @@ public final class Config {
             ACT_MEDIA = 13, ACT_LOCK = 14, ACT_QS = 15, ACT_NOTIFS = 16, ACT_CAMERA = 17,
             ACT_TIMER = 18, ACT_CALCULATOR = 19, ACT_INTERNET = 20, ACT_APP = 21, ACT_FINDER = 22, ACT_CLOSE_APPS = 23,
             ACT_SCREENSHOT = 24, ACT_BRIGHT_UP = 25, ACT_BRIGHT_DOWN = 26,
-            ACT_ROUTINES = 27, ACT_NOTES = 28, ACT_GALLERY = 29;
-    public static final int ACT_MAX = 29;
+            ACT_ROUTINES = 27, ACT_NOTES = 28, ACT_GALLERY = 29,
+            ACT_MESSAGES = 30, ACT_CHROME = 31, ACT_MAPS = 32, ACT_REMINDERS = 33, ACT_AUTO_BRIGHT = 34;
+    public static final int ACT_MAX = 34;
     public static final int SLOTS = 18; // 6 items x 3 gestures
     /** Short action names (index = ACT_*), shared by the app and the status bar tips. */
     public static final String[] ACT_NAMES = {"Nothing", "Power saving", "Battery usage", "Alarms", "Calendar",
             "Settings", "Flashlight", "Wi-Fi", "Bluetooth", "Do not disturb", "Auto rotate", "Dark mode",
             "Sound → Vibrate → Mute", "Play / pause music", "Lock screen", "Quick settings panel",
             "Notification panel", "Camera", "Timer", "Calculator", "Internet panel", "An app…", "Samsung Finder", "Close background apps",
-            "Screenshot", "Brightness up", "Brightness down", "Modes and Routines", "Samsung Notes", "Gallery"};
+            "Screenshot", "Brightness up", "Brightness down", "Modes and Routines", "Samsung Notes", "Gallery",
+            "Messages", "Chrome", "Maps", "Reminders", "Auto brightness"};
     /** Gesture slots: item x gesture. Index = item * 3 + gesture. */
     public static final String[] ITEMS = {"battery", "clock", "temp", "camera hole", "wifi", "mobile signal"};
     public static final String[] GESTURES = {"Tap", "Double-tap", "Long-press"};
