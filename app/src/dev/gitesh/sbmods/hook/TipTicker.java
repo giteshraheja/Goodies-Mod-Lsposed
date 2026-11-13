@@ -36,7 +36,8 @@ final class TipTicker {
             "turn Bluetooth on or off", "turn Do not disturb on or off", "turn auto rotate on or off",
             "switch dark mode", "switch between sound, vibrate and mute", "play or pause music", "lock the screen",
             "open quick settings", "open your notifications", "open the camera", "open the timer",
-            "open the calculator", "open the internet panel", "open %s", "open Samsung Finder", "close background apps"};
+            "open the calculator", "open the internet panel", "open %s", "open Samsung Finder", "close background apps",
+            "take a screenshot", "make the screen brighter", "make the screen darker"};
     private String lastTip;
 
     /**

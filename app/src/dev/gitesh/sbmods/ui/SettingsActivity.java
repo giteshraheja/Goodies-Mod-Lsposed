@@ -4,6 +4,7 @@ package dev.gitesh.sbmods.ui;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import dev.gitesh.sbmods.Backup;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -82,7 +83,8 @@ public final class SettingsActivity extends Activity {
     private static final Object[][] ACT_GROUPS = {
             {"Turn on or off", new int[]{Config.ACT_POWER_SAVER, Config.ACT_FLASHLIGHT, Config.ACT_WIFI,
                     Config.ACT_BLUETOOTH, Config.ACT_DND, Config.ACT_ROTATE, Config.ACT_DARK, Config.ACT_SOUND}},
-            {"Do something", new int[]{Config.ACT_MEDIA, Config.ACT_LOCK, Config.ACT_CLOSE_APPS, Config.ACT_QS, Config.ACT_NOTIFS}},
+            {"Do something", new int[]{Config.ACT_MEDIA, Config.ACT_LOCK, Config.ACT_CLOSE_APPS, Config.ACT_QS, Config.ACT_NOTIFS,
+                    Config.ACT_SCREENSHOT, Config.ACT_BRIGHT_UP, Config.ACT_BRIGHT_DOWN}},
             {"Open", new int[]{Config.ACT_FINDER, Config.ACT_BATTERY_USAGE, Config.ACT_INTERNET, Config.ACT_CAMERA,
                     Config.ACT_ALARMS, Config.ACT_TIMER, Config.ACT_CALENDAR, Config.ACT_CALCULATOR,
                     Config.ACT_SETTINGS, Config.ACT_APP}},
@@ -112,6 +114,9 @@ public final class SettingsActivity extends Activity {
         ACT_LABEL[Config.ACT_APP] = "Open an app…";
         ACT_LABEL[Config.ACT_FINDER] = "Samsung Finder (search)";
         ACT_LABEL[Config.ACT_CLOSE_APPS] = "Close background apps";
+        ACT_LABEL[Config.ACT_SCREENSHOT] = "Screenshot";
+        ACT_LABEL[Config.ACT_BRIGHT_UP] = "Brightness up";
+        ACT_LABEL[Config.ACT_BRIGHT_DOWN] = "Brightness down";
     }
     private static final String[] ITEM_TITLES = {"Battery icon", "Clock", "Temperature", "Front camera hole", "Wi-Fi icon", "Mobile signal icon"};
     private static final String[] GESTURE_TITLES = {"Tap", "Double-tap", "Long-press"};
@@ -1615,6 +1620,37 @@ public final class SettingsActivity extends Activity {
                     Toast.makeText(this, "Done. Now restart the status bar.", Toast.LENGTH_LONG).show();
                 });
         endGroup("After you restart the phone without root, the status bar goes back to Samsung's own.");
+
+        group("Backup", "Your options", "Saved as a file in Downloads. Restoring puts back the newest backup and replaces the current options.", false);
+        actionRow("Save options to Downloads", "Writes sbmods-backup-….json with every option and the panel's cards", cAccent, v ->
+                new Thread(() -> {
+                    try {
+                        String name = Backup.save(this, prefs);
+                        runOnUiThread(() -> Toast.makeText(this, "Saved " + name, Toast.LENGTH_LONG).show());
+                    } catch (Throwable t) {
+                        runOnUiThread(() -> Toast.makeText(this, "Couldn’t save: " + t.getClass().getSimpleName(), Toast.LENGTH_LONG).show());
+                    }
+                }).start());
+        divider();
+        actionRow("Restore the latest backup", "Puts the newest saved options back. Restart the status bar afterwards", cWarn, v ->
+                new Ui.Dlg(this, pal)
+                        .title("Restore options?")
+                        .message("The options you have now are replaced by the newest backup in Downloads.")
+                        .button(0, "Cancel", null)
+                        .button(2, "Restore", () -> new Thread(() -> {
+                            try {
+                                String r = Backup.restore(this, prefs);
+                                runOnUiThread(() -> {
+                                    cfg = Config.load(prefs);
+                                    apply();
+                                    Toast.makeText(this, r == null ? "Restored. Restart the status bar to be sure." : r, Toast.LENGTH_LONG).show();
+                                    recreate();
+                                });
+                            } catch (Throwable t) {
+                                runOnUiThread(() -> Toast.makeText(this, "Couldn’t restore: " + t.getClass().getSimpleName(), Toast.LENGTH_LONG).show());
+                            }
+                        }).start()).show());
+        endGroup("A backup holds only the options and panel settings, not speed limits or the charge limit.");
 
         group("Start over");
         actionRow("Restore defaults", "Every option goes back to how it was at the start, and the Performance panel shows all its cards again", cErr, v ->

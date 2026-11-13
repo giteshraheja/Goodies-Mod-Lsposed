@@ -157,6 +157,37 @@ final class TapActions {
         }, 1500);
     }
 
+    /** Screenshot through the app's root job (the status bar itself can't write to shared storage). Answer comes back in sbmods_result. */
+    private static void screenshot(Context ctx) {
+        android.content.ContentResolver cr = ctx.getContentResolver();
+        Settings.Global.putString(cr, "sbmods_result", "");
+        Jobs.send(ctx, "shot");
+        final android.os.Handler h = new android.os.Handler(android.os.Looper.getMainLooper());
+        final long until = android.os.SystemClock.uptimeMillis() + 8000;
+        h.postDelayed(new Runnable() {
+            @Override public void run() {
+                String r = Settings.Global.getString(cr, "sbmods_result");
+                if (r != null && !r.isEmpty()) { toast(ctx, r); return; }
+                if (android.os.SystemClock.uptimeMillis() < until) { h.postDelayed(this, 300); return; }
+                toast(ctx, "Couldn’t take a screenshot – check that StatusBar Mods has root access");
+            }
+        }, 800);
+    }
+
+    /** One step (16 of 255) of manual brightness; dir = +1 or -1. */
+    private static void brightness(Context ctx, int dir) {
+        android.content.ContentResolver cr = ctx.getContentResolver();
+        try {
+            Settings.System.putInt(cr, Settings.System.SCREEN_BRIGHTNESS_MODE, Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL);
+            int now = Settings.System.getInt(cr, Settings.System.SCREEN_BRIGHTNESS, 128);
+            int v = Math.max(1, Math.min(255, now + dir * 16));
+            Settings.System.putInt(cr, Settings.System.SCREEN_BRIGHTNESS, v);
+            toast(ctx, "Brightness " + Math.round(v * 100f / 255) + " %");
+        } catch (Throwable t) {
+            toast(ctx, "Couldn’t change brightness");
+        }
+    }
+
     /** Runs one action. Also used by the app's "Try it" button (Config.ACTION_TEST). */
     static void perform(Context ctx, int action, String app) {
         try {
@@ -186,6 +217,9 @@ final class TapActions {
                 case Config.ACT_APP: openApp(ctx, app); break;
                 case Config.ACT_FINDER: openFinder(ctx); break;
                 case Config.ACT_CLOSE_APPS: closeApps(ctx); break;
+                case Config.ACT_SCREENSHOT: screenshot(ctx); break;
+                case Config.ACT_BRIGHT_UP: brightness(ctx, 1); break;
+                case Config.ACT_BRIGHT_DOWN: brightness(ctx, -1); break;
                 default: break;
             }
             Log.i("performed action " + action);

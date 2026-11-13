@@ -5,6 +5,7 @@
 #
 #   sh sbmods_job.sh <job> [kept]
 #     ramclean | deepclean        answer in sbmods_result; kept = " pkg pkg " apps to spare (" " = none, worked out by the app)
+#     shot                        screenshot to Pictures/Screenshots; answer in sbmods_result
 #     battreport                  answer in sbmods_batt = left_min|on_sec|off_sec|discharge_mah|off_discharge_mah|capacity_mah (-1 = unknown)
 #     top                         answer in sbmods_top = up to 3 "package:cpu%" comma-separated (empty = nothing above 1 %)
 #     stop:<package>              force-stops one app (strictly validated, protected apps refused); answer in sbmods_result
@@ -74,6 +75,10 @@ case "$cmd" in
     a=$(mem)
     if [ "$cmd" = "deepclean" ]; then sp sbmods_result "Deep clean: +$((a-b)) MB RAM free, swap $sb% -> $(swp)%$kn"
     else sp sbmods_result "Closed background apps: +$((a-b)) MB RAM free$kn"; fi;;
+  shot)
+    d=/sdcard/Pictures/Screenshots; mkdir -p $d
+    if screencap -p $d/sbmods_$(date +%s).png; then sp sbmods_result "Screenshot saved to Pictures/Screenshots"
+    else sp sbmods_result "Couldn't take a screenshot"; fi;;
   battreport) sp sbmods_batt "$(battreport)";;
   top) sp sbmods_top "$(topapps)";;
   stop:*)
