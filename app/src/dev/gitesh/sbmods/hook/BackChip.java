@@ -633,7 +633,7 @@ final class BackChip {
         if (!iconKey.equals(iconPkg)) {
             try {
                 int px = Math.max(8, Math.round(15 * dk));   // the app icon, in a circle
-                int chev = Math.max(5, Math.round(8.5f * dk));              // room for the back chevron in front of it
+                int chev = Math.max(5, Math.round(14 * dk));              // room for the back chevron in front of it
                 android.graphics.drawable.Drawable ic = ctx.getPackageManager().getApplicationIcon(lastPkg);
                 android.graphics.Bitmap icon = android.graphics.Bitmap.createBitmap(px, px, android.graphics.Bitmap.Config.ARGB_8888);
                 android.graphics.Canvas ic2 = new android.graphics.Canvas(icon);
@@ -671,8 +671,9 @@ final class BackChip {
         sp.setStrokeWidth(Math.max(1f, 1.7f * dk));
         sp.setColor(color);
         android.graphics.Path ch = new android.graphics.Path();
-        float cx = 3.2f * dk, hh = 3.8f * dk;          // chevron "\u2039"
-        ch.moveTo(cx, px / 2f - hh); ch.lineTo(cx - 2.4f * dk, px / 2f); ch.lineTo(cx, px / 2f + hh);
+        float tip = 1.6f * dk, hh = 3.3f * dk, mid = px / 2f;   // back arrow: head, then shaft to the right
+        ch.moveTo(tip + 3.2f * dk, mid - hh); ch.lineTo(tip, mid); ch.lineTo(tip + 3.2f * dk, mid + hh);
+        ch.moveTo(tip, mid); ch.lineTo(tip + 8f * dk, mid);
         cv.drawPath(ch, sp);
         android.graphics.drawable.BitmapDrawable bd = new android.graphics.drawable.BitmapDrawable(ctx.getResources(), bm);
         bd.setBounds(0, 0, chev + px, px);
