@@ -34,6 +34,7 @@ import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
+import android.widget.HorizontalScrollView;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
@@ -228,6 +229,7 @@ public final class SettingsActivity extends Activity {
         scroll.setBackground(Ui.topRound(cBg, dp(30)));
         scroll.setClipToPadding(false);
         scroll.setVerticalScrollBarEnabled(false);
+        scroll.setOnScrollChangeListener((v, x, y, ox, oy) -> updateChipActive(y));
         page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
         page.setPadding(dp(Ui.S4), dp(4), dp(Ui.S4), dp(Ui.NAV_H + 32));
@@ -388,6 +390,17 @@ public final class SettingsActivity extends Activity {
 
     private void build() {
         page.removeAllViews();
+        anchors.clear();
+        chipViews.clear();
+        chipActive = -1;
+        resetNow.clear();
+        chipHost = new HorizontalScrollView(this);
+        chipHost.setHorizontalScrollBarEnabled(false);
+        chipRow = new LinearLayout(this);
+        chipRow.setOrientation(LinearLayout.HORIZONTAL);
+        chipRow.setPadding(dp(Ui.S4), dp(4), dp(Ui.S4), dp(Ui.S3));
+        chipHost.addView(chipRow);
+        page.addView(chipHost, new LinearLayout.LayoutParams(-1, -2));
         cur = page;
         previewHolder.setVisibility(tab == T_LAYOUT || tab == T_CLOCK ? View.VISIBLE : View.GONE);   // the preview only helps these two
         switch (tab) {
@@ -396,6 +409,57 @@ public final class SettingsActivity extends Activity {
             case T_SYSTEM: buildSystem(); break;
             default: buildLayout(); buildBack(); break;
         }
+        fillChips();
+        resetShown = new java.util.HashSet<>(resetNow);
+    }
+
+    /** One chip per card of this tab. Tapping one scrolls to its card; the chip of the card at the top stays lit. */
+    private void fillChips() {
+        chipRow.removeAllViews();
+        chipViews.clear();
+        chipActive = -1;
+        chipHost.setVisibility(anchors.size() < 2 ? View.GONE : View.VISIBLE);
+        for (int i = 0; i < anchors.size(); i++) {
+            final int at = i;
+            TextView t = Ui.text(this, (String) anchors.get(i)[0], Ui.T_SECTION, cSub, 600);
+            t.setSingleLine(true);
+            t.setGravity(Gravity.CENTER);
+            t.setMinHeight(dp(36));
+            t.setPadding(dp(Ui.S4), 0, dp(Ui.S4), 0);
+            t.setOnClickListener(v -> jumpTo(at));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, dp(36));
+            lp.setMargins(0, 0, dp(Ui.S2), 0);
+            chipRow.addView(t, lp);
+            chipViews.add(t);
+        }
+        paintChips();
+        chipHost.post(() -> updateChipActive(scroll.getScrollY()));
+    }
+
+    private void paintChips() {
+        for (int i = 0; i < chipViews.size(); i++) {
+            TextView t = chipViews.get(i);
+            boolean on = i == chipActive;
+            t.setBackground(Ui.ripple(pal, round(on ? pal.acc : pal.card, dp(18), on ? 0 : dp(1), pal.line), null));
+            t.setTextColor(on ? pal.onAcc : cSub);
+        }
+    }
+
+    private void jumpTo(int i) {
+        View c = (View) anchors.get(i)[1];
+        if (c != null) scroll.smoothScrollTo(0, Math.max(0, c.getTop() - dp(Ui.S3)));
+    }
+
+    private void updateChipActive(int y) {
+        int best = -1, line = y + dp(160);
+        for (int i = 0; i < anchors.size(); i++) {
+            View c = (View) anchors.get(i)[1];
+            if (c != null && c.getTop() <= line) best = i;
+        }
+        if (best == chipActive) return;
+        chipActive = best;
+        paintChips();
+        if (best >= 0 && best < chipViews.size()) chipHost.smoothScrollTo(Math.max(0, chipViews.get(best).getLeft() - dp(Ui.S4)), 0);
     }
 
     /** Notifications card (System tab): how the notification panel opens its notifications. */
@@ -1833,6 +1897,14 @@ public final class SettingsActivity extends Activity {
     private View infoSlot;                // the card header's info button (hidden until endGroup gets a help text)
     private View resetSlot;               // the card header's Reset button (hidden until cardReset / cardResetAction)
     private String cardTitle;
+    // jump chips and "Reset only when changed"
+    private final java.util.List<Object[]> anchors = new java.util.ArrayList<>();   // {title, card view}, in build order
+    private final java.util.List<TextView> chipViews = new java.util.ArrayList<>();
+    private final java.util.Set<String> resetNow = new java.util.HashSet<>();
+    private java.util.Set<String> resetShown = new java.util.HashSet<>();
+    private HorizontalScrollView chipHost;
+    private LinearLayout chipRow;
+    private int chipActive = -1;
 
     /** A card with its title inside. */
     private void group(String title) {
@@ -1853,6 +1925,7 @@ public final class SettingsActivity extends Activity {
         c.setClipToOutline(true);
         c.setPadding(dp(Ui.S4), 0, dp(Ui.S4), dp(4));
         page.addView(c, cardParams());
+        if (title != null && !title.isEmpty()) anchors.add(new Object[]{title, c});
 
         LinearLayout hdr = new LinearLayout(this);
         hdr.setGravity(Gravity.CENTER_VERTICAL);
@@ -1885,7 +1958,23 @@ public final class SettingsActivity extends Activity {
 
     /** This card's Reset button: sets the options of this card (and only these) back to their starting values. `fn` copies them from a fresh Config (second argument). */
     private void cardReset(java.util.function.BiConsumer<Config, Config> fn) {
+        Config probe = cfg.copy();
+        fn.accept(probe, new Config());
+        boolean differs = !sameCfg(probe, cfg);   // Reset is shown only when one of this card's options is not at its default
         cardResetAction(() -> { fn.accept(cfg, new Config()); apply(); refresh(); });
+        if (resetSlot == null) return;
+        if (!differs) { resetSlot.setVisibility(View.GONE); return; }
+        resetNow.add(cardTitle);
+        if (!resetShown.contains(cardTitle)) {   // fades in once, when it first appears; not again on every refresh
+            resetSlot.setAlpha(0f);
+            resetSlot.animate().alpha(1f).setDuration(180).start();
+        }
+    }
+
+    private static boolean sameCfg(Config a, Config b) {
+        android.os.Bundle x = a.toBundle(), y = b.toBundle();
+        for (String k : x.keySet()) if (!java.util.Objects.deepEquals(x.get(k), y.get(k))) return false;
+        return true;
     }
 
     private void cardResetAction(Runnable r) {
