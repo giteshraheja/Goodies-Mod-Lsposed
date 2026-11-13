@@ -554,7 +554,7 @@ final class BackChip {
                 float dk = c.getResources().getDisplayMetrics().density * cfg.backSizePct / 100f;
                 c.setCompoundDrawablePadding(0);
                 // attached to a capsule: the first 11 dp hide under its rounded end; on its own: normal small padding
-                c.setPadding(Math.round((mergeWanted ? 11 + 1 : 4) * c.getResources().getDisplayMetrics().density), Math.round(1.5f * dk), Math.round(7 * dk), Math.round(1.5f * dk));
+                c.setPadding(Math.round((mergeWanted ? 10 + 1 : 4) * c.getResources().getDisplayMetrics().density), Math.round(1.5f * dk), Math.round(4 * dk), Math.round(1.5f * dk));
             } else if (capsule) {
                 SpannableStringBuilder sb = new SpannableStringBuilder(label);
                 c.setText(sb);
@@ -632,8 +632,8 @@ final class BackChip {
         String iconKey = lastPkg + "@" + owner.config().backSizePct;
         if (!iconKey.equals(iconPkg)) {
             try {
-                int px = Math.max(8, Math.round(16 * dk));   // the app icon, in a circle
-                int chev = Math.max(5, Math.round(9 * dk));                // room for the back chevron in front of it
+                int px = Math.max(8, Math.round(15 * dk));   // the app icon, in a circle
+                int chev = Math.max(5, Math.round(8.5f * dk));              // room for the back chevron in front of it
                 android.graphics.drawable.Drawable ic = ctx.getPackageManager().getApplicationIcon(lastPkg);
                 android.graphics.Bitmap icon = android.graphics.Bitmap.createBitmap(px, px, android.graphics.Bitmap.Config.ARGB_8888);
                 android.graphics.Canvas ic2 = new android.graphics.Canvas(icon);
@@ -656,7 +656,7 @@ final class BackChip {
         c.setCompoundDrawables(shownIcon, null, null, null);
         c.setCompoundDrawablePadding(Math.round(3 * dk));
         // once the pill has faded there is nothing to pad against: close the empty space on the right (and a little on the left)
-        c.setPadding(Math.round((faded ? 1.5f : 2) * dk), Math.round(1.5f * dk), Math.round((faded ? 1.5f : 10) * dk), Math.round(1.5f * dk));
+        c.setPadding(Math.round((faded ? 1.5f : 2) * dk), Math.round(1.5f * dk), Math.round((faded ? 1.5f : 6) * dk), Math.round(1.5f * dk));
         if (pill != null) { setPill(faded ? 0 : tint); c.invalidate(); }
     }
 
@@ -671,7 +671,7 @@ final class BackChip {
         sp.setStrokeWidth(Math.max(1f, 1.7f * dk));
         sp.setColor(color);
         android.graphics.Path ch = new android.graphics.Path();
-        float cx = 3.2f * dk, hh = 3.4f * dk;          // chevron "\u2039"
+        float cx = 3.2f * dk, hh = 3.8f * dk;          // chevron "\u2039"
         ch.moveTo(cx, px / 2f - hh); ch.lineTo(cx - 2.4f * dk, px / 2f); ch.lineTo(cx, px / 2f + hh);
         cv.drawPath(ch, sp);
         android.graphics.drawable.BitmapDrawable bd = new android.graphics.drawable.BitmapDrawable(ctx.getResources(), bm);
