@@ -13,7 +13,7 @@
 #
 # Controls (global settings, written by the Overview panel / the app):
 #   sbmods_cpu_pct, sbmods_gpu_pct   0 = no limit, else cap at about this % of the hardware maximum (never below 35)
-#   sbmods_cpu_ps = 1                also turn on power saving while the CPU is limited
+#   (power saving is always turned on while the CPU is limited, and off again with the limit if it was ours; the old sbmods_cpu_ps switch is gone)
 #   sbmods_cool = 1                  cool-down: CPU / GPU at your chosen levels (sbmods_*_pick, + power saving) until the battery is at sbmods_cool_at (tenths of °C)
 #   sbmods_limit_min                 limits end by themselves after this many minutes (default 15, max 120)
 #   sbmods_until                     epoch seconds when the running limit / core parking ends by itself (0 = none); follows sbmods_limit_min
@@ -368,7 +368,7 @@ while true; do
   esac
   gfxguard
 
-  cp=$(num "$(val sbmods_cpu_pct)" 0); gp=$(num "$(val sbmods_gpu_pct)" 0); ps=$(val sbmods_cpu_ps)
+  cp=$(num "$(val sbmods_cpu_pct)" 0); gp=$(num "$(val sbmods_gpu_pct)" 0); ps=1
   # 100 = "Full" picked on purpose: stays at full speed even during cool-down
   cfull=0; gfull=0; [ "$cp" -ge 100 ] && { cp=0; cfull=1; }; [ "$gp" -ge 100 ] && { gp=0; gfull=1; }
   [ "$cp" != "0" ] && [ "$cp" -lt 35 ] && cp=35; [ "$gp" != "0" ] && [ "$gp" -lt 35 ] && gp=35

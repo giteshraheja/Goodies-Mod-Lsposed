@@ -541,7 +541,6 @@ final class PanelCards {
             LinearLayout row = new LinearLayout(a);
             row.setBaselineAligned(false);   // one- and two-line buttons side by side: lining up their text pushed the short one up and the tall ones out of the card
             int at = Global.gint(a, "sbmods_cool_at", 360);
-            row.addView(toggle(a, "Power saving with limit", "sbmods_cpu_ps"), lp(0, -1, 0, 0, dp(a, 6), 0, 1));
             row.addView(toggle(a, "Cool-down to " + at / 10 + "°C", "sbmods_cool"), lp(0, -1, 0, 0, dp(a, 6), 0, 1));
             TextView reset = pill(a, "Full speed", false, () -> {
                 for (String k : new String[]{"sbmods_cpu_pct", "sbmods_gpu_pct", "sbmods_cool", "sbmods_cores"}) Global.gset(a, k, "0");
@@ -555,13 +554,13 @@ final class PanelCards {
 
         @Override String help(Activity a) {
             int min = Global.gint(a, "sbmods_limit_min", 15);
-            return "Power saving with limit: also saves power while the CPU is limited.\n"
+            return "A CPU limit also turns on power saving, and turns it off again when the limit ends (if it was off before).\n"
                     + "Cool-down: use the levels above until the phone is back to " + Global.gint(a, "sbmods_cool_at", 360) / 10 + "°C, then stop.\n"
                     + "Full speed: removes every limit.\n"
                     + "Limits end by themselves after " + (min >= 60 ? min / 60 + " h" : min + " min") + " and never survive a restart.";
         }
 
-        @Override String sig(Activity a) { return Global.gint(a, "sbmods_cpu_ps", 0) + "/" + Global.gint(a, "sbmods_cool", 0) + "/" + Global.gint(a, "sbmods_cool_at", 360); }
+        @Override String sig(Activity a) { return Global.gint(a, "sbmods_cool", 0) + "/" + Global.gint(a, "sbmods_cool_at", 360); }
 
         private static TextView toggle(Activity a, String label, String key) {
             TextView[] self = new TextView[1];

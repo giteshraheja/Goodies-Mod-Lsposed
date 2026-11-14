@@ -1450,7 +1450,7 @@ public final class SettingsActivity extends Activity {
         final String[] pctNames = {"85% – barely noticeable", "70% – cooler, still smooth", "55% – battery saver", "40% – lowest (slow)"};
         int cpuPick = gl("sbmods_cpu_pick", 55), gpuPick = gl("sbmods_gpu_pick", 55);
         group("speed", "CPU and GPU speed", null, true);
-        cardResetAction(() -> putGl("sbmods_cpu_pick", "55", "sbmods_gpu_pick", "55", "sbmods_cpu_ps", "0", "sbmods_limit_min", "15", "sbmods_cool_at", "360"));
+        cardResetAction(() -> putGl("sbmods_cpu_pick", "55", "sbmods_gpu_pick", "55", "sbmods_limit_min", "15", "sbmods_cool_at", "360"));
         statusRow("Right now", speedNow());
         divider();
         int ci = 2, gi = 2;
@@ -1459,12 +1459,9 @@ public final class SettingsActivity extends Activity {
         divider();
         choiceRow("GPU quick limit", pctNames, gi, i -> putGl("sbmods_gpu_pick", String.valueOf(pcts[i])));
         divider();
-        actionRow("Full speed now", "Ends any CPU / GPU limit and cool-down. Samsung's own heat protection always stays on.", cAccent, v ->
+        actionRow("Full speed now", "Ends any CPU / GPU limit and cool-down. A CPU limit also turns on power saving until it ends. Samsung's own heat protection always stays on.", cAccent, v ->
                 putGl("sbmods_cpu_pct", "0", "sbmods_gpu_pct", "0", "sbmods_cool", "0"));
         if (advanced("speed")) {
-            divider();
-            switchRow("Power saving while the CPU is limited", "Also turns on Samsung's power saving mode while the CPU limit is on.",
-                    gl("sbmods_cpu_ps", 0) == 1, v -> putGl("sbmods_cpu_ps", v ? "1" : "0"));
             divider();
             final int[] mins = {15, 30, 60, 120};
             int mi = 0;
