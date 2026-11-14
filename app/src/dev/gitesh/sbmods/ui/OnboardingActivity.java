@@ -280,7 +280,7 @@ public final class OnboardingActivity extends Activity {
             String m = msg;
             runOnUiThread(() -> {
                 Toast.makeText(this, m, Toast.LENGTH_LONG).show();
-                if (m.startsWith("Restored") || m.startsWith("Options restored")) { SettingsActivity.restoredElsewhere = true; go(DONE); }
+                if (m.startsWith("Restored") || m.startsWith("Options restored")) { if (getIntent().getBooleanExtra("reopen", false)) SettingsActivity.restoredElsewhere = true; go(DONE); }
             });
         }).start();
     }

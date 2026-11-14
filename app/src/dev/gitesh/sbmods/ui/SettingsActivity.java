@@ -227,6 +227,18 @@ public final class SettingsActivity extends Activity {
         Backup.schedule(this);
         new Thread(() -> {
             try { Backup.runDaily(this, prefs); } catch (Throwable ignored) {}
+            try {   // once: the hand-removed stay-awake apps move from the options to a global (Undo everything reads it, a restore cannot lose it)
+                java.util.Set<String> old = prefs.getStringSet("wl_removed", null);
+                if (old != null) {
+                    java.util.Set<String> all = new java.util.LinkedHashSet<>();
+                    String g = Helper.rootOut("settings get global sbmods_wl_user");
+                    if (g != null) {
+                        for (String t : g.trim().split("\\s+")) if (t.matches("[A-Za-z0-9._]+") && t.indexOf('.') > 0) all.add(t);
+                        for (String t : old) if (t.matches("[A-Za-z0-9._]+") && t.indexOf('.') > 0) all.add(t);
+                        if (all.isEmpty() || Helper.putGlobal("sbmods_wl_user", android.text.TextUtils.join(" ", all))) prefs.edit().remove("wl_removed").apply();
+                    }
+                }
+            } catch (Throwable ignored) {}
         }).start();
         Helper.setAtBoot(this, prefs.getBoolean("helperAtBoot", false));
         cfg = Config.load(prefs);
