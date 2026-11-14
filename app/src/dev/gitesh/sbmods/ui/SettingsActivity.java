@@ -1443,7 +1443,7 @@ public final class SettingsActivity extends Activity {
             switchRow("Start it when the phone starts", "Only if the status bar mod is on. Speed limits do not survive a restart.",
                     prefs.getBoolean("helperAtBoot", false), v -> { prefs.edit().putBoolean("helperAtBoot", v).apply(); Helper.setAtBoot(this, v); });
         }
-        endGroup("While idle, it checks once a second whether you pressed something. It does not keep the phone awake.");
+        endGroup("While idle, it sleeps until one of its settings changes. It does not keep the phone awake.");
 
         // ---- speed limits
         final int[] pcts = {85, 70, 55, 40};
@@ -1459,8 +1459,8 @@ public final class SettingsActivity extends Activity {
         divider();
         choiceRow("GPU quick limit", pctNames, gi, i -> putGl("sbmods_gpu_pick", String.valueOf(pcts[i])));
         divider();
-        actionRow("Full speed now", "Ends any CPU / GPU limit and cool-down. A CPU limit also turns on power saving until it ends. Samsung's own heat protection always stays on.", cAccent, v ->
-                putGl("sbmods_cpu_pct", "0", "sbmods_gpu_pct", "0", "sbmods_cool", "0"));
+        actionRow("Full speed now", "Ends any CPU / GPU limit, cool-down and core parking. A CPU limit also turns on power saving until it ends. Samsung's own heat protection always stays on.", cAccent, v ->
+                putGl(dev.gitesh.sbmods.Config.limitsOff()));
         if (advanced("speed")) {
             divider();
             final int[] mins = {15, 30, 60, 120};

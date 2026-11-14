@@ -373,7 +373,7 @@ final class Smart {
 
     /** Same as the Options card's "Full speed". */
     private static void restoreFull() {
-        for (String k : new String[]{"sbmods_cpu_pct", "sbmods_gpu_pct", "sbmods_cool", "sbmods_cores"}) Global.gset(ctx, k, "0");
+        for (String k : dev.gitesh.sbmods.Config.LIMIT_KEYS) Global.gset(ctx, k, "0");
     }
 
     private static void forgetOwned() {

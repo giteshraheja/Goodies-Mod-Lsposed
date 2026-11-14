@@ -1,7 +1,7 @@
 # PulseBar
 
 An LSPosed / Vector module for the Samsung status bar (and the Recents screen) on a rooted Galaxy S23 Ultra, plus a settings app.
-Formerly "StatusBar Mods". Package `dev.gitesh.sbmods` (unchanged), version 3.26.6.
+Formerly "StatusBar Mods". Package `dev.gitesh.sbmods` (unchanged), version 3.27.0.
 
 ## What it does
 - **Status bar items and positions:** a phone temperature next to the clock (skin, battery or CPU sensor, optional warning colour), a custom clock

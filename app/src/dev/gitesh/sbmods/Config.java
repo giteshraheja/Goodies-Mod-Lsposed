@@ -10,6 +10,10 @@ import android.os.Bundle;
  * To add an option: add a field + default, then one line in write() and read().
  */
 public final class Config {
+    /** Everything "Full speed" switches off (the panel, the insight, Smart and the settings app all use this one list). */
+    public static final String[] LIMIT_KEYS = {"sbmods_cpu_pct", "sbmods_gpu_pct", "sbmods_cool", "sbmods_cores"};
+    /** The same as key, "0" pairs for Helper.putGlobal. */
+    public static String[] limitsOff() { String[] kv = new String[LIMIT_KEYS.length * 2]; for (int i = 0; i < LIMIT_KEYS.length; i++) { kv[2 * i] = LIMIT_KEYS[i]; kv[2 * i + 1] = "0"; } return kv; }
     public static final String PKG = "dev.gitesh.sbmods";
     public static final String SYSUI = "com.android.systemui";
     public static final String PERM = PKG + ".permission.CONTROL";

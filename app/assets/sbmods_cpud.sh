@@ -73,7 +73,7 @@ if [ ! -f $ST/since ] || [ "$(cat $ST/boot 2>/dev/null)" != "$BOOT" ]; then
   [ "$(cat $ST/boot 2>/dev/null)" = "$BOOT" ] && cores_restore
   for k in sbmods_cpu_pct sbmods_gpu_pct sbmods_cool sbmods_cores sbmods_until sbmods_watch sbmods_game_hold; do settings put global $k 0; done   # (watch / game_hold too: a stale flag from a crashed launcher must not stay)
   [ -f $ST/ps.set ] && settings put global low_power 0   # power saving we turned on goes off with the limit
-  rm -f $ST/since $ST/paused $ST/*.want $ST/ps.set $ST/cc*.min $ST/cc*.max $ST/gfx.*   # (a pending renderer check is dropped too; the renderer itself resets at reboot)
+  rm -f $ST/since $ST/paused $ST/*.want $ST/ps.set $ST/ps.seen $ST/cc*.min $ST/cc*.max $ST/gfx.*   # (a pending renderer check is dropped too; the renderer itself resets at reboot)
   UNT=0
 fi
 
@@ -318,7 +318,8 @@ while true; do
   cmd=none
   if [ "$ch" = "1" ]; then
     force=0; touch -r $F $ST/seen
-    S=$(settings list global | grep -E '^(sbmods_|low_power=)')
+    # (the big values nobody looks up here are left out: every look-up walks this text)
+    S=$(settings list global | sed -nE '/^sbmods_(wl_sys|batt|top|cards)=/d;/^(sbmods_|low_power=)/p')
     w=$(val sbmods_watch); cmd=$(val sbmods_cmd)
   fi
 
@@ -368,7 +369,7 @@ while true; do
   esac
   gfxguard
 
-  cp=$(num "$(val sbmods_cpu_pct)" 0); gp=$(num "$(val sbmods_gpu_pct)" 0); ps=1
+  cp=$(num "$(val sbmods_cpu_pct)" 0); gp=$(num "$(val sbmods_gpu_pct)" 0)
   # 100 = "Full" picked on purpose: stays at full speed even during cool-down
   cfull=0; gfull=0; [ "$cp" -ge 100 ] && { cp=0; cfull=1; }; [ "$gp" -ge 100 ] && { gp=0; gfull=1; }
   [ "$cp" != "0" ] && [ "$cp" -lt 35 ] && cp=35; [ "$gp" != "0" ] && [ "$gp" -lt 35 ] && gp=35
@@ -379,7 +380,7 @@ while true; do
       [ "$cfull" = "1" ] && sp sbmods_cpu_pct 0; [ "$gfull" = "1" ] && sp sbmods_gpu_pct 0
     else
       # cool-down uses the levels you picked (the panel's CPU / GPU rows), 55 % if none
-      [ "$cp" = "0" ] && [ "$cfull" = "0" ] && cp=$(num "$(val sbmods_cpu_pick)" 55); [ "$gp" = "0" ] && [ "$gfull" = "0" ] && gp=$(num "$(val sbmods_gpu_pick)" 55); ps=1
+      [ "$cp" = "0" ] && [ "$cfull" = "0" ] && cp=$(num "$(val sbmods_cpu_pick)" 55); [ "$gp" = "0" ] && [ "$gfull" = "0" ] && gp=$(num "$(val sbmods_gpu_pick)" 55)
     fi
   fi
 
@@ -407,9 +408,17 @@ while true; do
   gpu_apply $gp
   cores_apply "$cv"
 
-  if [ "$cp" != "0" ] && [ "$ps" = "1" ]; then
-    if [ "$(val low_power)" != "1" ]; then sp low_power 1; touch $ST/ps.set; fi
-  elif [ -f $ST/ps.set ]; then sp low_power 0; rm -f $ST/ps.set; fi
+  # a CPU limit brings power saving with it: switched on ONCE per limit (ps.seen), so switching it off by hand is respected until the limit ends.
+  # At the end it goes off only if it was ours (ps.set) and is still on; with the screen off and "maximum saving while the screen is off" on,
+  # it is handed to the status bar part instead (sbmods_off_ps), which switches it off at the next screen-on.
+  if [ "$cp" != "0" ]; then
+    if [ ! -f $ST/ps.seen ]; then touch $ST/ps.seen; [ "$(val low_power)" != "1" ] && { sp low_power 1; touch $ST/ps.set; }; fi
+  elif [ -f $ST/ps.seen ] || [ -f $ST/ps.set ]; then
+    if [ -f $ST/ps.set ] && [ "$(val low_power)" = "1" ]; then
+      if [ "$(val sbmods_off_max)" = "1" ] && dumpsys power 2>/dev/null | grep -qE 'mWakefulness=(Asleep|Dozing)'; then sp sbmods_off_ps 1; else sp low_power 0; fi
+    fi
+    rm -f $ST/ps.set $ST/ps.seen
+  fi
   # (no re-stat here: a change you made while we were busy must still be seen; our own writes cost one extra read at most)
   rest
 done

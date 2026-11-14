@@ -17,6 +17,15 @@ import java.io.FileOutputStream;
 public final class BootReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context ctx, Intent intent) {
+        if (Intent.ACTION_MY_PACKAGE_REPLACED.equals(intent.getAction())) {   // app updated: a running helper gets the new scripts (once, no screen needed)
+            final Context uapp = ctx.getApplicationContext();
+            final PendingResult upr = goAsync();
+            new Thread(() -> {
+                try { if (Helper.isRunning() && !Helper.isCurrent(uapp)) Helper.start(uapp); } catch (Throwable ignored) {}
+                upr.finish();
+            }).start();
+            return;
+        }
         if (!Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())) return;
         Backup.schedule(ctx);
         final Context bapp = ctx.getApplicationContext();

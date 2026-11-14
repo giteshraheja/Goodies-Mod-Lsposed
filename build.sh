@@ -4,6 +4,9 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 SDK=sdk-dl/android-35/android.jar
+# the README names the version by hand: stop if it was not bumped with the manifest
+V=$(sed -n 's/.*android:versionName="\([^"]*\)".*/\1/p' app/AndroidManifest.xml)
+grep -q "version $V\." README.md || { echo "README.md does not say version $V" >&2; exit 1; }
 B=build; rm -rf "$B"; mkdir -p "$B"/{stubs,classes,dex} out
 
 # 1. Xposed API stubs (compile-only, NOT packaged - the framework provides the real ones)

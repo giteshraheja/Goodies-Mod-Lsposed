@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="dev.gitesh.sbmods"
-    android:versionCode="59"
-    android:versionName="3.26.6">
+    android:versionCode="60"
+    android:versionName="3.27.0">
 
     <uses-sdk android:minSdkVersion="34" android:targetSdkVersion="35" />
 
@@ -64,6 +64,7 @@
         <receiver android:name=".BootReceiver" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
     </application>

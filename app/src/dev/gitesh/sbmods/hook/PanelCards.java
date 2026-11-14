@@ -543,7 +543,7 @@ final class PanelCards {
             int at = Global.gint(a, "sbmods_cool_at", 360);
             row.addView(toggle(a, "Cool-down to " + at / 10 + "°C", "sbmods_cool"), lp(0, -1, 0, 0, dp(a, 6), 0, 1));
             TextView reset = pill(a, "Full speed", false, () -> {
-                for (String k : new String[]{"sbmods_cpu_pct", "sbmods_gpu_pct", "sbmods_cool", "sbmods_cores"}) Global.gset(a, k, "0");
+                for (String k : dev.gitesh.sbmods.Config.LIMIT_KEYS) Global.gset(a, k, "0");
                 used(a, "switches");
                 PerfPanel.changed(a);
             });
@@ -1164,7 +1164,7 @@ final class PanelCards {
                 case Insights.APP: case Insights.IDLE: PanelCmd.stop(a, it.arg); break;   // shows the helper's answer; the helper checks stopok again
                 case Insights.MEMORY: RecentsChip.command(a, "deepclean", "Deep cleaning memory…", 6000); break;
                 case Insights.LIMIT:   // same as the Options card's Full speed
-                    for (String k : new String[]{"sbmods_cpu_pct", "sbmods_gpu_pct", "sbmods_cool", "sbmods_cores"}) Global.gset(a, k, "0");
+                    for (String k : dev.gitesh.sbmods.Config.LIMIT_KEYS) Global.gset(a, k, "0");
                     Toast.makeText(a, "Full speed", Toast.LENGTH_SHORT).show();
                     PerfPanel.changed(a);
                     break;
