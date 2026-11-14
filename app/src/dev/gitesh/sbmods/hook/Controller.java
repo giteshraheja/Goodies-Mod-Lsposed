@@ -57,7 +57,7 @@ public final class Controller {
     private static final long GUARD_STABLE_MS = 90_000;
     private static final long GUARD_FORGET_MS = 10 * 60_000;   // a tripped guard re-arms itself after this long without a restart
     private static final long ERROR_WINDOW_MS = 60_000;         // MAX_ERRORS only count when they come in a burst
-    private static final String VERSION = "3.20.0";
+    private static final String VERSION = "3.21.0";
 
     private static Controller sInstance;
 
@@ -936,6 +936,7 @@ public final class Controller {
                         } catch (Throwable t) { fail("tip", t); }
                     }, 1500);
                     Smart.resume();
+                    SleepSmart.screenOn(ctx, prefs);
                     main.post(shiftTick);
                     startPolling();
                     restartClockTick();
@@ -948,6 +949,7 @@ public final class Controller {
                 } else if (Intent.ACTION_SCREEN_OFF.equals(a)) {
                     screenOn = false;
                     Smart.screenOff();
+                    SleepSmart.screenOff(ctx, prefs);
                     tips.stop();
                     main.removeCallbacks(shiftTick); // nothing to protect while the screen is off
                 } else {

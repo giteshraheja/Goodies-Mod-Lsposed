@@ -30,6 +30,12 @@ if [ "$1" = "all" ]; then
   o=$(cat $B/sbmods_chg.orig 2>/dev/null); cf=/sys/class/power_supply/battery/batt_full_capacity
   case "$o" in 80|85|90|95|100) [ -f $cf ] && echo $o > $cf 2>/dev/null;; esac
   rm -f $B/sbmods_chg.orig
+  # Sleep sooner: the doze setting back to what it was (nothing = nothing); lost note = delete our own value
+  if [ -f $B/sbmods_dz.orig ]; then
+    o=$(cat $B/sbmods_dz.orig 2>/dev/null)
+    case "$o" in ''|null|*[!A-Za-z0-9_=,.]*) settings delete global device_idle_constants >/dev/null 2>&1;; *) settings put global device_idle_constants "$o" >/dev/null 2>&1;; esac
+    rm -f $B/sbmods_dz.orig
+  else case "$(settings get global sbmods_sleep)" in 1|2) settings delete global device_idle_constants >/dev/null 2>&1;; esac; fi
 fi
 for k in sbmods_cpu_pct sbmods_gpu_pct sbmods_cool sbmods_cores sbmods_cmd sbmods_until sbmods_watch sbmods_game_hold; do settings put global $k 0; done
 rm -rf $ST /data/local/tmp/sbmods_orig /data/local/tmp/sbmods_cpu_orig

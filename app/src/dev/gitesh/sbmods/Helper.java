@@ -41,6 +41,9 @@ public final class Helper {
     /** Runs a command as root and returns its trimmed stdout, or null if root is not available / it failed / it timed out. Never call on the main thread. */
     static String suOut(String cmd) { return suOut(cmd, 20); }
 
+    /** For the settings app: runs one command as root, returns its trimmed output, or null without root. Never on the main thread. */
+    public static String rootOut(String cmd) { return suOut(cmd, 20); }
+
     /** Same, waiting up to `sec` seconds. */
     static String suOut(String cmd, int sec) {
         try {

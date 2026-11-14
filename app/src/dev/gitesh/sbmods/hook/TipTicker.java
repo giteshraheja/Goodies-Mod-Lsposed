@@ -63,6 +63,8 @@ final class TipTicker {
             "Rest some cores to save power: Performance panel › Cores",
             "Cool-down keeps the speed limited until the battery is cool again",
             "Speed limits end by themselves after the time you choose",
+            "Sleep sooner in PulseBar \u203a System lets the phone go into deep sleep earlier when it is left alone",
+            "Apps allowed to stay awake (PulseBar \u203a System) lists apps that ignore deep sleep \u2013 you can take them off",
             "Drag items in the Layout preview to place the clock, date, temperature and battery",
             "Hide status bar icons you never need in PulseBar › Layout › Status icons",
             "Network speed and the date can sit anywhere: drag them in the Layout preview",
@@ -94,6 +96,7 @@ final class TipTicker {
             "New: this app is now called PulseBar, with a new icon \u2013 and tips go through all of them before any repeats",
             "New: the Battery page shows how well the phone slept with the screen off and which apps kept it awake",
             "New: the Memory page shows memory pressure and how much is compressed \u2013 a full swap is normal",
+            "New: Sleep sooner in PulseBar \u203a System \u2013 Smart mode learns when the phone is left alone and sleeps sooner then",
     };
     private static final long NEWS_GAP_MS = 10 * 60_000L;
     private static final String[] GESTURE = {"Tap", "Double-tap", "Long-press"};

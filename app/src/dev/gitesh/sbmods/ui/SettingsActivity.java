@@ -569,6 +569,7 @@ public final class SettingsActivity extends Activity {
         buildNotifs();
         buildSmart();
         buildHelperSpeed();
+        buildSleep();
         buildMore();
     }
 
@@ -1466,6 +1467,105 @@ public final class SettingsActivity extends Activity {
         switchRow("Show the chips", "RAM, swap and temperature show at the top of Recents. CPU and GPU show at the bottom.",
                 gl("sbmods_recents_chip", 1) != 0, v -> putGl("sbmods_recents_chip", v ? "1" : "0"));
         endGroup(null);
+    }
+
+
+    // ---------------------------------------------------------------- Sleep sooner (System tab)
+
+    private static final String[] SLEEP_MODES = {"Samsung's", "Smart", "Sooner", "Soonest"};
+
+    /** Deep sleep timing while the screen is off, and the apps that are allowed to ignore deep sleep. */
+    private void buildSleep() {
+        group("sleep", "Sleep sooner", null, true);
+        cardResetAction(() -> setSleepMode(0));
+        segmentedBlock("Deep sleep after the screen goes off", SLEEP_MODES, Math.max(0, Math.min(3, gl("sbmods_sleep_mode", 0))), this::setSleepMode);
+        divider();
+        statusRow("Right now", dev.gitesh.sbmods.SleepPlan.describe(gl("sbmods_sleep", 0)));
+        divider();
+        actionRow("Apps allowed to stay awake", "Apps that ignore deep sleep. Taking one off can save a little battery, but its messages may arrive late.", cAccent, v -> showAwakeList());
+        endGroup("Samsung: deep sleep starts about 35 minutes after the screen goes off and the phone lies still. "
+                + "Smart learns, hour by hour, how long the phone is usually left alone after the screen goes off, and sleeps sooner only at those hours; it needs a few days. "
+                + "Sooner is about 10 minutes, Soonest about 3. Picking up or moving the phone wakes it as usual, and calls and alarm clocks still work. "
+                + "Messages from apps that don't use Google's push service can arrive a little late while the phone sleeps. "
+                + "The gain is small: check the sleep report on the Panel's Battery page after a night. Needs root; nothing runs in the background.");
+    }
+
+    private void setSleepMode(int mode) {
+        final int level = dev.gitesh.sbmods.SleepPlan.forMode(mode, "", 0);   // Smart (1) has no fixed level: the status bar part picks it at the next screen-on
+        new Thread(() -> {
+            boolean ok = Helper.putGlobal("sbmods_sleep_mode", String.valueOf(mode));
+            if (ok && mode != 1) ok = dev.gitesh.sbmods.JobReceiver.run(this, "sleep:" + level);
+            final boolean done = ok;
+            runOnUiThread(() -> { if (!done) Toast.makeText(this, "Root access was not granted to this app", Toast.LENGTH_LONG).show(); refresh(); });
+        }).start();
+    }
+
+    /** Apps the system let ignore deep sleep that PulseBar must never touch (calls, messages, Wi-Fi calling, this app and Termux, Google's push service, the system). */
+    private boolean awakeLocked(String p) {
+        return p.equals("com.termux") || p.equals(getPackageName()) || p.startsWith("com.google.android.gms") || p.equals("com.sec.imsservice") || p.equals("com.sec.epdg")
+                || p.equals("com.sec.unifiedwfc") || p.equals("android") || p.startsWith("com.android.") || p.startsWith("com.samsung.android.providers.")
+                || p.equals("com.samsung.android.dialer") || p.equals("com.samsung.android.incallui") || p.equals("com.samsung.android.messaging")
+                || p.startsWith("com.samsung.android.knox") || p.equals("com.google.android.setupwizard") || p.equals("com.samsung.android.simagent");
+    }
+
+    private void showAwakeList() {
+        new Thread(() -> {
+            String out = Helper.rootOut("dumpsys deviceidle whitelist 2>/dev/null | grep '^user,'");
+            runOnUiThread(() -> {
+                if (out == null) { Toast.makeText(this, "Root access was not granted to this app", Toast.LENGTH_LONG).show(); return; }
+                final java.util.List<String> allowed = new java.util.ArrayList<>();
+                for (String line : out.split("\n")) {
+                    String[] p = line.trim().split(",");
+                    if (p.length >= 2 && p[1].matches("[A-Za-z0-9._]+") && !awakeLocked(p[1]) && !allowed.contains(p[1])) allowed.add(p[1]);
+                }
+                final java.util.List<String> removed = new java.util.ArrayList<>(prefs.getStringSet("wl_removed", new java.util.HashSet<>()));
+                removed.removeAll(allowed);
+                final java.util.Map<String, android.widget.CheckBox> boxes = new java.util.LinkedHashMap<>();
+                android.widget.LinearLayout col = new android.widget.LinearLayout(this);
+                col.setOrientation(android.widget.LinearLayout.VERTICAL);
+                col.setPadding(dp(4), dp(4), dp(4), dp(4));
+                android.content.pm.PackageManager pm = getPackageManager();
+                if (allowed.isEmpty()) col.addView(Ui.text(this, "No apps on the list that can be changed here.", 14, pal.tx2, 400));
+                else col.addView(Ui.text(this, "Tick the apps to take off the list (they then follow the normal rules):", 13, pal.tx2, 400));
+                for (String pkg : allowed) col.addView(awakeBox(pm, pkg, boxes));
+                if (!removed.isEmpty()) {
+                    TextView h = Ui.text(this, "Taken off earlier. Tick to allow them again:", 13, pal.tx2, 400);
+                    h.setPadding(0, dp(12), 0, 0);
+                    col.addView(h);
+                    for (String pkg : removed) col.addView(awakeBox(pm, pkg, boxes));
+                }
+                android.widget.ScrollView sv = new android.widget.ScrollView(this);
+                sv.addView(col);
+                new Ui.Dlg(this, pal).title("Apps allowed to stay awake").view(sv)
+                        .button(0, "Cancel", null)
+                        .button(2, "Apply", () -> new Thread(() -> {
+                            int n = 0;
+                            java.util.Set<String> keep = new java.util.HashSet<>(removed);
+                            for (java.util.Map.Entry<String, android.widget.CheckBox> e : boxes.entrySet()) {
+                                if (!e.getValue().isChecked()) continue;
+                                boolean takeOff = allowed.contains(e.getKey());
+                                if (Helper.rootOut("dumpsys deviceidle whitelist " + (takeOff ? "-" : "+") + e.getKey()) != null) {
+                                    n++;
+                                    if (takeOff) keep.add(e.getKey()); else keep.remove(e.getKey());
+                                }
+                            }
+                            prefs.edit().putStringSet("wl_removed", keep).apply();
+                            final int changed = n;
+                            runOnUiThread(() -> Toast.makeText(this, changed == 0 ? "Nothing changed" : changed + (changed == 1 ? " app changed" : " apps changed"), Toast.LENGTH_SHORT).show());
+                        }).start()).show();
+            });
+        }).start();
+    }
+
+    private android.widget.CheckBox awakeBox(android.content.pm.PackageManager pm, String pkg, java.util.Map<String, android.widget.CheckBox> boxes) {
+        String name = pkg;
+        try { name = pm.getApplicationInfo(pkg, 0).loadLabel(pm).toString(); } catch (Throwable ignored) {}
+        android.widget.CheckBox b = new android.widget.CheckBox(this);
+        b.setText(name.equals(pkg) ? pkg : name + "\n" + pkg);
+        b.setTextSize(14);
+        b.setTextColor(pal.tx);
+        boxes.put(pkg, b);
+        return b;
     }
 
     // ---------------------------------------------------------------- More tab

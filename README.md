@@ -1,7 +1,7 @@
 # PulseBar
 
 An LSPosed / Vector module for the Samsung status bar (and the Recents screen) on a rooted Galaxy S23 Ultra, plus a settings app.
-Formerly "StatusBar Mods". Package `dev.gitesh.sbmods` (unchanged), version 3.20.0.
+Formerly "StatusBar Mods". Package `dev.gitesh.sbmods` (unchanged), version 3.21.0.
 
 ## What it does
 - **Status bar items and positions:** a phone temperature next to the clock (skin, battery or CPU sensor, optional warning colour), a custom clock
@@ -14,6 +14,7 @@ Formerly "StatusBar Mods". Package `dev.gitesh.sbmods` (unchanged), version 3.20
   busiest apps with Stop, power saving, screen smoothness, battery report and battery health.
 - **Sleep report** (Battery page): how much of the screen-off time the phone really slept (light and deep), which apps kept it awake longest, and what woke it most (Wi-Fi traffic, app timers, mobile network). Tap the app line to open that app's info.
 - **Memory health** (Memory page): memory pressure (none / some / high), how much is compressed, and RAM Plus. A full swap is normal on Samsung and is no longer shown as an alarm.
+- **Sleep sooner** (System tab): Samsung's own timing, Smart (learns per hour of the day how long the phone is left alone after the screen goes off), Sooner (deep sleep after about 10 minutes) or Soonest (about 3). It only changes Android's doze setting; nothing runs in the background. Also lists the apps allowed to ignore deep sleep, with a way to take them off.
 - **Tips:** short reminders scroll across the status bar after unlocking; each one is shown once before any repeats.
 - **Speed limits:** cap the CPU / GPU at a share of the hardware maximum, park cores, cool-down until the battery is cool. They end by themselves after a time you choose and never survive a restart.
 - **Charge limit:** stop charging at 80, 85, 90, 95 or 100 %.

@@ -49,6 +49,25 @@ battreport() { _f=/dev/sbmods_bs.$$; dumpsys batterystats > $_f 2>/dev/null
   grep -F -e "Estimated battery capacity:" -e "Estimated discharge time remaining:" -e "Time on battery" -e "Discharge:" -e "Screen off discharge:" -e "doze discharge:" -e "Idle mode " -e "All partial wake locks:" -e "All wakeup reasons:" -e "  Wake lock " -e "  Wakeup reason " $_f | battparse
   rm -f $_f; }
 
+# doze timers ("Sleep sooner"). Level 0 = Samsung's own timing (the owner's value put back), 1 = sooner, 2 = soonest.
+# One global setting, device_idle_constants, is ever touched; Android's own doze reads it, so nothing runs in between (no timer, no loop).
+# It must be ONE write: `device_config put device_idle <key>` changes a single timer and resets the others to Samsung's (measured on this phone).
+# What the setting held before our first change is kept in $B/sbmods_dz.orig ("null" = nothing was set) until level 0 puts it back.
+dz_restore() { [ -f $B/sbmods_dz.orig ] || return 0
+  _o=$(cat $B/sbmods_dz.orig 2>/dev/null)
+  case "$_o" in ''|null|*[!A-Za-z0-9_=,.]*) settings delete global device_idle_constants >/dev/null 2>&1;; *) settings put global device_idle_constants "$_o" >/dev/null 2>&1;; esac
+  rm -f $B/sbmods_dz.orig; }
+dz_apply() {
+  case "$1" in
+    1) _v="inactive_to=600000,idle_after_inactive_to=600000,sensing_to=60000,locating_to=30000,motion_inactive_to=300000";;
+    2) _v="inactive_to=180000,idle_after_inactive_to=180000,sensing_to=30000,locating_to=0,motion_inactive_to=180000";;
+    *) if [ -f $B/sbmods_dz.orig ]; then dz_restore
+       else case "$(settings get global sbmods_sleep)" in 1|2) settings delete global device_idle_constants >/dev/null 2>&1;; esac; fi   # (the saved value got lost: nothing of ours stays)
+       return 0;;
+  esac
+  [ -f $B/sbmods_dz.orig ] || { _o=$(settings get global device_idle_constants 2>/dev/null); echo "$_o" > $B/sbmods_dz.orig; }   # (not `settings get > file`: the settings service cannot write to our file)
+  settings put global device_idle_constants "$_v" >/dev/null 2>&1; }
+
 # memory pressure: "some" and "full" averages over the last minute (percent of time apps waited for memory), -1 if the kernel does not say
 memstat() { _r=$(awk '/^some/{split($3,a,"=");s=a[2]}/^full/{split($3,a,"=");f=a[2]}END{if(s!="")print s "|" f}' /proc/pressure/memory 2>/dev/null); echo "${_r:--1|-1}"; }
 
