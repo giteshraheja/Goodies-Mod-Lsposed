@@ -1345,14 +1345,14 @@ public final class SettingsActivity extends Activity {
             String p = fs[fs.length - 1].getPath() + "/";
             int cap = readSys(p + "scaling_max_freq", 1000), hw = readSys(p + "cpuinfo_max_freq", 1000);
             if (cap > 0 && hw > 0)
-                cpu = String.format(Locale.US, "CPU fastest core: up to %.1f of %.1f GHz", cap / 1000f, hw / 1000f) + (cap < hw * 0.97f ? (gl("sbmods_cpu_pct", 0) > 0 || gl("sbmods_cool", 0) == 1 ? " (your limit)" : " (Samsung's heat limit)") : " (full speed)");
+                cpu = String.format(Locale.US, "CPU fastest core: up to %.1f of %.1f GHz", cap / 1000f, hw / 1000f) + (cap < hw * 0.97f ? (gl("sbmods_cpu_pct", 0) > 0 || gl("sbmods_cool", 0) == 1 ? " (your limit)" : gl("low_power", 0) == 1 ? " (Samsung's power saving limit)" : " (Samsung's heat limit)") : " (full speed)");
         }
         String g = "/sys/class/kgsl/kgsl-3d0/devfreq/";
         int gcap = readSys(g + "max_freq", 1000000), ghw = -1;
         try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.FileReader(g + "available_frequencies"))) {
             for (String s : r.readLine().trim().split("\\s+")) ghw = Math.max(ghw, (int) (Long.parseLong(s) / 1000000));
         } catch (Throwable ignored) {}
-        String gpu = gcap > 0 && ghw > 0 ? "GPU: up to " + gcap + " of " + ghw + " MHz" + (gcap < ghw * 0.97f ? (gl("sbmods_gpu_pct", 0) > 0 || gl("sbmods_cool", 0) == 1 ? " (your limit)" : " (Samsung's heat limit)") : " (full speed)") : "GPU: unknown";
+        String gpu = gcap > 0 && ghw > 0 ? "GPU: up to " + gcap + " of " + ghw + " MHz" + (gcap < ghw * 0.97f ? (gl("sbmods_gpu_pct", 0) > 0 || gl("sbmods_cool", 0) == 1 ? " (your limit)" : gl("low_power", 0) == 1 ? " (Samsung's power saving limit)" : " (Samsung's heat limit)") : " (full speed)") : "GPU: unknown";
         return cpu + "\n" + gpu;
     }
 
@@ -1894,7 +1894,7 @@ public final class SettingsActivity extends Activity {
         divider();
         infoRow("Overview screen (recent apps)",
                 "RAM: tap = close background apps. Swap: tap = deep clean. Temp: tap = cool-down on / off. Long-press any of them = Device care.\n"
-                + "CPU (bottom right) and GPU (bottom left) show the live speed and what holds it back (full speed, Samsung's heat limit, or your limit). "
+                + "CPU (bottom right) and GPU (bottom left) show the live speed and what holds it back (full speed, Samsung's heat or power saving limit, or your limit). "
                 + "Tap = Performance panel, long-press = quick limit on / off.\n"
                 + "Performance panel: four pages. All = every shown card (or the five you used last, if you chose that). "
                 + "Speed = modes, CPU and GPU limits, resting cores, Vulkan graphics, options. "

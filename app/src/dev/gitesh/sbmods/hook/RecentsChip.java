@@ -319,8 +319,9 @@ final class RecentsChip {
         int cp = Global.gint(ctx, "sbmods_cpu_pct", 0), gp = Global.gint(ctx, "sbmods_gpu_pct", 0);
         cp = effPct(ctx, "cpu", cp, cool); gp = effPct(ctx, "gpu", gp, cool);   // cool-down uses your levels; 100 = Full on purpose
         int load = Global.gint(ctx, "sbmods_cpu_load", -1);
-        chipFor(cpuChip, "CPU", ps.cpuCur > 0 ? Perf.ghz(ps.cpuCur) + (load >= 0 ? " \u00b7 " + load + "%" : "") : "\u2014", cp, ps.cpuCap, ps.cpuHw, true);
-        chipFor(gpuChip, "GPU", ps.gpuCur > 0 ? ps.gpuCur + " MHz" + (gpuAvg(ps.gpuBusy) >= 3 ? " \u00b7 " + gpuAvg(-2) + "%" : "") : "\u2014", gp, ps.gpuCap, ps.gpuHw, false);
+        boolean psm = Global.gint(ctx, "low_power", 0) == 1;   // Samsung also caps the speed while power saving is on
+        chipFor(cpuChip, "CPU", ps.cpuCur > 0 ? Perf.ghz(ps.cpuCur) + (load >= 0 ? " \u00b7 " + load + "%" : "") : "\u2014", cp, ps.cpuCap, ps.cpuHw, true, psm);
+        chipFor(gpuChip, "GPU", ps.gpuCur > 0 ? ps.gpuCur + " MHz" + (gpuAvg(ps.gpuBusy) >= 3 ? " \u00b7 " + gpuAvg(-2) + "%" : "") : "\u2014", gp, ps.gpuCap, ps.gpuHw, false, psm);
     }
 
     /** RAM and swap from /proc/meminfo (shared by the chips and the panel's Memory card). */
@@ -401,7 +402,7 @@ final class RecentsChip {
     }
 
     /** Fill a CPU / GPU chip: live speed, and on the line below what (if anything) holds it back. */
-    private static void chipFor(ChipView t, String name, String value, int pct, int cap, int hw, boolean cpu) {
+    private static void chipFor(ChipView t, String name, String value, int pct, int cap, int hw, boolean cpu, boolean psm) {
         String sub; int dot, subC;
         int want = Perf.pick(cpu ? Perf.cpuSteps : Perf.gpuSteps, hw, pct);
         if (pct > 0) {
@@ -410,7 +411,7 @@ final class RecentsChip {
             sub = held ? "Limited · max " + (cpu ? Perf.ghz(cap) : cap + " MHz") : fresh ? "Applying…" : "Limit not applied";
             dot = held || fresh ? CYAN : RED; subC = dot;
         } else if (cap > 0 && hw > 0 && cap < hw * 0.97f) {
-            sub = "Heat limit · " + (cpu ? Perf.ghz(cap) : cap + " MHz");
+            sub = (psm ? "Power saving · " : "Heat limit · ") + (cpu ? Perf.ghz(cap) : cap + " MHz");
             dot = AMBER; subC = AMBER;
         } else {
             sub = "Full speed";

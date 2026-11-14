@@ -57,7 +57,7 @@ public final class Controller {
     private static final long GUARD_STABLE_MS = 90_000;
     private static final long GUARD_FORGET_MS = 10 * 60_000;   // a tripped guard re-arms itself after this long without a restart
     private static final long ERROR_WINDOW_MS = 60_000;         // MAX_ERRORS only count when they come in a burst
-    private static final String VERSION = "3.21.0";
+    private static String VERSION = "?";   // the installed version name, read once at start
 
     private static Controller sInstance;
 
@@ -172,7 +172,9 @@ public final class Controller {
         try { android.content.SharedPreferences.Editor de = prefs.edit(); for (String k : prefs.getAll().keySet()) if (k.startsWith("dbg_")) de.remove(k); de.apply(); } catch (Throwable ignored) {}
         // an app update (a new version, or the same one installed again while developing) is not a crash: clear both guard counters once. One read, at start only.
         try {
-            String build = VERSION + ":" + ctx.getPackageManager().getPackageInfo(Config.PKG, 0).lastUpdateTime;
+            android.content.pm.PackageInfo pi = ctx.getPackageManager().getPackageInfo(Config.PKG, 0);
+            if (pi.versionName != null) VERSION = pi.versionName;
+            String build = VERSION + ":" + pi.lastUpdateTime;
             if (!build.equals(prefs.getString("guard_build", ""))) prefs.edit().putInt("guard_starts", 0).putString("guard_slow", "").putString("guard_build", build).apply();
         } catch (Throwable ignored) {}
         // the stamps are time since boot: after a reboot the old ones mean nothing (and could count as recent starts), so a new boot starts the count fresh

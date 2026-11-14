@@ -134,9 +134,9 @@ public final class Helper {
 
     /** True if the running helper is this app version's script (after an update the old one keeps running until restarted). */
     public static boolean isCurrent(Context c) {
-        if (!copyAsset(c, "sbmods_cpud.sh") || !copyAsset(c, "sbmods_lib.sh")) return true;
+        if (!copyAsset(c, "sbmods_cpud.sh") || !copyAsset(c, "sbmods_lib.sh") || !copyAsset(c, "sbmods_restore.sh")) return true;
         String cache = c.getCacheDir().getAbsolutePath();
-        return su("cmp -s " + cache + "/sbmods_cpud.sh " + DIR + "/sbmods_cpud.sh && cmp -s " + cache + "/sbmods_lib.sh " + DIR + "/sbmods_lib.sh") == 0;
+        return su("cmp -s " + cache + "/sbmods_cpud.sh " + DIR + "/sbmods_cpud.sh && cmp -s " + cache + "/sbmods_lib.sh " + DIR + "/sbmods_lib.sh && cmp -s " + cache + "/sbmods_restore.sh " + DIR + "/sbmods_restore.sh") == 0;
     }
 
     /** Stops the helper and puts every CPU / GPU speed and the power saving switch back to normal. */
