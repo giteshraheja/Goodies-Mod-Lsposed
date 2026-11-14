@@ -1511,7 +1511,7 @@ public final class SettingsActivity extends Activity {
             choiceRow("Low battery means", atN, ai, i -> putGl("sbmods_hz_low_at", String.valueOf(at[i])));
         }
         divider();
-        choiceRow("Animation speed", ANIM_LABELS, animIdx(), this::setAnim);
+        slider("Animation length (windows and everything else)", 0, 100, animPct(), v -> v == 0 ? "Off" : v == 100 ? "Normal" : v + "%", this::animLater, 100);
         divider();
         switchRow("Maximum saving while the screen is off", "Turns power saving on and automatic sync off after the screen goes off, and puts them back when it comes on. Mail and chat apps that don't use Google's push service may catch up a little later.",
                 gl("sbmods_off_max", 0) == 1, v -> putGl("sbmods_off_max", v ? "1" : "0"));
@@ -1519,18 +1519,24 @@ public final class SettingsActivity extends Activity {
                 + "The lowest of your choices applies. The same top speed choice is on the Panel's Battery page. Nothing runs on a timer: it acts only when power saving changes or the screen turns on or off.");
     }
 
-    private static final String[] ANIM_LABELS = {"Normal", "Fast (half the time)", "Off"};
+    private final android.os.Handler animH = new android.os.Handler(android.os.Looper.getMainLooper());
     private static final String[] ANIM_KEYS = {"window_animation_scale", "transition_animation_scale", "animator_duration_scale"};
 
     private float animNow() {
         try { return android.provider.Settings.Global.getFloat(getContentResolver(), "window_animation_scale", 1f); } catch (Throwable t) { return 1f; }
     }
 
-    private int animIdx() { float f = animNow(); return f <= 0f ? 2 : f <= 0.5f ? 1 : 0; }
+    private int animPct() { return Math.max(0, Math.min(100, Math.round(animNow() * 100))); }
+
+    /** The slider reports every step: write once, a moment after it stops (each write is a root command). */
+    private void animLater(int pct) {
+        animH.removeCallbacksAndMessages(null);
+        animH.postDelayed(() -> setAnim(pct), 500);
+    }
 
     /** Animation scales are real user values: the first change saves them, "Normal" puts them back (Undo everything does too). */
-    private void setAnim(int which) {
-        final String v = which == 2 ? "0" : which == 1 ? "0.5" : null;
+    private void setAnim(int pct) {
+        final String v = pct >= 100 ? null : String.format(java.util.Locale.US, "%.2f", pct / 100f);
         new Thread(() -> {
             boolean ok;
             if (v == null) {
