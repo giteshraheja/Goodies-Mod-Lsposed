@@ -2,7 +2,7 @@
 // Copyright (C) 2025-2026 Gitesh Raheja
 package dev.gitesh.sbmods.hook;
 
-/** Apps the panel never offers to stop. Same list as stopok() in assets/sbmods_cpud.sh and sbmods_job.sh (keep the three in step). */
+/** Apps the panel never offers to stop. Same list as stopok() in assets/sbmods_lib.sh (keep the two in step). */
 final class NeverStop {
     private NeverStop() {}
 
