@@ -3,6 +3,7 @@
 package dev.gitesh.sbmods.ui;
 
 import android.app.Activity;
+import android.graphics.Color;
 import android.content.ContentResolver;
 import android.content.Intent;
 import android.net.Uri;
@@ -10,6 +11,7 @@ import android.os.Bundle;
 import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
+import android.view.WindowInsets;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -44,6 +46,9 @@ public final class OnboardingActivity extends Activity {
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         if (getActionBar() != null) getActionBar().hide();
+        getWindow().setDecorFitsSystemWindows(false);
+        getWindow().setStatusBarColor(Color.TRANSPARENT);
+        getWindow().setNavigationBarColor(Color.TRANSPARENT);
         pal = Ui.appPal(this);
         backups = Backup.list(this);
         order = backups.isEmpty() ? new int[]{WELCOME, ROOT, MODULE, DONE} : new int[]{WELCOME, ROOT, MODULE, RESTORE, DONE};
@@ -64,6 +69,11 @@ public final class OnboardingActivity extends Activity {
         ScrollView sv = new ScrollView(this);
         sv.setBackgroundColor(pal.bg);
         sv.setFillViewport(true);
+        sv.setOnApplyWindowInsetsListener((v, ins) -> {
+            android.graphics.Insets bars = ins.getInsets(WindowInsets.Type.systemBars());
+            v.setPadding(0, bars.top, 0, bars.bottom);
+            return ins;
+        });
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
         int pad = dp(20);
