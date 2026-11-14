@@ -2,6 +2,8 @@
 // Copyright (C) 2025-2026 Gitesh Raheja
 package dev.gitesh.sbmods.hook;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 
 /** The panel's pure number work (no Android classes, so it is easy to test): modes, battery drain, power draw, limit time. */
@@ -62,6 +64,42 @@ final class PanelMath {
             return v;
         } catch (NumberFormatException e) { return null; }
     }
+
+    /** The sleep part of the battery report: fields 7..12 after the six above (light_sleep_sec|deep_sleep_sec|light_mah|deep_mah|awake|woken). */
+    static final class Sleep {
+        long lightSec = -1, deepSec = -1;
+        int lightMah = -1, deepMah = -1;
+        final List<String[]> awake = new ArrayList<>();   // {package, seconds}, longest first
+        final List<String> woken = new ArrayList<>();     // plain words, most first
+    }
+
+    /** null when the answer has no sleep fields (an older helper) or they are unknown. */
+    static Sleep parseSleep(String s) {
+        if (s == null) return null;
+        String[] p = s.trim().split("\\|", -1);
+        if (p.length < 12) return null;
+        try {
+            Sleep r = new Sleep();
+            r.lightSec = Long.parseLong(p[6].trim()); r.deepSec = Long.parseLong(p[7].trim());
+            r.lightMah = Integer.parseInt(p[8].trim()); r.deepMah = Integer.parseInt(p[9].trim());
+            if (r.lightSec < 0 || r.deepSec < 0) return null;
+            for (String e : p[10].split(",")) {
+                int c = e.lastIndexOf(':');
+                if (c > 0) { try { r.awake.add(new String[]{e.substring(0, c).trim(), String.valueOf(Long.parseLong(e.substring(c + 1).trim()))}); } catch (NumberFormatException ignored) {} }
+            }
+            for (String w : p[11].split(",")) if (!w.trim().isEmpty()) r.woken.add(w.trim());
+            return r;
+        } catch (NumberFormatException e) { return null; }
+    }
+
+    /** Share of the screen-off time spent in light or deep sleep, 0..100; -1 when there is under 10 minutes of data. */
+    static int sleepPct(long offSec, Sleep s) {
+        if (s == null || offSec < 600) return -1;
+        return (int) Math.min(100, Math.round((s.lightSec + s.deepSec) * 100.0 / offSec));
+    }
+
+    /** 0 = good (85 % or more), 1 = fair, 2 = poor (under 60 %); -1 = unknown. */
+    static int sleepVerdict(int pct) { return pct < 0 ? -1 : pct >= 85 ? 0 : pct >= 60 ? 1 : 2; }
 
     /** Battery percent per hour used over a period; -1 when there is under 5 minutes of data or a value is unknown. */
     static double drainPerHour(long mah, long sec, long capacityMah) {

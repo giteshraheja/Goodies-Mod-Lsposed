@@ -16,8 +16,7 @@ final class Insights {
 
     static final int MAX = 3;                   // at most this many lines on the card
     static final int TOP_MIN_PCT = 30;          // an app counts as heavy at this share of one CPU core (the helper's "top" list)
-    static final int SWAP_MIN_PCT = 70;         // swap this full = memory is tight
-    static final int RAM_MIN_PCT = 90;          // memory this full = tight (the Memory card turns red here)
+    static final int RAM_MIN_PCT = 90;          // memory this full = tight (the Memory card turns red here). A full swap alone is normal on Samsung and never counts.
     static final int IDLE_MIN_DAYS = 7;         // running but not opened for this long = worth a suggestion
     static final int IDLE_WINDOW_DAYS = 30;     // usage is only looked up this far back
     static final int LIMIT_END_SEC = 60;        // a limit with less than this left is "nearly over"
@@ -41,7 +40,7 @@ final class Insights {
         boolean heldBack;                  // a CPU / GPU limit or resting cores in force (cool-down itself not counted)
         boolean charging;
         long limitSecLeft;                 // seconds until the limit ends by itself; 0 = none / unknown
-        int swapPct, ramUsedPct;
+        int ramUsedPct;
         String top;                        // helper's "pkg:cpu%,pkg:cpu%" answer; null = not available yet
         String front;                      // the app used last (not the home screen), or null
         Predicate<String> canStop;         // false for apps the helper refuses and for ours / the launcher
@@ -65,7 +64,7 @@ final class Insights {
         }
         String app = heavyApp(in);
         if (app != null) out.add(new Item(APP, in.label.apply(app) + " is using a lot in the background", "Stop", app));   // 2
-        if (in.swapPct >= SWAP_MIN_PCT || in.ramUsedPct >= RAM_MIN_PCT) out.add(new Item(MEMORY, "Memory is nearly full", "Deep clean", null));   // 3
+        if (in.ramUsedPct >= RAM_MIN_PCT) out.add(new Item(MEMORY, "Memory is nearly full", "Deep clean", null));   // 3
         if (in.heldBack && !hot && (in.charging || (in.limitSecLeft > 0 && in.limitSecLeft < LIMIT_END_SEC)))
             out.add(new Item(LIMIT, in.charging ? "A speed limit is on while charging" : "A speed limit is about to end", "Full speed", null));   // 4
         if (in.gfxKeep && !in.gfxVulkan) out.add(new Item(VULKAN, "Vulkan is off after the restart", "Turn on", null));   // 5

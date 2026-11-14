@@ -6,7 +6,8 @@
 #   sh sbmods_job.sh <job> [kept]
 #     ramclean | deepclean        answer in sbmods_result; kept = " pkg pkg " apps to spare (" " = none, worked out by the app)
 #     shot                        screenshot to Pictures/Screenshots; answer in sbmods_result
-#     battreport                  answer in sbmods_batt = left_min|on_sec|off_sec|discharge_mah|off_discharge_mah|capacity_mah (-1 = unknown)
+#     battreport                  answer in sbmods_batt = left_min|on_sec|off_sec|discharge_mah|off_discharge_mah|capacity_mah|light_sleep_sec|deep_sleep_sec|light_mah|deep_mah|awake|woken (-1 = unknown)
+#     mem                         answer in sbmods_mem = memory pressure some|full, average of the last minute in percent (-1 = unknown)
 #     top                         answer in sbmods_top = up to 3 "package:cpu%" comma-separated (empty = nothing above 1 %)
 #     stop:<package>              force-stops one app (strictly validated, protected apps refused); answer in sbmods_result
 #     gfx:vulkan | gfx:opengl     renderer for apps that start AFTER this; nothing is ever killed or restarted. Answers: sbmods_gfx, sbmods_result
@@ -80,6 +81,7 @@ case "$cmd" in
     if screencap -p $d/sbmods_$(date +%s).png; then sp sbmods_result "Screenshot saved to Pictures/Screenshots"
     else sp sbmods_result "Couldn't take a screenshot"; fi;;
   battreport) sp sbmods_batt "$(battreport)";;
+  mem) sp sbmods_mem "$(memstat)";;
   top) sp sbmods_top "$(topapps)";;
   stop:*)
     pkg=${cmd#stop:}

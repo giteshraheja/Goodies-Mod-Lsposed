@@ -1,8 +1,9 @@
 # SBMods shared shell functions (root). Sourced by sbmods_cpud.sh (from its own folder) and sbmods_job.sh (from the app cache folder next to it);
 # nothing runs here, it only defines functions. One copy, so the helper and the one-off jobs can never drift apart.
 
-# battery report: reads `dumpsys batterystats` on stdin (slow and huge, so it quits as soon as the "Screen off discharge" line has been seen).
-# Prints left_min|on_sec|off_sec|discharge_mah|off_discharge_mah|capacity_mah, -1 for anything not found.
+# battery report: reads `dumpsys batterystats` on stdin (slow and huge, so it quits as soon as the "All wakeup reasons" list has been read).
+# Prints left_min|on_sec|off_sec|discharge_mah|off_discharge_mah|capacity_mah|light_sleep_sec|deep_sleep_sec|light_mah|deep_mah|awake|woken, -1 for anything not found.
+# awake = up to 3 "package:seconds" (apps that held a wake lock longest, 1 min or more, from /data/system/packages.list), woken = up to 2 plain-word reasons.
 battparse() { awk 'function dur(s,  i, ch, n, u, t) { sub(/\(.*/, "", s); n = ""; u = ""; t = 0
     for (i = 1; i <= length(s) + 1; i++) { ch = substr(s, i, 1)
       if (ch ~ /[0-9.]/) { if (u != "") { t += un(n, u); n = ""; u = "" } n = n ch }
@@ -11,15 +12,45 @@ battparse() { awk 'function dur(s,  i, ch, n, u, t) { sub(/\(.*/, "", s); n = ""
     return t }
   function un(n, u) { return n * (u == "d" ? 86400 : u == "h" ? 3600 : u == "m" ? 60 : u == "s" ? 1 : u == "ms" ? 0.001 : 0) }
   function mah(s) { sub(/ *mAh.*/, "", s); return int(s + 0.5) }
-  BEGIN { rem = on = off = dis = od = cap = -1 }
+  function tail(s,  i) { sub(/ \([0-9]+ times?\).*/, "", s); while ((i = index(s, ": ")) > 0) s = substr(s, i + 2); return s }
+  function cls(r) { r = tolower(r)
+    if (r ~ /qcom_rx|wlan|cnss|wifi|wcnss/) return "Wi-Fi traffic"
+    if (r ~ /timerfd|alarmtimer|rtc|alarm/) return "app timers"
+    if (r ~ /modem|glink|ipa|rmnet/) return "mobile network"
+    if (r ~ /bluetooth/) return "Bluetooth"
+    return "" }
+  BEGIN { rem = on = off = dis = od = cap = ls = ds = lm = dm = -1
+    while ((getline l < "/data/system/packages.list") > 0) { split(l, F, " "); if (!(F[2] in P)) P[F[2]] = F[1] }
+    close("/data/system/packages.list") }
   /^ *Estimated discharge time remaining:/ && rem < 0 { s = $0; sub(/^[^:]*: */, "", s); rem = int(dur(s) / 60) }
   /^ *Estimated battery capacity:/ && cap < 0 { s = $0; sub(/^[^:]*: */, "", s); cap = mah(s) }
   /^ *Time on battery:/ && on < 0 { s = $0; sub(/^[^:]*: */, "", s); on = int(dur(s) + 0.5) }
   /^ *Time on battery screen off:/ && off < 0 { s = $0; sub(/^[^:]*: */, "", s); off = int(dur(s) + 0.5) }
   /^ *Discharge:/ && dis < 0 { s = $0; sub(/^[^:]*: */, "", s); dis = mah(s) }
-  /^ *Screen off discharge:/ && od < 0 { s = $0; sub(/^[^:]*: */, "", s); od = mah(s); exit }
-  END { print rem "|" (on >= 0 && off >= 0 ? on - off : -1) "|" off "|" dis "|" od "|" cap }'; }
-battreport() { dumpsys batterystats 2>/dev/null | battparse; }
+  /^ *Screen off discharge:/ && od < 0 { s = $0; sub(/^[^:]*: */, "", s); od = mah(s) }
+  /^ *Device light doze discharge:/ && lm < 0 { s = $0; sub(/^[^:]*: */, "", s); lm = mah(s) }
+  /^ *Device deep doze discharge:/ && dm < 0 { s = $0; sub(/^[^:]*: */, "", s); dm = mah(s) }
+  /^ *Idle mode light time:/ && ls < 0 { s = $0; sub(/^[^:]*: */, "", s); ls = int(dur(s) + 0.5) }
+  /^ *Idle mode full time:/ && ds < 0 { s = $0; sub(/^[^:]*: */, "", s); ds = int(dur(s) + 0.5) }
+  /^ *All partial wake locks:/ { sec = 1; next }
+  /^ *All wakeup reasons:/ { sec = 2; next }
+  sec == 1 { if ($0 ~ /^ *Wake lock /) { u = $3; if (u ~ /^u0a[0-9]+$/) U[10000 + substr(u, 4)] += dur(tail($0)) } else sec = 0; next }
+  sec == 2 { if ($0 ~ /^ *Wakeup reason /) { t = $0; sub(/ \([0-9]+ times?\).*/, "", t); d = tail(t); c = cls(substr(t, 1, length(t) - length(d))); if (c != "") R[c] += dur(d) } else exit; next }
+  END { wl = ""; for (k = 0; k < 3; k++) { m = ""; mv = 59
+      for (u in U) if (!(u in D) && (u in P) && P[u] != "dev.gitesh.sbmods" && U[u] > mv) { m = u; mv = U[u] }
+      if (m == "") break; D[m] = 1; wl = wl (k ? "," : "") P[m] ":" int(U[m] + 0.5) }
+    rs = ""; for (k = 0; k < 2; k++) { m = ""; mv = 0
+      for (c in R) if (!(c in E) && R[c] > mv) { m = c; mv = R[c] }
+      if (m == "") break; E[m] = 1; rs = rs (k ? "," : "") m }
+    print rem "|" (on >= 0 && off >= 0 ? on - off : -1) "|" off "|" dis "|" od "|" cap "|" ls "|" ds "|" lm "|" dm "|" wl "|" rs }'; }
+# The dump (6 MB, 100k lines) goes to a RAM file and a fixed-string grep keeps the ~1300 lines that matter: awk alone needed 4-7 s of CPU for the whole dump, this needs about 0.5 s.
+# (/dev is RAM, so nothing is written to flash; toybox grep -E with alternations was far slower than grep -F, do not "simplify" it.)
+battreport() { _f=/dev/sbmods_bs.$$; dumpsys batterystats > $_f 2>/dev/null
+  grep -F -e "Estimated battery capacity:" -e "Estimated discharge time remaining:" -e "Time on battery" -e "Discharge:" -e "Screen off discharge:" -e "doze discharge:" -e "Idle mode " -e "All partial wake locks:" -e "All wakeup reasons:" -e "  Wake lock " -e "  Wakeup reason " $_f | battparse
+  rm -f $_f; }
+
+# memory pressure: "some" and "full" averages over the last minute (percent of time apps waited for memory), -1 if the kernel does not say
+memstat() { _r=$(awk '/^some/{split($3,a,"=");s=a[2]}/^full/{split($3,a,"=");f=a[2]}END{if(s!="")print s "|" f}' /proc/pressure/memory 2>/dev/null); echo "${_r:--1|-1}"; }
 
 # top apps: reads toybox `top -b -o %CPU,ARGS` on stdin (the LAST of two samples: one second apart, so it is "right now").
 # Keeps only app package names, adds up a package's processes, prints up to 3 "pkg:pct" above 1 %.

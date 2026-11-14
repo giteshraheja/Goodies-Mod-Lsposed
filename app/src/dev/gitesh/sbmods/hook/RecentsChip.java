@@ -304,8 +304,9 @@ final class RecentsChip {
         Mem m = readMem();
         long availMb = m.availMb, swapPct = m.swapPct;
         float freeFrac = availMb / (float) m.totalMb;
-        set(ramChip, "RAM", String.format(java.util.Locale.US, "%.1f GB", availMb / 1024f), freeFrac < 0.10f ? RED : freeFrac < 0.20f ? AMBER : GREEN, freeFrac);
-        set(swapChip, "Swap", swapPct + "%", swapPct >= 90 ? RED : swapPct >= 60 ? AMBER : GREEN, swapPct / 100f);
+        int ramColor = freeFrac < 0.10f ? RED : freeFrac < 0.20f ? AMBER : GREEN;
+        set(ramChip, "RAM", String.format(java.util.Locale.US, "%.1f GB", availMb / 1024f), ramColor, freeFrac);
+        set(swapChip, "Swap", swapPct + "%", ramColor, swapPct / 100f);   // a full swap is normal on Samsung: the colour follows free RAM, the number stays
         float temp = 0;
         try {
             Intent b = ctx.registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));

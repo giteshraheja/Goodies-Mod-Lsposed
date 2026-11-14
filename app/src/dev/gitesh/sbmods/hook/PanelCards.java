@@ -676,9 +676,10 @@ final class PanelCards {
     // ------------------------------------------------------------------ 8. battery report
 
     static final class Battery extends Card {
-        private TextView onT, offT, verdict, err;
+        private TextView onT, offT, verdict, err, sleepT, deepT, awakeT;
         private static long reqAt, sentAt;
         private static long[] lastGood;
+        private static PanelMath.Sleep lastSleep;
         Battery() { super("battery"); }
         @Override View build(Activity a) {
             reqAt = 0; sentAt = 0;   // asks again as soon as the page opens
@@ -692,6 +693,17 @@ final class PanelCards {
             col.addView(offT, lp(-2, -2, 0, dp(a, 1), 0, 0));
             verdict = tv(a, "", 13, WHITE, true);
             col.addView(verdict, lp(-2, -2, 0, dp(a, 1), 0, 0));
+            sleepT = tv(a, "", 13, WHITE, true);
+            sleepT.setFontFeatureSettings("tnum");
+            sleepT.setVisibility(View.GONE);
+            col.addView(sleepT, lp(-2, -2, 0, dp(a, 6), 0, 0));
+            deepT = tv(a, "", 13, WHITE, false);
+            deepT.setFontFeatureSettings("tnum");
+            deepT.setVisibility(View.GONE);
+            col.addView(deepT, lp(-2, -2, 0, dp(a, 1), 0, 0));
+            awakeT = tv(a, "", 13, WHITE, false);
+            awakeT.setVisibility(View.GONE);
+            col.addView(awakeT, lp(-2, -2, 0, dp(a, 1), 0, 0));
             err = tv(a, "No answer from the helper – turn it on in PulseBar › System.", 13, Ui.cur.warn, false);
             err.setVisibility(View.GONE);
             col.addView(err, lp(-2, -2, 0, dp(a, 2), 0, 0));
@@ -726,8 +738,49 @@ final class PanelCards {
             verdict.setVisibility(v < 0 ? View.GONE : View.VISIBLE);
             verdict.setText(v == 0 ? "Standby drain is normal" : v == 1 ? "Standby drain is a bit high" : "Standby drain is high – something keeps the phone awake");
             verdict.setTextColor(v == 0 ? Ui.cur.ok : v == 1 ? Ui.cur.warn : Ui.cur.err);
+            sleepLines(a, Global.gstr(a, "sbmods_batt"), b[2]);
         }
-        @Override String help(Activity a) { return "Since the last full charge. Power draw now is shown at the top of the panel."; }
+        /** How well the phone slept with the screen off, and who kept it awake. Same answer as above: no extra request. */
+        private void sleepLines(Activity a, String raw, long offSec) {
+            PanelMath.Sleep sl = PanelMath.parseSleep(raw);
+            if (sl != null) lastSleep = sl;
+            sl = lastSleep;
+            int pct = PanelMath.sleepPct(offSec, sl);
+            if (sl == null || pct < 0) { sleepT.setVisibility(View.GONE); deepT.setVisibility(View.GONE); awakeT.setVisibility(View.GONE); return; }
+            int sv = PanelMath.sleepVerdict(pct);
+            sleepT.setVisibility(View.VISIBLE);
+            sleepT.setText("Slept " + PanelMath.duration(PanelMath.minutes(sl.lightSec + sl.deepSec)) + " of " + PanelMath.duration(PanelMath.minutes(offSec)) + " with the screen off (" + pct + "%)");
+            sleepT.setTextColor(sv == 0 ? Ui.cur.ok : sv == 1 ? Ui.cur.warn : Ui.cur.err);
+            deepT.setVisibility(View.VISIBLE);
+            deepT.setText("Deep sleep " + PanelMath.duration(PanelMath.minutes(sl.deepSec)) + "  ·  light sleep " + PanelMath.duration(PanelMath.minutes(sl.lightSec)));
+            StringBuilder t = new StringBuilder();
+            String topPkg = null;
+            if (!sl.awake.isEmpty()) {
+                t.append("Kept awake most by ");
+                PackageManager pm = a.getPackageManager();
+                for (int i = 0; i < sl.awake.size(); i++) {
+                    String pkg = sl.awake.get(i)[0];
+                    String name = pkg;
+                    try { name = pm.getApplicationInfo(pkg, 0).loadLabel(pm).toString(); } catch (Throwable ignored) {}
+                    if (i == 0) topPkg = pkg;
+                    t.append(i > 0 ? ", " : "").append(name).append(' ').append(Math.max(1, PanelMath.minutes(Long.parseLong(sl.awake.get(i)[1])))).append(" min");
+                }
+                t.append(" ›");
+            }
+            if (!sl.woken.isEmpty()) {
+                t.append(t.length() > 0 ? "\n" : "").append("Woken most by ");
+                for (int i = 0; i < sl.woken.size(); i++) t.append(i > 0 ? " and " : "").append(sl.woken.get(i));
+            }
+            awakeT.setVisibility(t.length() > 0 ? View.VISIBLE : View.GONE);
+            awakeT.setText(t);
+            final String open = topPkg;
+            awakeT.setOnClickListener(open == null ? null : v -> openScreen(a, "battery-app",
+                    new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:" + open)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    null, "App info isn't available"));
+        }
+        @Override String help(Activity a) { return "Since the last full charge. Power draw now is shown at the top of the panel. "
+                + "\"Slept\" is the time the phone dozed with the screen off; most of it should be sleep. Tap the app line to open that app's info, "
+                + "where Samsung's Battery setting can put it to sleep. Light sleep and deep sleep both save power."; }
     }
 
     // ------------------------------------------------------------------ graphics (Vulkan) and battery health
@@ -829,17 +882,34 @@ final class PanelCards {
     // ------------------------------------------------------------------ 9. memory
 
     static final class Memory extends Card {
-        private TextView ramT, swapT;
+        private TextView ramT, swapT, pressT, zT, plusT;
         private BarView ramB, swapB;
+        private long reqAt;
         Memory() { super("memory"); }
         @Override boolean ownHeader() { return true; }
+        @Override String help(Activity a) {
+            return "Samsung keeps part of memory squeezed (compressed), so Swap is often high and that is normal. "
+                    + "Pressure is the number that matters: \"none\" means apps never waited for memory in the last minute. "
+                    + "Closing apps only helps when pressure is high; otherwise they have to start from scratch again and that costs battery.";
+        }
         @Override View build(Activity a) {
+            reqAt = 0;
             LinearLayout col = column(a);
             ramB = new BarView(a, false); swapB = new BarView(a, false);
             LinearLayout row = new LinearLayout(a);
             ramT = memCol(a, row, "Memory", ramB, dp(a, 6));
             swapT = memCol(a, row, "Swap", swapB, dp(a, 6));
             col.addView(row);
+            pressT = tv(a, "", 13, WHITE, false);
+            pressT.setVisibility(View.GONE);
+            col.addView(pressT, lp(-2, -2, 0, dp(a, 6), 0, 0));
+            zT = tv(a, "", 13, WHITE, false);
+            zT.setFontFeatureSettings("tnum");
+            zT.setVisibility(View.GONE);
+            col.addView(zT, lp(-2, -2, 0, dp(a, 1), 0, 0));
+            plusT = tv(a, "", 13, DIM, false);
+            plusT.setVisibility(View.GONE);
+            col.addView(plusT, lp(-2, -2, 0, dp(a, 1), 0, 0));
             LinearLayout btns = new LinearLayout(a);
             TextView close = button(a, "Close apps", () -> { used(a, "memory"); RecentsChip.command(a, "ramclean", "Closing background apps…", 4000); });
             TextView deep = button(a, "Deep clean", () -> { used(a, "memory"); RecentsChip.command(a, "deepclean", "Deep cleaning memory…", 6000); });
@@ -864,7 +934,32 @@ final class PanelCards {
             ramT.setText("Memory " + ram + "%");
             ramB.set(ram, ram >= 90 ? Ui.cur.err : ram >= 80 ? Ui.cur.warn : Ui.cur.ok);
             swapT.setText("Swap " + m.swapPct + "%");
-            swapB.set(m.swapPct, m.swapPct >= 90 ? Ui.cur.err : m.swapPct >= 60 ? Ui.cur.warn : Ui.cur.ok);
+            swapB.set(m.swapPct, ram >= 90 ? Ui.cur.err : ram >= 80 ? Ui.cur.warn : Ui.cur.ok);   // a full swap is normal on Samsung: the colour follows free memory, not swap
+            long now = SystemClock.uptimeMillis();
+            if (reqAt == 0 || now - reqAt >= 60000) { reqAt = now; PanelCmd.post(a, "mem", null); }   // one tiny read as root, only while this page shows
+            String r = Global.gstr(a, "sbmods_mem");
+            double some = -1;
+            if (r != null) { String[] p = r.split("\\|"); try { some = Double.parseDouble(p[0].trim()); } catch (Throwable ignored) {} }
+            pressT.setVisibility(some >= 0 ? View.VISIBLE : View.GONE);
+            if (some >= 0) {
+                int pv = some < 1 ? 0 : some < 10 ? 1 : 2;
+                pressT.setText("Pressure: " + (pv == 0 ? "none" : pv == 1 ? "some" : "high"));
+                pressT.setTextColor(pv == 0 ? Ui.cur.ok : pv == 1 ? Ui.cur.warn : Ui.cur.err);
+            }
+            long[] z = zram();
+            zT.setVisibility(z != null ? View.VISIBLE : View.GONE);
+            if (z != null) zT.setText(String.format(Locale.US, "Compressed: %.1f GB squeezed into %.1f GB (%.1fx)", z[0] / 1073741824.0, z[1] / 1073741824.0, z[0] / (double) Math.max(1, z[1])));
+            int plus = Global.gint(a, "ram_expand_size", -1);
+            plusT.setVisibility(plus >= 0 ? View.VISIBLE : View.GONE);
+            if (plus >= 0) plusT.setText(plus == 0 ? "RAM Plus: off" : "RAM Plus: " + plus + " GB");
+        }
+        /** {original bytes, bytes of RAM it now takes} from the compressed-memory statistics (readable without root), or null. */
+        private static long[] zram() {
+            try {
+                String[] f = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get("/sys/block/zram0/mm_stat"))).trim().split("\\s+");
+                long orig = Long.parseLong(f[0]), used = Long.parseLong(f[2]);
+                return orig > 0 && used > 0 ? new long[]{orig, used} : null;
+            } catch (Throwable t) { return null; }
         }
     }
 
@@ -941,7 +1036,6 @@ final class PanelCards {
             try { String u = Global.gstr(a, "sbmods_until"); if (u != null && !u.isEmpty()) until = Long.parseLong(u.trim()); } catch (NumberFormatException ignored) {}
             in.limitSecLeft = until > 0 ? until - System.currentTimeMillis() / 1000 : 0;
             RecentsChip.Mem m = RecentsChip.readMem();
-            in.swapPct = m.swapPct;
             in.ramUsedPct = m.totalMb > 0 ? (int) Math.round((m.totalMb - m.availMb) * 100.0 / m.totalMb) : 0;
             in.top = topRaw;
             in.front = in.top == null ? null : lastApp(a);

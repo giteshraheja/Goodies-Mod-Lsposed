@@ -56,6 +56,8 @@ final class TipTicker {
             "The Performance panel has four pages: All, Speed, Battery and Memory",
             "Pick a one-tap mode in the panel: Full, Balanced, Cool or Saver",
             "The Battery page shows time left, screen-on time and standby drain",
+            "The Battery page also shows how well the phone slept and what kept it awake",
+            "The Memory page shows memory pressure: if it says none, closing apps will not help",
             "Battery health in the panel shows charge cycles and can stop charging early",
             "Busiest apps in the panel has a Stop button for the ones that work hardest",
             "Rest some cores to save power: Performance panel › Cores",
@@ -90,6 +92,8 @@ final class TipTicker {
             "New: try Vulkan graphics \u2013 Performance panel \u203a Graphics (Wi-Fi calling is guarded)",
             "New: hide status bar icons you never need \u2013 PulseBar \u203a Layout \u203a Status icons",
             "New: this app is now called PulseBar, with a new icon \u2013 and tips go through all of them before any repeats",
+            "New: the Battery page shows how well the phone slept with the screen off and which apps kept it awake",
+            "New: the Memory page shows memory pressure and how much is compressed \u2013 a full swap is normal",
     };
     private static final long NEWS_GAP_MS = 10 * 60_000L;
     private static final String[] GESTURE = {"Tap", "Double-tap", "Long-press"};
