@@ -704,7 +704,7 @@ final class PanelCards {
     // ------------------------------------------------------------------ 8. battery report
 
     static final class Battery extends Card {
-        private TextView onT, offT, verdict, err, sleepT, deepT, awakeT;
+        private TextView onT, offT, verdict, err, sleepT, deepT, awakeT, adviceT;
         private static long reqAt, sentAt;
         private static long[] lastGood;
         private static PanelMath.Sleep lastSleep;
@@ -732,6 +732,9 @@ final class PanelCards {
             awakeT = tv(a, "", 13, WHITE, false);
             awakeT.setVisibility(View.GONE);
             col.addView(awakeT, lp(-2, -2, 0, dp(a, 1), 0, 0));
+            adviceT = tv(a, "", 13, WHITE, false);
+            adviceT.setVisibility(View.GONE);
+            col.addView(adviceT, lp(-2, -2, 0, dp(a, 8), 0, 0));
             err = tv(a, "No answer from the helper – turn it on in PulseBar › System.", 13, Ui.cur.warn, false);
             err.setVisibility(View.GONE);
             col.addView(err, lp(-2, -2, 0, dp(a, 2), 0, 0));
@@ -767,6 +770,37 @@ final class PanelCards {
             verdict.setText(v == 0 ? "Standby drain is normal" : v == 1 ? "Standby drain is a bit high" : "Standby drain is high – something keeps the phone awake");
             verdict.setTextColor(v == 0 ? Ui.cur.ok : v == 1 ? Ui.cur.warn : Ui.cur.err);
             sleepLines(a, Global.gstr(a, "sbmods_batt"), b[2]);
+            adviceLines(a, b);
+        }
+        /** What the numbers mean and what to do, in plain words (see BatteryAdvice). The two most important points. */
+        private void adviceLines(Activity a, long[] b) {
+            BatteryAdvice.Input in = new BatteryAdvice.Input();
+            in.charging = Power.charging;
+            in.standbyPerHour = PanelMath.screenOffRate(b);
+            in.screenOnPerHour = PanelMath.screenOnRate(b);
+            if (lastSleep != null) {
+                in.sleepPct = PanelMath.sleepPct(b[2], lastSleep);
+                in.woken.addAll(lastSleep.woken);
+                if (!lastSleep.awake.isEmpty()) in.topAwake = appName(a, lastSleep.awake.get(0)[0]);
+            }
+            int[] h = BatteryAdvice.parseHealth(Global.gstr(a, "sbmods_health"));
+            if (h != null) { in.holdsPct = h[0]; in.stopPct = h[1]; }
+            List<BatteryAdvice.Item> items = BatteryAdvice.build(in);
+            StringBuilder t = new StringBuilder();
+            for (int i = 0; i < items.size() && i < 2; i++) {
+                BatteryAdvice.Item it = items.get(i);
+                if (t.length() > 0) t.append("\n\n");
+                t.append(it.title).append('\n').append(it.why);
+                if (!it.fix.isEmpty()) t.append("\nFix: ").append(it.fix);
+            }
+            int top = items.get(0).level;
+            adviceT.setVisibility(View.VISIBLE);
+            adviceT.setText(t);
+            adviceT.setTextColor(top == BatteryAdvice.ACT ? Ui.cur.err : top == BatteryAdvice.TIP ? Ui.cur.warn : Ui.cur.ok);
+        }
+        private static String appName(Activity a, String pkg) {
+            PackageManager pm = a.getPackageManager();
+            try { return pm.getApplicationInfo(pkg, 0).loadLabel(pm).toString(); } catch (Throwable t) { return pkg; }
         }
         /** How well the phone slept with the screen off, and who kept it awake. Same answer as above: no extra request. */
         private void sleepLines(Activity a, String raw, long offSec) {

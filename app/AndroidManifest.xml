@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="dev.gitesh.sbmods"
-    android:versionCode="50"
-    android:versionName="3.23.0">
+    android:versionCode="51"
+    android:versionName="3.24.0">
 
     <uses-sdk android:minSdkVersion="34" android:targetSdkVersion="35" />
 
@@ -20,6 +20,13 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent>
+        <!-- root and module managers, for the setup guide's "Open" buttons -->
+        <package android:name="me.weishu.kernelsu" />
+        <package android:name="df.root" />
+        <package android:name="com.topjohnwu.magisk" />
+        <package android:name="org.lsposed.manager" />
+        <package android:name="org.matrix.vector.manager" />
+        <package android:name="io.github.lsposed.manager" />
     </queries>
 
     <application
@@ -34,6 +41,11 @@
         <meta-data android:name="xposedscope" android:resource="@array/xposed_scope" />
 
         <activity
+            android:name=".ui.OnboardingActivity"
+            android:exported="false"
+            android:label="Setup guide" />
+
+        <activity
             android:name=".ui.SettingsActivity"
             android:exported="true">
             <intent-filter>
@@ -46,6 +58,8 @@
              setting (WRITE_SECURE_SETTINGS: system apps, shell, root) may ask; this app's own second step and alarm are let through as "same app". -->
         <receiver android:name=".JobReceiver" android:exported="true"
             android:permission="android.permission.WRITE_SECURE_SETTINGS" />
+
+        <receiver android:name=".BackupReceiver" android:exported="false" />
 
         <receiver android:name=".BootReceiver" android:exported="true">
             <intent-filter>

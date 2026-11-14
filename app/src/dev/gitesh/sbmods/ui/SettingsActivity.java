@@ -180,6 +180,15 @@ public final class SettingsActivity extends Activity {
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
+        SharedPreferences st = getSharedPreferences(OnboardingActivity.STATE, MODE_PRIVATE);
+        if (!st.getBoolean("onboarded", false)) {
+            if (getSharedPreferences("settings", MODE_PRIVATE).getAll().isEmpty()) {   // new install or reinstall
+                startActivity(new Intent(this, OnboardingActivity.class));
+                finish();
+                return;
+            }
+            st.edit().putBoolean("onboarded", true).apply();   // existing install: no guide
+        }
         final Thread.UncaughtExceptionHandler prev = Thread.getDefaultUncaughtExceptionHandler();
         Thread.setDefaultUncaughtExceptionHandler((th, ex) -> {
             try (java.io.PrintWriter w = new java.io.PrintWriter(new java.io.File(getCacheDir(), "crash.txt"))) {
@@ -208,6 +217,10 @@ public final class SettingsActivity extends Activity {
         if (ic != null) ic.setSystemBarsAppearance(night ? 0 : lightNav, lightNav | WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS);
 
         prefs = getSharedPreferences("settings", MODE_PRIVATE);
+        Backup.schedule(this);
+        new Thread(() -> {
+            try { Backup.runDaily(this, prefs); } catch (Throwable ignored) {}
+        }).start();
         Helper.setAtBoot(this, prefs.getBoolean("helperAtBoot", false));
         cfg = Config.load(prefs);
         lastCfg = cfg.copy();
@@ -1845,6 +1858,9 @@ public final class SettingsActivity extends Activity {
         endGroup("After you restart the phone without root, the status bar goes back to Samsung's own.");
 
         group("Backup", "Your options", "Saved as a file in Downloads. Restoring puts back the newest backup and replaces the current options.", false);
+        actionRow("Setup guide", "Root, the module and bringing back a backup, step by step", cAccent, v ->
+                startActivity(new Intent(this, OnboardingActivity.class).putExtra("reopen", true)));
+        divider();
         actionRow("Save options to Downloads", "Writes sbmods-backup-….json with every option and the panel's cards", cAccent, v ->
                 new Thread(() -> {
                     try {
@@ -1873,7 +1889,7 @@ public final class SettingsActivity extends Activity {
                                 runOnUiThread(() -> Toast.makeText(this, "Couldn’t restore: " + t.getClass().getSimpleName(), Toast.LENGTH_LONG).show());
                             }
                         }).start()).show());
-        endGroup("A backup holds only the options and panel settings, not speed limits or the charge limit.");
+        endGroup("Saved once a day automatically; the newest 7 daily backups are kept. A backup holds only the options and panel settings, not speed limits or the charge limit.");
 
         group("Start over");
         actionRow("Restore defaults", "Every option goes back to how it was at the start, and the Performance panel shows all its cards again", cErr, v ->

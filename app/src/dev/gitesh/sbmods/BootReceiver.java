@@ -18,6 +18,11 @@ public final class BootReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context ctx, Intent intent) {
         if (!Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())) return;
+        Backup.schedule(ctx);
+        final Context bapp = ctx.getApplicationContext();
+        new Thread(() -> {
+            try { Backup.runDaily(bapp, bapp.getSharedPreferences("settings", Context.MODE_PRIVATE)); } catch (Throwable ignored) {}
+        }).start();
         boolean enabled = Helper.atBoot(ctx);
         if (!enabled) {
             try {
