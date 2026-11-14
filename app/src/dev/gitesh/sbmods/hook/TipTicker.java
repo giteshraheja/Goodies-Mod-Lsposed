@@ -41,7 +41,8 @@ final class TipTicker {
             "open the calculator", "open the internet panel", "open %s", "open Samsung Finder", "close background apps",
             "take a screenshot", "make the screen brighter", "make the screen darker",
             "open Modes and Routines", "open Samsung Notes", "open Gallery",
-            "open Messages", "open Chrome", "open Maps", "open Reminders", "switch auto brightness on or off"};
+            "open Messages", "open Chrome", "open Maps", "open Reminders", "switch auto brightness on or off",
+            "change the top screen speed (120, 96, 60)", "remove the screen speed cap", "switch maximum saving on until the screen comes on"};
     private String lastTip;
     private SharedPreferences prefs;   // where the tips already shown in this round are kept (survives status bar restarts)
 

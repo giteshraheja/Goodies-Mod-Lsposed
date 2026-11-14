@@ -113,11 +113,18 @@ case "$cmd" in
       sp sbmods_health "$(health)"
     else sp sbmods_result "Can't set that charge limit"; fi;;
   hzmax:*)   # top screen speed: Android's own peak_refresh_rate (0 = no cap = delete the key)
-    n=${cmd#hzmax:}
-    case "$n" in
-      60|96) settings put system peak_refresh_rate $n.0; sp sbmods_hz_max $n; sp sbmods_result "Top screen speed is now $n";;
-      *) settings delete system peak_refresh_rate >/dev/null 2>&1; sp sbmods_hz_max 0; sp sbmods_result "Screen speed is not capped";;
-    esac;;
+    n=${cmd#hzmax:}; case "$n" in 60|96) ;; *) n=0;; esac
+    # what really applies is the lowest of this choice and the automatic caps in force (same rule as ScreenSaver.java)
+    e=$n; [ "$e" = "0" ] && e=120
+    if [ "$(settings get global low_power)" = "1" ]; then p=$(settings get global sbmods_hz_psm); case "$p" in 60|96) [ $p -lt $e ] && e=$p;; esac; fi
+    l=$(settings get global sbmods_hz_low)
+    case "$l" in 60|96)
+      at=$(num "$(settings get global sbmods_hz_low_at)" 20); lv=$(num "$(cat /sys/class/power_supply/battery/capacity 2>/dev/null)" 100)
+      case "$(cat /sys/class/power_supply/battery/status 2>/dev/null)" in Charging|Full) ;; *) [ "$lv" -le "$at" ] && [ $l -lt $e ] && e=$l;; esac;;
+    esac
+    if [ "$e" -ge 120 ]; then settings delete system peak_refresh_rate >/dev/null 2>&1; else settings put system peak_refresh_rate $e.0; fi
+    sp sbmods_hz_max $n
+    if [ "$n" = "0" ]; then sp sbmods_result "Screen speed is not capped"; else sp sbmods_result "Top screen speed is now $n"; fi;;
   gfxcheck) gfxcheck;;
   boot)
     # show the renderer that is really active (the property is gone after a restart), writing only when the stored setting differs

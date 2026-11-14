@@ -21,7 +21,16 @@ final class SleepSmart {
 
     static void screenOff(Context ctx, SharedPreferences prefs) {
         try {
-            if (Global.gint(ctx, "sbmods_sleep_mode", 0) == 1) prefs.edit().putLong("sleep_off", System.currentTimeMillis()).apply();
+            if (Global.gint(ctx, "sbmods_sleep_mode", 0) != 1) return;
+            long now = System.currentTimeMillis();
+            prefs.edit().putLong("sleep_off", now).apply();
+            // Smart: the timing that fits THIS hour (screen-on only knew the hour the screen came on). One root job, and only when it differs.
+            int have = Global.gint(ctx, "sbmods_sleep", 0);
+            int want = SleepPlan.level(prefs.getString("sleep_stats", ""), Calendar.getInstance().get(Calendar.HOUR_OF_DAY));
+            if (want == have || now - prefs.getLong("sleep_try", 0) < RETRY_MS) return;
+            prefs.edit().putLong("sleep_try", now).apply();
+            Jobs.send(ctx, "sleep:" + want);
+            Log.i("sleep: level " + have + " -> " + want + " (screen off)");
         } catch (Throwable t) { Log.w("sleep off: " + t); }
     }
 

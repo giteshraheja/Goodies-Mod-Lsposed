@@ -181,6 +181,9 @@ public final class SettingsActivity extends Activity {
 
     // ================================================================ lifecycle
 
+    /** Set by the setup guide after a restore. */
+    static volatile boolean restoredElsewhere;
+
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
@@ -307,6 +310,13 @@ public final class SettingsActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        if (restoredElsewhere) {   // the setup guide restored a backup: what this screen holds is the old options
+            restoredElsewhere = false;
+            cfg = Config.load(prefs);
+            apply();
+            recreate();
+            return;
+        }
         resumed = true;
         registerReceiver(pong, new IntentFilter(Config.ACTION_PONG), Context.RECEIVER_EXPORTED);
         ping();
@@ -1539,13 +1549,13 @@ public final class SettingsActivity extends Activity {
             if (v == null) {
                 ok = Helper.putGlobal(ANIM_KEYS[0], "1.0", ANIM_KEYS[1], "1.0", ANIM_KEYS[2], "1.0", "sbmods_anim_orig", "");   // 100% is the stock speed
             } else {
-                String o = Helper.rootOut("settings get global sbmods_anim_orig").trim();
-                if (!o.matches("[0-9.]+,[0-9.]+,[0-9.]+")) {
+                String o = Helper.rootOut("settings get global sbmods_anim_orig");   // null = no root
+                if (o != null && !o.matches("[0-9.]+,[0-9.]+,[0-9.]+")) {
                     String[] c = new String[3];
-                    for (int i = 0; i < 3; i++) { String g = Helper.rootOut("settings get global " + ANIM_KEYS[i]).trim(); c[i] = g.matches("[0-9.]+") ? g : "1.0"; }
+                    for (int i = 0; i < 3; i++) { String g = Helper.rootOut("settings get global " + ANIM_KEYS[i]); c[i] = g != null && g.matches("[0-9.]+") ? g : "1.0"; }
                     Helper.putGlobal("sbmods_anim_orig", c[0] + "," + c[1] + "," + c[2]);
                 }
-                ok = Helper.putGlobal(ANIM_KEYS[0], v, ANIM_KEYS[1], v, ANIM_KEYS[2], v);
+                ok = o != null && Helper.putGlobal(ANIM_KEYS[0], v, ANIM_KEYS[1], v, ANIM_KEYS[2], v);
             }
             final boolean done = ok;
             runOnUiThread(() -> { if (!done) Toast.makeText(this, "Root access was not granted to this app", Toast.LENGTH_LONG).show(); refresh(); });
@@ -1608,6 +1618,7 @@ public final class SettingsActivity extends Activity {
         new Thread(() -> {
             String out = Helper.rootOut("dumpsys deviceidle whitelist 2>/dev/null | grep -E '^(user|system),'");
             String removedSys = Helper.rootOut("settings get global sbmods_wl_sys");
+            final String removedUsr = Helper.rootOut("settings get global sbmods_wl_user");
             runOnUiThread(() -> {
                 if (out == null) { Toast.makeText(this, "Root access was not granted to this app", Toast.LENGTH_LONG).show(); return; }
                 final java.util.List<AwakeRow> rows = new java.util.ArrayList<>();
@@ -1633,7 +1644,9 @@ public final class SettingsActivity extends Activity {
                     r.level = dev.gitesh.sbmods.SysWhitelist.of(pkg).level;
                     rows.add(r);
                 }
-                final java.util.Set<String> removedUser = new java.util.HashSet<>(prefs.getStringSet("wl_removed", new java.util.HashSet<>()));
+                final java.util.Set<String> removedUser = new java.util.LinkedHashSet<>();
+                if (removedUsr != null) for (String t : removedUsr.trim().split("\\s+")) if (t.matches("[A-Za-z0-9._]+") && t.indexOf('.') > 0) removedUser.add(t);
+                try { for (String t : prefs.getStringSet("wl_removed", new java.util.HashSet<String>())) if (t.matches("[A-Za-z0-9._]+") && t.indexOf('.') > 0) removedUser.add(t); } catch (Throwable ignored) {}   // (the list's old home)
                 for (String pkg : removedUser) {
                     boolean dup = false;
                     for (AwakeRow r : rows) if (r.pkg.equals(pkg)) dup = true;
@@ -1699,7 +1712,7 @@ public final class SettingsActivity extends Activity {
     /** Runs the changes as root and remembers them: system-app removals are re-applied after every restart (Android forgets them). */
     private void applyAwake(java.util.List<AwakeRow> rows, java.util.Set<String> removedSys, java.util.Set<String> removedUser) {
         int n = 0;
-        java.util.Set<String> sysList = new java.util.LinkedHashSet<>(removedSys), userList = new java.util.HashSet<>(removedUser);
+        java.util.Set<String> sysList = new java.util.LinkedHashSet<>(removedSys), userList = new java.util.LinkedHashSet<>(removedUser);
         boolean sysChanged = false;
         for (AwakeRow r : rows) {
             boolean now = r.sw != null && r.sw.isChecked();
@@ -1710,7 +1723,7 @@ public final class SettingsActivity extends Activity {
             if (r.sys) { sysChanged = true; if (now) sysList.remove(r.pkg); else sysList.add(r.pkg); }
             else if (now) userList.remove(r.pkg); else userList.add(r.pkg);
         }
-        prefs.edit().putStringSet("wl_removed", userList).apply();
+        if (Helper.putGlobal("sbmods_wl_user", android.text.TextUtils.join(" ", userList))) prefs.edit().remove("wl_removed").apply();
         if (sysChanged) Helper.putGlobal("sbmods_wl_sys", android.text.TextUtils.join(" ", sysList));
         final int changed = n;
         final boolean again = sysChanged;

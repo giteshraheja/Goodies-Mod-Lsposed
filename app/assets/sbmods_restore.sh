@@ -23,8 +23,12 @@ fi
 for f in $ST/cc*.max; do [ -f "$f" ] || continue; c=${f##*/cc}; c=${c%.max}; d=/sys/devices/system/cpu/cpu$c/core_ctl
   cat $ST/cc$c.max > $d/max_cpus; cat $ST/cc$c.min > $d/min_cpus; done
 [ -f $ST/ps.set ] && settings put global low_power 0
-# maximum saving while the screen is off: power saving back if it was ours (automatic sync is put back by the status bar part at the next screen-on)
+# maximum saving while the screen is off: power saving back if it was ours. Automatic sync cannot be switched from a shell: the status bar part
+# is asked (2 = put it back now) and answers with 0; with no answer the note stays, so it still happens at its next start or screen-on.
 [ "$(settings get global sbmods_off_ps)" = "1" ] && { settings put global low_power 0; settings put global sbmods_off_ps 0; }
+case "$(settings get global sbmods_off_sync)" in 1|2)
+  settings put global sbmods_off_sync 2
+  for i in 1 2 3 4 5 6; do [ "$(settings get global sbmods_off_sync)" = "0" ] && break; sleep 0.5; done;; esac
 # renderer: skiavk back to OpenGL (nothing is restarted; apps follow when they next open)
 [ "$(getprop debug.hwui.renderer)" = "skiavk" ] && { setprop debug.hwui.renderer skiagl; settings put global sbmods_gfx opengl; settings put global sbmods_gfx_keep 0; }
 # the battery charge limit stays unless asked ("all"): then the saved original goes back, but only if it is one of the allowed numbers
@@ -39,6 +43,8 @@ if [ "$1" = "all" ]; then
   for k in sbmods_hz_max sbmods_hz_psm sbmods_hz_low; do case "$(settings get global $k)" in 60|96) settings delete system peak_refresh_rate >/dev/null 2>&1;; esac; done
   # system apps the owner took off the doze whitelist: back on it (the list is a global that is wiped below)
   for p in $(settings get global sbmods_wl_sys 2>/dev/null); do case "$p" in ''|*[!A-Za-z0-9._]*) ;; *.*) dumpsys deviceidle sys-whitelist +$p >/dev/null 2>&1;; esac; done
+  # ... and the other apps the owner took off it (sbmods_wl_user)
+  for p in $(settings get global sbmods_wl_user 2>/dev/null); do case "$p" in ''|*[!A-Za-z0-9._]*) ;; *.*) dumpsys deviceidle whitelist +$p >/dev/null 2>&1;; esac; done
   # Sleep sooner: the doze setting back to what it was (nothing = nothing); lost note = delete our own value
   if [ -f $B/sbmods_dz.orig ]; then
     o=$(cat $B/sbmods_dz.orig 2>/dev/null)
@@ -50,7 +56,7 @@ for k in sbmods_cpu_pct sbmods_gpu_pct sbmods_cool sbmods_cores sbmods_cmd sbmod
 rm -rf $ST /data/local/tmp/sbmods_orig /data/local/tmp/sbmods_cpu_orig
 if [ "$1" = "all" ]; then
   # every other setting the mod keeps, the one-off job notes and our own scripts (this one is deleted last; the shell has it open)
-  for k in $(settings list global | grep '^sbmods_' | cut -d= -f1); do settings delete global $k >/dev/null 2>&1; done
+  for k in $(settings list global | grep '^sbmods_' | grep -v '^sbmods_off_sync=[12]$' | cut -d= -f1); do settings delete global $k >/dev/null 2>&1; done   # (an unanswered sync note stays)
   rm -rf $B/sbmods_job $B/sbmods_cpud.sh $B/sbmods_lib.sh
   rm -f $B/sbmods_restore.sh   # (also when this run is a copy from the app's cache folder)
   rmdir $B 2>/dev/null

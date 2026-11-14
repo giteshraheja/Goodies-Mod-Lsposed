@@ -61,7 +61,8 @@ public final class Config {
             "Sound → Vibrate → Mute", "Play / pause music", "Lock screen", "Quick settings panel",
             "Notification panel", "Camera", "Timer", "Calculator", "Internet panel", "An app…", "Samsung Finder", "Close background apps",
             "Screenshot", "Brightness up", "Brightness down", "Modes and Routines", "Samsung Notes", "Gallery",
-            "Messages", "Chrome", "Maps", "Reminders", "Auto brightness"};
+            "Messages", "Chrome", "Maps", "Reminders", "Auto brightness",
+            "Screen top speed", "Screen speed: no cap", "Maximum saving"};
     /** Gesture slots: item x gesture. Index = item * 3 + gesture. */
     public static final String[] ITEMS = {"battery", "clock", "temp", "camera hole", "wifi", "mobile signal"};
     public static final String[] GESTURES = {"Tap", "Double-tap", "Long-press"};

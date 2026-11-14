@@ -28,12 +28,22 @@ final class ScreenSaver {
         try {
             if (obs != null) return;
             obs = new ContentObserver(main) {
-                @Override public void onChange(boolean self) { apply(c); }
+                @Override public void onChange(boolean self) { syncBack(c); apply(c); }
             };
-            for (String k : new String[]{"low_power", "sbmods_hz_max", "sbmods_hz_psm", "sbmods_hz_low", "sbmods_hz_low_at"})
+            for (String k : new String[]{"low_power", "sbmods_hz_max", "sbmods_hz_psm", "sbmods_hz_low", "sbmods_hz_low_at", "sbmods_off_sync"})
                 c.getContentResolver().registerContentObserver(Settings.Global.getUriFor(k), false, obs);
+            syncBack(c);
             apply(c);
         } catch (Throwable t) { Log.w("screen saver start: " + t); }
+    }
+
+    /** "Undo everything" asks with sbmods_off_sync = 2: automatic sync, switched off by us, goes back on now (a root shell cannot do it). */
+    private static void syncBack(Context c) {
+        try {
+            if (Global.gint(c, "sbmods_off_sync", 0) != 2) return;
+            Global.gput(c, "sbmods_off_sync", "0");
+            ContentResolver.setMasterSyncAutomatically(true);
+        } catch (Throwable t) { Log.w("sync back: " + t); }
     }
 
     private static int batteryPct(Context c, boolean[] charging) {
@@ -74,7 +84,7 @@ final class ScreenSaver {
 
     /** A gesture: switch maximum saving on (true) or, if it is on, put everything back (false). It also ends when the screen next comes on. */
     static boolean saveNow(Context c) {
-        if (Global.gint(c, "sbmods_off_ps", 0) == 1 || Global.gint(c, "sbmods_off_sync", 0) == 1) { screenOn(c); return false; }
+        if (Global.gint(c, "sbmods_off_ps", 0) == 1 || Global.gint(c, "sbmods_off_sync", 0) >= 1) { screenOn(c); return false; }
         saveOn(c);
         return true;
     }
@@ -100,7 +110,7 @@ final class ScreenSaver {
                 Global.gput(c, "sbmods_off_ps", "0");
                 Global.gset(c, "low_power", "0");
             }
-            if (Global.gint(c, "sbmods_off_sync", 0) == 1) {
+            if (Global.gint(c, "sbmods_off_sync", 0) >= 1) {
                 Global.gput(c, "sbmods_off_sync", "0");
                 ContentResolver.setMasterSyncAutomatically(true);
             }

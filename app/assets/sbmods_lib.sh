@@ -76,7 +76,6 @@ wlok() { plainok "$1" || return 1
     com.google.android.gms*|com.sec.imsservice|com.sec.epdg|com.sec.unifiedwfc|com.samsung.android.dialer|com.samsung.android.incallui|com.samsung.android.messaging|com.android.phone|com.android.server.telecom|com.android.providers.*|com.sec.spp.push|com.qualcomm.location|com.google.android.cellbroadcastreceiver|com.samsung.sec.android.application.csc|com.samsung.android.app.contacts|com.android.shell|com.android.managedprovisioning|android|dev.gitesh.sbmods|com.termux|com.osp.app.signin|com.samsung.android.authfw|com.samsung.android.knox*|com.samsung.klmsagent|com.samsung.ssu|com.samsung.android.kgclient|com.samsung.android.mdm) return 1;;
   esac; return 0; }
 wl_apply() { for _p in $(settings get global sbmods_wl_sys 2>/dev/null); do wlok "$_p" && dumpsys deviceidle sys-whitelist -$_p >/dev/null 2>&1; done; }
-wl_undo() { for _p in $(settings get global sbmods_wl_sys 2>/dev/null); do plainok "$_p" && dumpsys deviceidle sys-whitelist +$_p >/dev/null 2>&1; done; }
 
 # memory pressure: "some" and "full" averages over the last minute (percent of time apps waited for memory), -1 if the kernel does not say
 memstat() { _r=$(awk '/^some/{split($3,a,"=");s=a[2]}/^full/{split($3,a,"=");f=a[2]}END{if(s!="")print s "|" f}' /proc/pressure/memory 2>/dev/null); echo "${_r:--1|-1}"; }

@@ -51,7 +51,7 @@ public final class OnboardingActivity extends Activity {
         getWindow().setNavigationBarColor(Color.TRANSPARENT);
         pal = Ui.appPal(this);
         backups = Backup.list(this);
-        order = backups.isEmpty() ? new int[]{WELCOME, ROOT, MODULE, DONE} : new int[]{WELCOME, ROOT, MODULE, RESTORE, DONE};
+        order = new int[]{WELCOME, ROOT, MODULE, RESTORE, DONE};   // (always: after a reinstall Android hides the old backups from the list, "Pick a file" still reaches them)
         show();
     }
 
@@ -133,8 +133,8 @@ public final class OnboardingActivity extends Activity {
                 String label = (e.daily() ? "Daily backup" : "Saved by hand") + " · " + when;
                 c.addView(Ui.pickRow(this, pal, label, i == chosen, v -> { chosen = idx; show(); }), margin(-1, -2, 6));
             }
-            c.addView(button("Restore selected", true, this::confirmRestore), margin(-1, -2, 10));
-            c.addView(button("Pick a file…", false, this::pickFile), margin(-1, -2, 0));
+            if (!backups.isEmpty()) c.addView(button("Restore selected", true, this::confirmRestore), margin(-1, -2, 10));
+            c.addView(button("Pick a file…", backups.isEmpty(), this::pickFile), margin(-1, -2, 0));
         } else if (id == DONE) {
             c.addView(pill("Daily backups on · newest 7 kept", pal.ok), margin(-2, -2, 0));
         }
@@ -188,7 +188,9 @@ public final class OnboardingActivity extends Activity {
         switch (id) {
             case ROOT: return "Root lets PulseBar change speed, sleep and the status bar. Open your root manager, find PulseBar and tap Allow.";
             case MODULE: return "In your module manager (Vector or LSPosed), open Modules, tick PulseBar, then restart the status bar.";
-            case RESTORE: return "We found backups from before. Pick one to get your settings back, or skip to start fresh.";
+            case RESTORE: return backups.isEmpty()
+                    ? "No backup shows up by itself (after a reinstall the phone hides the old ones from the app). If you have one, tap Pick a file and choose a sbmods-….json file in Downloads. Or skip to start fresh."
+                    : "We found backups from before. Pick one to get your settings back, or skip to start fresh.";
             case DONE: return "PulseBar now saves your settings once a day and keeps the newest 7 backups in Downloads. After a reinstall, this guide can bring them back. You can reopen it from More.";
             default: return "Setup takes about two minutes. You’ll give PulseBar root, switch it on in your module manager, and optionally bring back old settings.";
         }
@@ -278,7 +280,7 @@ public final class OnboardingActivity extends Activity {
             String m = msg;
             runOnUiThread(() -> {
                 Toast.makeText(this, m, Toast.LENGTH_LONG).show();
-                if (m.startsWith("Restored") || m.startsWith("Options restored")) go(DONE);
+                if (m.startsWith("Restored") || m.startsWith("Options restored")) { SettingsActivity.restoredElsewhere = true; go(DONE); }
             });
         }).start();
     }

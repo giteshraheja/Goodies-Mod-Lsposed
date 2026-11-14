@@ -49,8 +49,8 @@ public final class BootReceiver extends BroadcastReceiver {
             int boot = -2;
             String outcome;
             try {
-                if (wl) JobReceiver.run(app, "wlsys");   // one short root job, no status bar mod needed
-                if (!helper) { record(app, -2, "system whitelist re-applied"); pr.finish(); return; }
+                boolean wlOk = wl && JobReceiver.run(app, "wlsys");   // one short root job, no status bar mod needed
+                if (!helper) { record(app, -2, wlOk ? "system whitelist re-applied" : "system whitelist NOT re-applied (no root?)"); pr.finish(); return; }
                 // Only when the status bar mod is on: it stamps global setting sbmods_alive when it loads in SystemUI (and clears it if it
                 // switches itself off). A stamp older than this boot, or none, means the mod is off: leave everything alone.
                 // compare boot counts, not clock times: the clock can jump right after boot (network time)
