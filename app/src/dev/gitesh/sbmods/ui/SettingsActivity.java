@@ -1514,58 +1514,81 @@ public final class SettingsActivity extends Activity {
             runOnUiThread(() -> {
                 if (out == null) { Toast.makeText(this, "Root access was not granted to this app", Toast.LENGTH_LONG).show(); return; }
                 final java.util.List<String> allowed = new java.util.ArrayList<>();
-                for (String line : out.split("\n")) {
+                for (String line : out.split("\\n")) {
                     String[] p = line.trim().split(",");
                     if (p.length >= 2 && p[1].matches("[A-Za-z0-9._]+") && !awakeLocked(p[1]) && !allowed.contains(p[1])) allowed.add(p[1]);
                 }
                 final java.util.List<String> removed = new java.util.ArrayList<>(prefs.getStringSet("wl_removed", new java.util.HashSet<>()));
                 removed.removeAll(allowed);
-                final java.util.Map<String, android.widget.CheckBox> boxes = new java.util.LinkedHashMap<>();
-                android.widget.LinearLayout col = new android.widget.LinearLayout(this);
-                col.setOrientation(android.widget.LinearLayout.VERTICAL);
-                col.setPadding(dp(4), dp(4), dp(4), dp(4));
-                android.content.pm.PackageManager pm = getPackageManager();
-                if (allowed.isEmpty()) col.addView(Ui.text(this, "No apps on the list that can be changed here.", 14, pal.tx2, 400));
-                else col.addView(Ui.text(this, "Tick the apps to take off the list (they then follow the normal rules):", 13, pal.tx2, 400));
-                for (String pkg : allowed) col.addView(awakeBox(pm, pkg, boxes));
-                if (!removed.isEmpty()) {
-                    TextView h = Ui.text(this, "Taken off earlier. Tick to allow them again:", 13, pal.tx2, 400);
-                    h.setPadding(0, dp(12), 0, 0);
-                    col.addView(h);
-                    for (String pkg : removed) col.addView(awakeBox(pm, pkg, boxes));
+                final java.util.Map<String, Ui.Switch> switches = new java.util.LinkedHashMap<>();
+                LinearLayout col = new LinearLayout(this);
+                col.setOrientation(LinearLayout.VERTICAL);
+                col.setPadding(0, 0, 0, dp(Ui.S2));
+                for (String pkg : allowed) col.addView(awakeRow(pkg, true, switches));
+                for (String pkg : removed) col.addView(awakeRow(pkg, false, switches));
+                if (switches.isEmpty()) {
+                    TextView none = Ui.text(this, "No apps on the list that can be changed here.", Ui.T_BODY, pal.tx2, 400);
+                    none.setPadding(dp(Ui.S5), dp(Ui.S2), dp(Ui.S5), dp(Ui.S2));
+                    col.addView(none);
                 }
-                android.widget.ScrollView sv = new android.widget.ScrollView(this);
-                sv.addView(col);
-                new Ui.Dlg(this, pal).title("Apps allowed to stay awake").view(sv)
-                        .button(0, "Cancel", null)
-                        .button(2, "Apply", () -> new Thread(() -> {
-                            int n = 0;
-                            java.util.Set<String> keep = new java.util.HashSet<>(removed);
-                            for (java.util.Map.Entry<String, android.widget.CheckBox> e : boxes.entrySet()) {
-                                if (!e.getValue().isChecked()) continue;
-                                boolean takeOff = allowed.contains(e.getKey());
-                                if (Helper.rootOut("dumpsys deviceidle whitelist " + (takeOff ? "-" : "+") + e.getKey()) != null) {
-                                    n++;
-                                    if (takeOff) keep.add(e.getKey()); else keep.remove(e.getKey());
-                                }
-                            }
-                            prefs.edit().putStringSet("wl_removed", keep).apply();
-                            final int changed = n;
-                            runOnUiThread(() -> Toast.makeText(this, changed == 0 ? "Nothing changed" : changed + (changed == 1 ? " app changed" : " apps changed"), Toast.LENGTH_SHORT).show());
-                        }).start()).show();
+                Ui.Dlg d = new Ui.Dlg(this, pal).title("Apps allowed to stay awake")
+                        .message("On means the app may ignore deep sleep. Switch an app off to put it under the normal rules; its messages may then arrive a little late.")
+                        .view(col)
+                        .button(0, "Cancel", null);
+                if (!switches.isEmpty()) d.button(2, "Apply", () -> new Thread(() -> {
+                    int n = 0;
+                    java.util.Set<String> keep = new java.util.HashSet<>(removed);
+                    for (java.util.Map.Entry<String, Ui.Switch> e : switches.entrySet()) {
+                        boolean was = allowed.contains(e.getKey()), now = e.getValue().isChecked();
+                        if (was == now) continue;
+                        if (Helper.rootOut("dumpsys deviceidle whitelist " + (now ? "+" : "-") + e.getKey()) != null) {
+                            n++;
+                            if (now) keep.remove(e.getKey()); else keep.add(e.getKey());
+                        }
+                    }
+                    prefs.edit().putStringSet("wl_removed", keep).apply();
+                    final int changed = n;
+                    runOnUiThread(() -> Toast.makeText(this, changed == 0 ? "Nothing changed" : changed + (changed == 1 ? " app changed" : " apps changed"), Toast.LENGTH_SHORT).show());
+                }).start());
+                d.show();
             });
         }).start();
     }
 
-    private android.widget.CheckBox awakeBox(android.content.pm.PackageManager pm, String pkg, java.util.Map<String, android.widget.CheckBox> boxes) {
+    /** One row of the list: app icon, name, package, and a switch (on = may stay awake). */
+    private View awakeRow(String pkg, boolean on, java.util.Map<String, Ui.Switch> switches) {
+        android.content.pm.PackageManager pm = getPackageManager();
         String name = pkg;
-        try { name = pm.getApplicationInfo(pkg, 0).loadLabel(pm).toString(); } catch (Throwable ignored) {}
-        android.widget.CheckBox b = new android.widget.CheckBox(this);
-        b.setText(name.equals(pkg) ? pkg : name + "\n" + pkg);
-        b.setTextSize(14);
-        b.setTextColor(pal.tx);
-        boxes.put(pkg, b);
-        return b;
+        android.graphics.drawable.Drawable ic = null;
+        try { android.content.pm.ApplicationInfo ai = pm.getApplicationInfo(pkg, 0); name = ai.loadLabel(pm).toString(); ic = ai.loadIcon(pm); } catch (Throwable ignored) {}
+        LinearLayout r = new LinearLayout(this);
+        r.setGravity(Gravity.CENTER_VERTICAL);
+        r.setMinimumHeight(dp(Ui.ROW_H));
+        r.setPadding(dp(Ui.S5), dp(Ui.S1), dp(Ui.S3), dp(Ui.S1));
+        if (ic != null) {
+            android.widget.ImageView iv = new android.widget.ImageView(this);
+            iv.setImageDrawable(ic);
+            LinearLayout.LayoutParams ip = new LinearLayout.LayoutParams(dp(36), dp(36));
+            ip.setMarginEnd(dp(Ui.S3));
+            r.addView(iv, ip);
+        }
+        LinearLayout tx = new LinearLayout(this);
+        tx.setOrientation(LinearLayout.VERTICAL);
+        TextView n = Ui.text(this, name, Ui.T_BODY, pal.tx, 500);
+        n.setSingleLine(true);
+        n.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        tx.addView(n);
+        TextView pk = Ui.text(this, pkg, Ui.T_CAPTION, pal.tx2, 400);
+        pk.setSingleLine(true);
+        pk.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
+        tx.addView(pk);
+        r.addView(tx, new LinearLayout.LayoutParams(0, -2, 1));
+        Ui.Switch sw = new Ui.Switch(this, pal);
+        sw.setChecked(on);
+        switches.put(pkg, sw);
+        r.addView(sw);
+        r.setOnClickListener(v -> sw.toggle());
+        return r;
     }
 
     // ---------------------------------------------------------------- More tab
