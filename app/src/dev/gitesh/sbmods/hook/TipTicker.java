@@ -17,9 +17,11 @@ import android.widget.FrameLayout;
 import android.widget.TextView;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Random;
+import java.util.Set;
 
 import dev.gitesh.sbmods.Config;
 
@@ -41,6 +43,33 @@ final class TipTicker {
             "open Modes and Routines", "open Samsung Notes", "open Gallery",
             "open Messages", "open Chrome", "open Maps", "open Reminders", "switch auto brightness on or off"};
     private String lastTip;
+    private SharedPreferences prefs;   // where the tips already shown in this round are kept (survives status bar restarts)
+
+    /** Tips that are always true, whatever the settings. Keep each one short: it scrolls at reading speed. */
+    private static final String[] GENERAL = {
+            "Open recent apps (Overview): RAM, Swap and Temp chips sit at the top",
+            "Tap RAM on Overview to close background apps",
+            "Tap Swap on Overview for a deep clean of memory",
+            "Tap Temp on Overview for cool-down mode",
+            "Tap CPU or GPU on Overview to open the Performance panel",
+            "Long-press CPU or GPU on Overview to switch your quick limit on or off",
+            "The Performance panel has four pages: All, Speed, Battery and Memory",
+            "Pick a one-tap mode in the panel: Full, Balanced, Cool or Saver",
+            "The Battery page shows time left, screen-on time and standby drain",
+            "Battery health in the panel shows charge cycles and can stop charging early",
+            "Busiest apps in the panel has a Stop button for the ones that work hardest",
+            "Rest some cores to save power: Performance panel › Cores",
+            "Cool-down keeps the speed limited until the battery is cool again",
+            "Speed limits end by themselves after the time you choose",
+            "Drag items in the Layout preview to place the clock, date, temperature and battery",
+            "Hide status bar icons you never need in PulseBar › Layout › Status icons",
+            "Network speed and the date can sit anywhere: drag them in the Layout preview",
+            "A gesture can take a screenshot or change the brightness: set one in PulseBar › Gestures",
+            "PulseBar can save a backup of your settings and bring them back later",
+            "Undo everything in PulseBar puts the phone back the way Samsung had it",
+            "Self-check in PulseBar lists anything that is wrong, with a fix button",
+            "You can make these tips rarer or more frequent in PulseBar settings",
+    };
 
     /**
      * What's new, newest last. After an update each is shown once (one per unlock), before the usual reminders.
@@ -52,14 +81,15 @@ final class TipTicker {
             "New: Performance panel \u2013 limit CPU / GPU speed, or cool-down until the phone is cool",
             "New: long-press CPU or GPU on Overview to turn your quick limit on or off",
             "New: tap RAM on Overview to close background apps, Swap for a deep clean",
-            "New: drag network speed and the date anywhere in StatusBar Mods \u203a Layout",
+            "New: drag network speed and the date anywhere in PulseBar \u203a Layout",
             "New: the Performance panel has four pages \u2013 All, Speed, Battery and Memory",
             "New: one-tap modes in the Performance panel \u2013 Full, Balanced, Cool or Saver",
             "New: the Battery page shows time left, screen-on time and standby drain",
             "New: the Memory page shows which apps work hardest, with a Stop button",
             "New: rest some cores to save power \u2013 Performance panel \u203a Cores",
             "New: try Vulkan graphics \u2013 Performance panel \u203a Graphics (Wi-Fi calling is guarded)",
-            "New: hide status bar icons you never need \u2013 StatusBar Mods \u203a Layout \u203a Status icons",
+            "New: hide status bar icons you never need \u2013 PulseBar \u203a Layout \u203a Status icons",
+            "New: this app is now called PulseBar, with a new icon \u2013 and tips go through all of them before any repeats",
     };
     private static final long NEWS_GAP_MS = 10 * 60_000L;
     private static final String[] GESTURE = {"Tap", "Double-tap", "Long-press"};
@@ -76,6 +106,7 @@ final class TipTicker {
     /** Called on unlock: maybe show a tip, depending on the chosen frequency. */
     void maybeShow(TextView clock, SharedPreferences prefs) {
         Config c = owner.config();
+        this.prefs = prefs;
         long now = System.currentTimeMillis();
         String why;
         if (c.tipsMode <= 0 || c.tipsMode >= MIN_GAP_MS.length) why = "off";
@@ -88,20 +119,22 @@ final class TipTicker {
                 else why = "news: no room";
             } else if (gap < MIN_GAP_MS[c.tipsMode]) why = "too soon";
             else if (c.tipsMode == 1 && rnd.nextInt(3) != 0) why = "dice";   // "sometimes": 1 in 3 eligible unlocks
-            else if (show(clock)) { prefs.edit().putLong("last_tip", now).apply(); why = "shown"; }
+            else if (show(clock, prefs)) { prefs.edit().putLong("last_tip", now).apply(); why = "shown"; }
             else why = "nothing to show / no room";
         }
         prefs.edit().putString("tip_last_try", now + " " + why).apply();   // so "why didn't I see a tip?" has an answer
     }
 
     /** Shows one random tip now. Returns false if there is nothing to show or no room. */
-    boolean show(TextView clock) {
-        return show(clock, null);
+    boolean show(TextView clock, SharedPreferences prefs) {
+        if (prefs != null) this.prefs = prefs;
+        return show(clock, (String) null);
     }
 
-    /** text: a given line (what's new), or null for a random reminder. */
+    /** text: a given line (what's new), or null for the next reminder of this round. */
     boolean show(TextView clock, String text) {
-        String tip = text != null ? text : pickTip(clock.getContext());
+        String raw = text != null ? null : pickTip(clock.getContext());
+        String tip = text != null ? text : raw == null ? null : "Tip:  " + raw;
         if (tip == null) return false;
         Context ctx = clock.getContext();
         // The whole status bar becomes a black strip with the tip scrolling across in white: always readable,
@@ -156,6 +189,7 @@ final class TipTicker {
             @Override public void onAnimationCancel(Animator a) { cleanup(); }
         });
         anim.start();
+        if (raw != null) markSeen(ctx, raw);
         Log.i("tip: " + tip);
         return true;
     }
@@ -174,8 +208,8 @@ final class TipTicker {
             w.animate().alpha(0f).setDuration(200).withEndAction(() -> { if (w.getParent() instanceof ViewGroup) ((ViewGroup) w.getParent()).removeView(w); }).start();
     }
 
-    /** Builds one reminder from what's actually configured, picked at random. */
-    private String pickTip(Context ctx) {
+    /** Every tip that is true for the current settings: the gestures you set up, the back pill (if on), and the general ones. */
+    private List<String> pool(Context ctx) {
         Config c = owner.config();
         List<String> tips = new ArrayList<>();
         for (int slot = 0; slot < Config.SLOTS; slot++) {
@@ -184,11 +218,52 @@ final class TipTicker {
             String what = a == Config.ACT_APP ? String.format(DOES[a], appLabel(ctx, c.app(slot))) : DOES[a];
             tips.add(GESTURE[slot % 3] + " " + ITEM[slot / 3] + " to " + what);
         }
-        if (c.backEnabled) tips.add("Tap the ‹ app pill on the left to jump back to that app");
-        if (tips.isEmpty()) return null;
-        if (tips.size() > 1) tips.remove(lastTip);     // never the same tip twice in a row
-        lastTip = tips.get(rnd.nextInt(tips.size()));
-        return "Tip:  " + lastTip;
+        if (c.backEnabled) {
+            tips.add("Tap the back pill on the left to jump back to the previous app");
+            tips.add("The back pill can fade out after a few seconds, or hide while music plays");
+        }
+        if (c.smartOn) tips.add("Smart suggestions learn which apps you reopen after a clean-up and spare them next time");
+        for (String g : GENERAL) tips.add(g);
+        return tips;
+    }
+
+    private static String key(String tip) { return Integer.toHexString(tip.hashCode()); }
+
+    /** The next tip of this round: one not shown yet since the round began. When all were shown, a new round starts. */
+    private String pickTip(Context ctx) {
+        List<String> pool = pool(ctx);
+        if (pool.isEmpty()) return null;
+        Set<String> seen = seenKeys();
+        List<String> fresh = new ArrayList<>();
+        for (String t : pool) if (!seen.contains(key(t))) fresh.add(t);
+        if (fresh.isEmpty()) {                          // round complete: all again, but not the one just shown
+            fresh.addAll(pool);
+            String last = prefs != null ? prefs.getString("tip_last", lastTip) : lastTip;
+            if (fresh.size() > 1) fresh.remove(last);
+        }
+        return fresh.get(rnd.nextInt(fresh.size()));
+    }
+
+    private Set<String> seenKeys() {
+        Set<String> s = new HashSet<>();
+        try { if (prefs != null) s.addAll(prefs.getStringSet("tips_seen", new HashSet<>())); } catch (Throwable ignored) {}
+        return s;
+    }
+
+    /** Remember that this tip was shown. Keys of tips that no longer apply are dropped; a finished round is cleared first. */
+    private void markSeen(Context ctx, String tip) {
+        lastTip = tip;
+        if (prefs == null) return;
+        try {
+            List<String> pool = pool(ctx);
+            Set<String> valid = new HashSet<>();
+            for (String t : pool) valid.add(key(t));
+            Set<String> seen = seenKeys();
+            seen.retainAll(valid);
+            if (seen.containsAll(valid)) seen.clear();  // round was complete: this tip starts the next one
+            seen.add(key(tip));
+            prefs.edit().putStringSet("tips_seen", seen).putString("tip_last", tip).apply();
+        } catch (Throwable t) { Log.w("tip seen: " + t); }
     }
 
     private static String appLabel(Context ctx, String pkg) {

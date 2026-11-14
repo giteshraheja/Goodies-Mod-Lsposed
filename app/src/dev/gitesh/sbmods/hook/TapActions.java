@@ -152,7 +152,7 @@ final class TapActions {
                 if (r != null && !r.isEmpty()) { toast(ctx, r); return; }
                 if (android.os.SystemClock.uptimeMillis() < until) { h.postDelayed(this, 400); return; }
                 if ("ramclean".equals(Settings.Global.getString(cr, "sbmods_cmd"))) Settings.Global.putString(cr, "sbmods_cmd", "none");   // (went to the helper script:) withdraw it, so it never runs by surprise later
-                toast(ctx, "Couldn\u2019t close apps \u2013 check that StatusBar Mods has root access");
+                toast(ctx, "Couldn\u2019t close apps \u2013 check that PulseBar has root access");
             }
         }, 1500);
     }
@@ -169,7 +169,7 @@ final class TapActions {
                 String r = Settings.Global.getString(cr, "sbmods_result");
                 if (r != null && !r.isEmpty()) { toast(ctx, r); return; }
                 if (android.os.SystemClock.uptimeMillis() < until) { h.postDelayed(this, 300); return; }
-                toast(ctx, "Couldn’t take a screenshot – check that StatusBar Mods has root access");
+                toast(ctx, "Couldn’t take a screenshot – check that PulseBar has root access");
             }
         }, 800);
     }

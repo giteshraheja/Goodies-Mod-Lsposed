@@ -1679,8 +1679,8 @@ public final class SettingsActivity extends Activity {
                             String r = Helper.undoEverything(this);
                             runOnUiThread(() -> { if (r != null) { prefs.edit().putBoolean("helperAtBoot", false).apply(); Helper.setAtBoot(this, false); helperRunning = false; scFacts = null; scAt = 0; findings = new java.util.ArrayList<>(); refresh(); selfCheck(true); } Toast.makeText(this, r == null ? "That did not work: root was not available" : r.isEmpty() ? "Done" : r, Toast.LENGTH_LONG).show(); });
                         }).start()).show());
-        endGroup(modVersion.isEmpty() ? "StatusBar Mods for the Galaxy S23 Ultra"
-                : "StatusBar Mods  v" + modVersion + "  ·  for the Galaxy S23 Ultra");
+        endGroup(modVersion.isEmpty() ? "PulseBar for the Galaxy S23 Ultra"
+                : "PulseBar  v" + modVersion + "  ·  for the Galaxy S23 Ultra");
     }
 
     // ================================================================ preview + comms
@@ -1778,7 +1778,7 @@ public final class SettingsActivity extends Activity {
             if (!gotPong) setStatus("Not running",
                     "The mod isn't running inside the status bar.\n\n"
                             + "• Make sure root and Vector are running (they aren't after a restart without root).\n"
-                            + "• In Vector, switch on StatusBar Mods for “System UI”.\n"
+                            + "• In Vector, switch on PulseBar for “System UI”.\n"
                             + "• Then restart the status bar.", 2);
         }, 1500);
     }

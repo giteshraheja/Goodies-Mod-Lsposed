@@ -13,7 +13,7 @@ import dev.gitesh.sbmods.Config;
 
 /**
  * Hands a one-off job (close apps, deep clean, battery report, busiest apps, stop an app, battery health, renderer) to the
- * StatusBar Mods app, which runs it as root and goes idle again. The answer arrives in the same settings as always
+ * PulseBar app, which runs it as root and goes idle again. The answer arrives in the same settings as always
  * (sbmods_result, sbmods_batt, sbmods_top, sbmods_appgfx, sbmods_health, sbmods_gfx), so the callers keep reading those.
  *
  * Fallback: if the app does not take the request (not installed, switched off, put to sleep by the phone), the request goes

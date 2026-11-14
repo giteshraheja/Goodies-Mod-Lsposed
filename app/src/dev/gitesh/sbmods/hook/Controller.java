@@ -57,7 +57,7 @@ public final class Controller {
     private static final long GUARD_STABLE_MS = 90_000;
     private static final long GUARD_FORGET_MS = 10 * 60_000;   // a tripped guard re-arms itself after this long without a restart
     private static final long ERROR_WINDOW_MS = 60_000;         // MAX_ERRORS only count when they come in a burst
-    private static final String VERSION = "3.18.5";
+    private static final String VERSION = "3.19.0";
 
     private static Controller sInstance;
 
@@ -1010,7 +1010,7 @@ public final class Controller {
                     return;
                 } else if (Config.ACTION_TIP.equals(a)) {
                     TextView ck = clockRef.get();
-                    if (ck != null && !tips.show(ck)) Log.i("tip: nothing to show / no room");
+                    if (ck != null && !tips.show(ck, prefs)) Log.i("tip: nothing to show / no room");
                     return;
                 } else if (Config.ACTION_RESTART.equals(a)) {
                     // Asked by the app: not a crash, so clear the guard, then let Android restart us

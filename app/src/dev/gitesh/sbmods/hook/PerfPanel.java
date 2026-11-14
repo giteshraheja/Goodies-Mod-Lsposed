@@ -121,7 +121,7 @@ final class PerfPanel {
         col.addView(pSwitch);
         buildSwitch(a);
 
-        pWarn = tv(a, "The limit isn't being applied: the root helper seems to be off. Turn it on in StatusBar Mods › System.", 13, pal.err, false);
+        pWarn = tv(a, "The limit isn't being applied: the root helper seems to be off. Turn it on in PulseBar › System.", 13, pal.err, false);
         pWarn.setPadding(0, dp(a, 6), 0, 0);
         pWarn.setVisibility(View.GONE);
         col.addView(pWarn);
@@ -522,12 +522,12 @@ final class PerfPanel {
                     empty.setGravity(Gravity.CENTER_HORIZONTAL);
                     empty.setPadding(dp(a, 16), dp(a, 28), dp(a, 16), dp(a, 28));
                     TextView l1 = tv(a, "Nothing here yet", 15, Ui.cur.tx, false);
-                    TextView l2 = tv(a, PanelCards.allFill(a) ? "Whatever you change on the other pages shows up here, newest first." : "No cards are shown. Turn some on in StatusBar Mods.", 13, Ui.cur.tx2, false);
+                    TextView l2 = tv(a, PanelCards.allFill(a) ? "Whatever you change on the other pages shows up here, newest first." : "No cards are shown. Turn some on in PulseBar.", 13, Ui.cur.tx2, false);
                     l2.setGravity(Gravity.CENTER);
                     empty.addView(l1);
                     empty.addView(l2, PanelCards.lp(-2, -2, 0, dp(a, 6), 0, 0));
                     pBox.addView(empty, new LinearLayout.LayoutParams(-1, -2));
-                } else pBox.addView(tv(a, "No cards on this page. Turn some on in StatusBar Mods.", 14, Ui.cur.tx2, false), new LinearLayout.LayoutParams(-1, -2));
+                } else pBox.addView(tv(a, "No cards on this page. Turn some on in PulseBar.", 14, Ui.cur.tx2, false), new LinearLayout.LayoutParams(-1, -2));
             }
             pScroll.post(() -> pScroll.scrollTo(0, y));
         } finally { rebuilding = false; }

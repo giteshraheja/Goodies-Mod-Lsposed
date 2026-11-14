@@ -583,7 +583,7 @@ final class PanelCards {
         Games() { super("games"); }
         @Override String help(Activity a) {
             return "The games you opened lately. \"Full speed\" on: the game always runs without a limit. Off: it is slowed down to the level you picked last "
-                    + "(the same automatic rule as in Smart suggestions). Needs Smart suggestions and Game mode in StatusBar Mods.";
+                    + "(the same automatic rule as in Smart suggestions). Needs Smart suggestions and Game mode in PulseBar.";
         }
         @Override View build(Activity a) {
             LinearLayout col = column(a);
@@ -692,7 +692,7 @@ final class PanelCards {
             col.addView(offT, lp(-2, -2, 0, dp(a, 1), 0, 0));
             verdict = tv(a, "", 13, WHITE, true);
             col.addView(verdict, lp(-2, -2, 0, dp(a, 1), 0, 0));
-            err = tv(a, "No answer from the helper – turn it on in StatusBar Mods › System.", 13, Ui.cur.warn, false);
+            err = tv(a, "No answer from the helper – turn it on in PulseBar › System.", 13, Ui.cur.warn, false);
             err.setVisibility(View.GONE);
             col.addView(err, lp(-2, -2, 0, dp(a, 2), 0, 0));
             col.addView(button(a, "Battery usage ›", () -> openScreen(a, "battery",
@@ -925,7 +925,7 @@ final class PanelCards {
         }
         @Override String help(Activity a) {
             return "A few plain checks on numbers the phone already has: heat, busy apps, memory, a forgotten speed limit. "
-                    + "They are worked out when you open the panel, never in the background. Switch them off with Smart suggestions in StatusBar Mods.";
+                    + "They are worked out when you open the panel, never in the background. Switch them off with Smart suggestions in PulseBar.";
         }
         private void fill(Activity a) {
             col.removeAllViews();
@@ -1042,7 +1042,7 @@ final class PanelCards {
             if (raw == null || raw.equals("-")) {
                 if (shownRaw == null) {
                     boolean late = sentAt > 0 && now - sentAt > 12000;
-                    status.setText(late ? "No answer from the helper – turn it on in StatusBar Mods › System." : "Looking…");
+                    status.setText(late ? "No answer from the helper – turn it on in PulseBar › System." : "Looking…");
                     status.setTextColor(late ? Ui.cur.warn : DIM);
                 }
                 return;

@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="dev.gitesh.sbmods"
-    android:versionCode="44"
-    android:versionName="3.18.14">
+    android:versionCode="45"
+    android:versionName="3.19.0">
 
     <uses-sdk android:minSdkVersion="34" android:targetSdkVersion="35" />
 
@@ -23,13 +23,13 @@
     </queries>
 
     <application
-        android:label="StatusBar Mods"
+        android:label="PulseBar"
         android:icon="@drawable/ic_launcher"
         android:allowBackup="false"
         android:theme="@android:style/Theme.DeviceDefault.DayNight">
 
         <meta-data android:name="xposedmodule" android:value="true" />
-        <meta-data android:name="xposeddescription" android:value="Arrange the status bar items by drag and drop (clock, date, temperature, battery, network speed, back button) and add RAM / swap / temperature / CPU / GPU shortcuts to the Overview screen" />
+        <meta-data android:name="xposeddescription" android:value="PulseBar: arrange the status bar items by drag and drop (clock, date, temperature, battery, network speed, back button) and see memory, sleep, heat and speed at a glance in Overview, with one-tap tools to tune them" />
         <meta-data android:name="xposedminversion" android:value="93" />
         <meta-data android:name="xposedscope" android:resource="@array/xposed_scope" />
 
