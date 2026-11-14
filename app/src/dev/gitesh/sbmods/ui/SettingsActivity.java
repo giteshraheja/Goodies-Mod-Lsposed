@@ -1534,15 +1534,13 @@ public final class SettingsActivity extends Activity {
         animH.postDelayed(() -> setAnim(pct), 500);
     }
 
-    /** Animation scales are real user values: the first change saves them, "Normal" puts them back (Undo everything does too). */
+    /** Animation scales are real user values: the first change saves them for "Undo everything"; 100% sets the stock 1.0. */
     private void setAnim(int pct) {
         final String v = pct >= 100 ? null : String.format(java.util.Locale.US, "%.2f", pct / 100f);
         new Thread(() -> {
             boolean ok;
             if (v == null) {
-                String o = Helper.rootOut("settings get global sbmods_anim_orig").trim();
-                String[] p = o.matches("[0-9.]+,[0-9.]+,[0-9.]+") ? o.split(",") : new String[]{"1.0", "1.0", "1.0"};
-                ok = Helper.putGlobal(ANIM_KEYS[0], p[0], ANIM_KEYS[1], p[1], ANIM_KEYS[2], p[2], "sbmods_anim_orig", "");
+                ok = Helper.putGlobal(ANIM_KEYS[0], "1.0", ANIM_KEYS[1], "1.0", ANIM_KEYS[2], "1.0", "sbmods_anim_orig", "");   // 100% is the stock speed
             } else {
                 String o = Helper.rootOut("settings get global sbmods_anim_orig").trim();
                 if (!o.matches("[0-9.]+,[0-9.]+,[0-9.]+")) {
