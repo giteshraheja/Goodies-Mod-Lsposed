@@ -84,7 +84,8 @@ public final class SettingsActivity extends Activity {
             {"Turn on or off", new int[]{Config.ACT_POWER_SAVER, Config.ACT_FLASHLIGHT, Config.ACT_WIFI,
                     Config.ACT_BLUETOOTH, Config.ACT_DND, Config.ACT_ROTATE, Config.ACT_DARK, Config.ACT_SOUND}},
             {"Do something", new int[]{Config.ACT_MEDIA, Config.ACT_LOCK, Config.ACT_CLOSE_APPS, Config.ACT_QS, Config.ACT_NOTIFS,
-                    Config.ACT_SCREENSHOT, Config.ACT_BRIGHT_UP, Config.ACT_BRIGHT_DOWN, Config.ACT_AUTO_BRIGHT}},
+                    Config.ACT_SCREENSHOT, Config.ACT_BRIGHT_UP, Config.ACT_BRIGHT_DOWN, Config.ACT_AUTO_BRIGHT,
+                    Config.ACT_HZ_NEXT, Config.ACT_HZ_OFF, Config.ACT_SAVE_NOW}},
             {"Open", new int[]{Config.ACT_FINDER, Config.ACT_BATTERY_USAGE, Config.ACT_INTERNET, Config.ACT_CAMERA,
                     Config.ACT_ALARMS, Config.ACT_TIMER, Config.ACT_CALENDAR, Config.ACT_CALCULATOR,
                     Config.ACT_SETTINGS, Config.ACT_APP, Config.ACT_ROUTINES, Config.ACT_NOTES, Config.ACT_GALLERY,
@@ -126,6 +127,9 @@ public final class SettingsActivity extends Activity {
         ACT_LABEL[Config.ACT_MAPS] = "Maps";
         ACT_LABEL[Config.ACT_REMINDERS] = "Reminders";
         ACT_LABEL[Config.ACT_AUTO_BRIGHT] = "Auto brightness on / off";
+        ACT_LABEL[Config.ACT_HZ_NEXT] = "Screen top speed (120 / 96 / 60, cycle)";
+        ACT_LABEL[Config.ACT_HZ_OFF] = "Screen top speed: no cap";
+        ACT_LABEL[Config.ACT_SAVE_NOW] = "Maximum saving until the screen is on";
     }
     private static final String[] ITEM_TITLES = {"Battery icon", "Clock", "Temperature", "Front camera hole", "Wi-Fi icon", "Mobile signal icon"};
     private static final String[] GESTURE_TITLES = {"Tap", "Double-tap", "Long-press"};
@@ -1507,10 +1511,44 @@ public final class SettingsActivity extends Activity {
             choiceRow("Low battery means", atN, ai, i -> putGl("sbmods_hz_low_at", String.valueOf(at[i])));
         }
         divider();
+        choiceRow("Animation speed", ANIM_LABELS, animIdx(), this::setAnim);
+        divider();
         switchRow("Maximum saving while the screen is off", "Turns power saving on and automatic sync off after the screen goes off, and puts them back when it comes on. Mail and chat apps that don't use Google's push service may catch up a little later.",
                 gl("sbmods_off_max", 0) == 1, v -> putGl("sbmods_off_max", v ? "1" : "0"));
         endGroup("The screen still slows down by itself when nothing moves. A lower top speed saves battery but looks a little less smooth. "
                 + "The lowest of your choices applies. The same top speed choice is on the Panel's Battery page. Nothing runs on a timer: it acts only when power saving changes or the screen turns on or off.");
+    }
+
+    private static final String[] ANIM_LABELS = {"Normal", "Fast (half the time)", "Off"};
+    private static final String[] ANIM_KEYS = {"window_animation_scale", "transition_animation_scale", "animator_duration_scale"};
+
+    private float animNow() {
+        try { return android.provider.Settings.Global.getFloat(getContentResolver(), "window_animation_scale", 1f); } catch (Throwable t) { return 1f; }
+    }
+
+    private int animIdx() { float f = animNow(); return f <= 0f ? 2 : f <= 0.5f ? 1 : 0; }
+
+    /** Animation scales are real user values: the first change saves them, "Normal" puts them back (Undo everything does too). */
+    private void setAnim(int which) {
+        final String v = which == 2 ? "0" : which == 1 ? "0.5" : null;
+        new Thread(() -> {
+            boolean ok;
+            if (v == null) {
+                String o = Helper.rootOut("settings get global sbmods_anim_orig").trim();
+                String[] p = o.matches("[0-9.]+,[0-9.]+,[0-9.]+") ? o.split(",") : new String[]{"1.0", "1.0", "1.0"};
+                ok = Helper.putGlobal(ANIM_KEYS[0], p[0], ANIM_KEYS[1], p[1], ANIM_KEYS[2], p[2], "sbmods_anim_orig", "");
+            } else {
+                String o = Helper.rootOut("settings get global sbmods_anim_orig").trim();
+                if (!o.matches("[0-9.]+,[0-9.]+,[0-9.]+")) {
+                    String[] c = new String[3];
+                    for (int i = 0; i < 3; i++) { String g = Helper.rootOut("settings get global " + ANIM_KEYS[i]).trim(); c[i] = g.matches("[0-9.]+") ? g : "1.0"; }
+                    Helper.putGlobal("sbmods_anim_orig", c[0] + "," + c[1] + "," + c[2]);
+                }
+                ok = Helper.putGlobal(ANIM_KEYS[0], v, ANIM_KEYS[1], v, ANIM_KEYS[2], v);
+            }
+            final boolean done = ok;
+            runOnUiThread(() -> { if (!done) Toast.makeText(this, "Root access was not granted to this app", Toast.LENGTH_LONG).show(); refresh(); });
+        }).start();
     }
 
     private static final String[] HZ_AUTO = {"No cap", "Up to 96", "Up to 60"};

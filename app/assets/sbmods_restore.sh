@@ -32,6 +32,9 @@ if [ "$1" = "all" ]; then
   o=$(cat $B/sbmods_chg.orig 2>/dev/null); cf=/sys/class/power_supply/battery/batt_full_capacity
   case "$o" in 80|85|90|95|100) [ -f $cf ] && echo $o > $cf 2>/dev/null;; esac
   rm -f $B/sbmods_chg.orig
+  # animation speed: the three scales back to what they were before the first change
+  o=$(settings get global sbmods_anim_orig)
+  case "$o" in [0-9.]*,[0-9.]*,[0-9.]*) w=${o%%,*}; r=${o#*,}; t=${r%%,*}; a=${r#*,}; settings put global window_animation_scale $w; settings put global transition_animation_scale $t; settings put global animator_duration_scale $a;; esac
   # top screen speed: remove the cap only if it is ours (the note is a global that is wiped below)
   for k in sbmods_hz_max sbmods_hz_psm sbmods_hz_low; do case "$(settings get global $k)" in 60|96) settings delete system peak_refresh_rate >/dev/null 2>&1;; esac; done
   # system apps the owner took off the doze whitelist: back on it (the list is a global that is wiped below)

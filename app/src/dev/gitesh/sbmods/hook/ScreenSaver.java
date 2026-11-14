@@ -67,10 +67,21 @@ final class ScreenSaver {
         } catch (Throwable t) { Log.w("hz apply: " + t); }
     }
 
-    /** Screen went off: if the owner wants maximum saving, switch power saving on and automatic sync off, noting what was ours. */
+    /** Screen went off: if the owner wants maximum saving, switch it on. */
     static void screenOff(Context c) {
+        if (Global.gint(c, "sbmods_off_max", 0) == 1) saveOn(c);
+    }
+
+    /** A gesture: switch maximum saving on (true) or, if it is on, put everything back (false). It also ends when the screen next comes on. */
+    static boolean saveNow(Context c) {
+        if (Global.gint(c, "sbmods_off_ps", 0) == 1 || Global.gint(c, "sbmods_off_sync", 0) == 1) { screenOn(c); return false; }
+        saveOn(c);
+        return true;
+    }
+
+    /** Power saving on and automatic sync off, noting what was ours so it can be put back exactly. */
+    private static void saveOn(Context c) {
         try {
-            if (Global.gint(c, "sbmods_off_max", 0) != 1) return;
             if (Global.gint(c, "low_power", 0) == 0 && Global.gint(c, "sbmods_off_ps", 0) == 0) {
                 Global.gput(c, "sbmods_off_ps", "1");   // noted first: if anything fails later, screen-on still puts it back
                 Global.gset(c, "low_power", "1");

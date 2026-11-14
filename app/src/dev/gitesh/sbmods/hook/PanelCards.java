@@ -696,7 +696,24 @@ final class PanelCards {
         }
         @Override String icon() { return "gauge"; }
         @Override String state(Activity a) { int v = Global.sint(a, "refresh_rate_mode", 1), c = Global.hzCap(a); return v == 0 ? "Standard · 60" : c > 0 ? "Up to " + c : v == 2 ? "Smooth · 120" : "Smooth · up to 120"; }
-        @Override View build(Activity a) { return tileText(a, this, on(a), state(a)); }
+        private TextView stateT;
+        @Override View build(Activity a) {
+            boolean on = on(a);
+            LinearLayout col = column(a);
+            col.setGravity(Gravity.CENTER_VERTICAL);
+            col.addView(tvm(a, title, 14, on ? onAcc() : WHITE));
+            stateT = oneLine(tv(a, state(a), 12, on ? onAccDim() : DIM, false));
+            col.addView(stateT);
+            return col;
+        }
+        /** About once a second while the panel is open (the existing refresh): the rate the screen is set to right now. */
+        @Override void live(Activity a, Perf.Snap s) {
+            try {
+                if (stateT == null) return;
+                int now = Math.round(a.getDisplay().getRefreshRate());
+                stateT.setText(state(a) + " · now " + now);
+            } catch (Throwable t) { Log.w("hz now: " + t); }
+        }
         @Override String help(Activity a) { return "Tap to choose the top speed of the screen: 120, 96 or 60 times a second. Lower saves battery; the screen still slows down by itself when nothing moves."; }
         @Override String sig(Activity a) { return Global.sint(a, "refresh_rate_mode", 1) + ":" + Global.hzCap(a); }
     }

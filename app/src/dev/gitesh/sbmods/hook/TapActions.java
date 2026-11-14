@@ -247,6 +247,13 @@ final class TapActions {
                 case Config.ACT_MAPS: openPackage(ctx, "com.google.android.apps.maps"); break;
                 case Config.ACT_REMINDERS: openPackage(ctx, "com.samsung.android.app.reminder"); break;
                 case Config.ACT_AUTO_BRIGHT: toggleAutoBrightness(ctx); break;
+                case Config.ACT_HZ_NEXT: {
+                    int cur = Global.hzCap(ctx), next = cur == 0 ? 96 : cur == 96 ? 60 : 0;
+                    if (Global.hzSet(ctx, next)) toast(ctx, next == 0 ? "Screen: up to 120" : "Screen: up to " + next);
+                    break;
+                }
+                case Config.ACT_HZ_OFF: if (Global.hzSet(ctx, 0)) toast(ctx, "Screen: up to 120"); break;
+                case Config.ACT_SAVE_NOW: toast(ctx, ScreenSaver.saveNow(ctx) ? "Maximum saving on until the screen comes on" : "Maximum saving off"); break;
                 default: break;
             }
             Log.i("performed action " + action);

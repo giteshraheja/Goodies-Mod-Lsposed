@@ -47,8 +47,9 @@ public final class Config {
             ACT_TIMER = 18, ACT_CALCULATOR = 19, ACT_INTERNET = 20, ACT_APP = 21, ACT_FINDER = 22, ACT_CLOSE_APPS = 23,
             ACT_SCREENSHOT = 24, ACT_BRIGHT_UP = 25, ACT_BRIGHT_DOWN = 26,
             ACT_ROUTINES = 27, ACT_NOTES = 28, ACT_GALLERY = 29,
-            ACT_MESSAGES = 30, ACT_CHROME = 31, ACT_MAPS = 32, ACT_REMINDERS = 33, ACT_AUTO_BRIGHT = 34;
-    public static final int ACT_MAX = 34;
+            ACT_MESSAGES = 30, ACT_CHROME = 31, ACT_MAPS = 32, ACT_REMINDERS = 33, ACT_AUTO_BRIGHT = 34,
+            ACT_HZ_NEXT = 35, ACT_HZ_OFF = 36, ACT_SAVE_NOW = 37;
+    public static final int ACT_MAX = 37;
     public static final int SLOTS = 18; // 6 items x 3 gestures
     /** Short action names (index = ACT_*), shared by the app and the status bar tips. */
     public static final String[] ACT_NAMES = {"Nothing", "Power saving", "Battery usage", "Alarms", "Calendar",
