@@ -660,17 +660,45 @@ final class PanelCards {
         @Override boolean ownHeader() { return true; }
         @Override boolean half() { return true; }
         @Override boolean tapTile() { return true; }
-        @Override boolean on(Activity a) { return Global.sint(a, "refresh_rate_mode", 1) != 0; }   // 0 = Standard (60 Hz), 1 = Adaptive (up to 120 Hz), 2 = High
-        @Override void tap(Activity a) {
-            boolean smooth = !on(a);
-            if (!Global.sput(a, "refresh_rate_mode", smooth ? "1" : "0")) return;
-            used(a, "smooth");
+        @Override boolean on(Activity a) { return Global.sint(a, "refresh_rate_mode", 1) != 0 && Global.hzCap(a) != 60; }   // 0 = Standard (60 Hz), 1 = Adaptive (up to 120 Hz), 2 = High
+        @Override void tap(Activity a) { pick(a); }
+
+        /** A small list: Smooth 120 / 96 / 60. Applies at once; the screen still slows down by itself when nothing moves. */
+        private void pick(final Activity a) {
+            try {
+                Ui.Pal p = Ui.cur;
+                final int cur = Global.sint(a, "refresh_rate_mode", 1) == 0 ? 60 : Global.hzCap(a) == 0 ? 120 : Global.hzCap(a);
+                LinearLayout box = new LinearLayout(a);
+                box.setOrientation(LinearLayout.VERTICAL);
+                box.setPadding(dp(a, 6), dp(a, 6), dp(a, 6), dp(a, 6));
+                box.setBackground(Ui.round(p.night ? 0xFF2B3136 : 0xFFF6F8F9, dp(a, Ui.R_TILE), 1, p.night ? 0xFF434B52 : 0xFFD5DCE0));
+                final android.widget.PopupWindow pw = new android.widget.PopupWindow(box, dp(a, 250), -2, true);
+                pw.setOutsideTouchable(true);
+                pw.setElevation(dp(a, 8));
+                final int[] v = {120, 96, 60};
+                String[] t = {"Smoothest · up to 120", "Balanced · up to 96", "Saver · up to 60"};
+                for (int i = 0; i < 3; i++) {
+                    final int hz = v[i];
+                    TextView r = tv(a, (hz == cur ? "✓  " : "     ") + t[i], 15, hz == cur ? p.accInk : p.tx, hz == cur);
+                    r.setGravity(Gravity.CENTER_VERTICAL);
+                    r.setPadding(dp(a, 14), 0, dp(a, 14), 0);
+                    r.setOnClickListener(safe(() -> {
+                        pw.dismiss();
+                        if (hz != 60 && Global.sint(a, "refresh_rate_mode", 1) == 0) Global.sput(a, "refresh_rate_mode", "1");   // Standard would hold it at 60 whatever the cap
+                        Global.hzSet(a, hz == 120 ? 0 : hz);
+                        used(a, "smooth");
+                        PerfPanel.rebuild(a);
+                    }));
+                    box.addView(r, new LinearLayout.LayoutParams(-1, dp(a, 48)));
+                }
+                if (PerfPanel.pBox != null) pw.showAtLocation(PerfPanel.pBox, Gravity.CENTER, 0, 0);
+            } catch (Throwable t) { Log.w("hz picker: " + t); }
         }
         @Override String icon() { return "gauge"; }
-        @Override String state(Activity a) { int v = Global.sint(a, "refresh_rate_mode", 1); return v == 0 ? "Standard · 60" : v == 2 ? "Smooth · 120" : "Smooth · up to 120"; }
+        @Override String state(Activity a) { int v = Global.sint(a, "refresh_rate_mode", 1), c = Global.hzCap(a); return v == 0 ? "Standard · 60" : c > 0 ? "Up to " + c : v == 2 ? "Smooth · 120" : "Smooth · up to 120"; }
         @Override View build(Activity a) { return tileText(a, this, on(a), state(a)); }
-        @Override String help(Activity a) { return "Standard uses less battery. Smooth lets the screen refresh up to 120 times a second."; }
-        @Override String sig(Activity a) { return String.valueOf(Global.sint(a, "refresh_rate_mode", 1)); }
+        @Override String help(Activity a) { return "Tap to choose the top speed of the screen: 120, 96 or 60 times a second. Lower saves battery; the screen still slows down by itself when nothing moves."; }
+        @Override String sig(Activity a) { return Global.sint(a, "refresh_rate_mode", 1) + ":" + Global.hzCap(a); }
     }
 
     // ------------------------------------------------------------------ 8. battery report

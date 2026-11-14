@@ -30,6 +30,8 @@ if [ "$1" = "all" ]; then
   o=$(cat $B/sbmods_chg.orig 2>/dev/null); cf=/sys/class/power_supply/battery/batt_full_capacity
   case "$o" in 80|85|90|95|100) [ -f $cf ] && echo $o > $cf 2>/dev/null;; esac
   rm -f $B/sbmods_chg.orig
+  # top screen speed: remove the cap only if it is ours (the note is a global that is wiped below)
+  case "$(settings get global sbmods_hz_max)" in 60|96) settings delete system peak_refresh_rate >/dev/null 2>&1;; esac
   # system apps the owner took off the doze whitelist: back on it (the list is a global that is wiped below)
   for p in $(settings get global sbmods_wl_sys 2>/dev/null); do case "$p" in ''|*[!A-Za-z0-9._]*) ;; *.*) dumpsys deviceidle sys-whitelist +$p >/dev/null 2>&1;; esac; done
   # Sleep sooner: the doze setting back to what it was (nothing = nothing); lost note = delete our own value

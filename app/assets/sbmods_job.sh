@@ -15,6 +15,7 @@
 #     gfx:vulkan | gfx:opengl     renderer for apps that start AFTER this; nothing is ever killed or restarted. Answers: sbmods_gfx, sbmods_result
 #     appgfx:<package>            answer in sbmods_appgfx = <package>:vulkan|opengl|unknown
 #     health                      answer in sbmods_health = asoc%|cycles|charge_limit% (-1 = unknown)
+#     hzmax:<n>                   n = 0 (no cap), 60 or 96: the top screen speed
 #     chargelimit:<n>             n = 80, 85, 90, 95 or 100; answer in sbmods_result, sbmods_health refreshed
 #     gfxcheck                    the Wi-Fi calling check after a switch to Vulkan (the app's alarm asks for it at ~60 s and ~5 min)
 #     boot                        after a restart of the phone, when the helper could not be started: show the real renderer, bring "keep Vulkan" back
@@ -111,6 +112,12 @@ case "$cmd" in
       else sp sbmods_result "This phone didn't accept the charge limit"; fi
       sp sbmods_health "$(health)"
     else sp sbmods_result "Can't set that charge limit"; fi;;
+  hzmax:*)   # top screen speed: Android's own peak_refresh_rate (0 = no cap = delete the key)
+    n=${cmd#hzmax:}
+    case "$n" in
+      60|96) settings put system peak_refresh_rate $n.0; sp sbmods_hz_max $n; sp sbmods_result "Top screen speed is now $n";;
+      *) settings delete system peak_refresh_rate >/dev/null 2>&1; sp sbmods_hz_max 0; sp sbmods_result "Screen speed is not capped";;
+    esac;;
   gfxcheck) gfxcheck;;
   boot)
     # show the renderer that is really active (the property is gone after a restart), writing only when the stored setting differs

@@ -38,7 +38,7 @@ public final class JobReceiver extends BroadcastReceiver {
     private static final String SCRIPT = "sbmods_job.sh", LIB = "sbmods_lib.sh";
     private static final Pattern OK = Pattern.compile(
             "ramclean|deepclean|battreport|mem|wlsys|sleep:[012]|top|health|shot|gfx:vulkan|gfx:opengl|gfxcheck|boot"
-                    + "|(stop|appgfx):[A-Za-z0-9._]{1,200}|chargelimit:(80|85|90|95|100)");
+                    + "|(stop|appgfx):[A-Za-z0-9._]{1,200}|chargelimit:(80|85|90|95|100)|hzmax:(0|60|96)");
     private static final Pattern PKG = Pattern.compile("[A-Za-z0-9._]+");
 
     /** One job at a time, in the order asked; the thread ends by itself 3 s after the last job. */

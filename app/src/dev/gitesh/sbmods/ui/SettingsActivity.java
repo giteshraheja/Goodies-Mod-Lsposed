@@ -569,6 +569,7 @@ public final class SettingsActivity extends Activity {
         buildNotifs();
         buildSmart();
         buildHelperSpeed();
+        buildScreenSpeed();
         buildSleep();
         buildMore();
     }
@@ -1471,6 +1472,25 @@ public final class SettingsActivity extends Activity {
 
 
     // ---------------------------------------------------------------- Sleep sooner (System tab)
+
+    private static final String[] HZ_LABELS = {"120", "96", "60"};
+
+    /** Top screen speed: Android's own cap, set through a root job (this app may not write that setting). */
+    private void buildScreenSpeed() {
+        group("screenspeed", "Screen speed", null, true);
+        cardResetAction(() -> setHz(0));
+        int cap = gl("sbmods_hz_max", 0);
+        segmentedBlock("Top speed of the screen (times a second)", HZ_LABELS, cap == 96 ? 1 : cap == 60 ? 2 : 0, i -> setHz(i == 1 ? 96 : i == 2 ? 60 : 0));
+        endGroup("The screen still slows down by itself when nothing moves. A lower top speed saves battery but looks a little less smooth. "
+                + "The same choice is on the Panel's Battery page. Needs root; nothing runs in the background.");
+    }
+
+    private void setHz(int cap) {
+        new Thread(() -> {
+            boolean ok = dev.gitesh.sbmods.JobReceiver.run(this, "hzmax:" + cap);
+            runOnUiThread(() -> { if (!ok) Toast.makeText(this, "Root access was not granted to this app", Toast.LENGTH_LONG).show(); refresh(); });
+        }).start();
+    }
 
     private static final String[] SLEEP_MODES = {"Samsung's", "Smart", "Sooner", "Soonest"};
 
