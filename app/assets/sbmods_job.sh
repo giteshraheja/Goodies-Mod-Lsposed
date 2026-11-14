@@ -8,6 +8,7 @@
 #     shot                        screenshot to Pictures/Screenshots; answer in sbmods_result
 #     battreport                  answer in sbmods_batt = left_min|on_sec|off_sec|discharge_mah|off_discharge_mah|capacity_mah|light_sleep_sec|deep_sleep_sec|light_mah|deep_mah|awake|woken (-1 = unknown)
 #     sleep:<0|1|2>               doze timers: 0 = Samsung's own, 1 = sooner, 2 = soonest (see dz_apply in sbmods_lib.sh); answer in sbmods_sleep = the level now in force
+#     wlsys                       after a restart: takes the system apps in sbmods_wl_sys off the doze whitelist again (wl_apply in sbmods_lib.sh)
 #     mem                         answer in sbmods_mem = memory pressure some|full, average of the last minute in percent (-1 = unknown)
 #     top                         answer in sbmods_top = up to 3 "package:cpu%" comma-separated (empty = nothing above 1 %)
 #     stop:<package>              force-stops one app (strictly validated, protected apps refused); answer in sbmods_result
@@ -83,6 +84,7 @@ case "$cmd" in
     else sp sbmods_result "Couldn't take a screenshot"; fi;;
   battreport) sp sbmods_batt "$(battreport)";;
   mem) sp sbmods_mem "$(memstat)";;
+  wlsys) wl_apply;;
   sleep:*) n=${cmd#sleep:}; case "$n" in 0|1|2) dz_apply $n; sp sbmods_sleep $n;; esac;;
   top) sp sbmods_top "$(topapps)";;
   stop:*)

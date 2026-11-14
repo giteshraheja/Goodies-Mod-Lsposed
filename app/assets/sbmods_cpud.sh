@@ -23,6 +23,7 @@
 #                                    cached apps one by one (am kill) and spare those instead of `am kill-all`; the answer then ends " (kept N apps you reopen)"
 #   sbmods_cmd = battreport          answer in sbmods_batt = left_min|on_sec|off_sec|discharge_mah|off_discharge_mah|capacity_mah|light_sleep_sec|deep_sleep_sec|light_mah|deep_mah|awake|woken (-1 = unknown)
 #   sbmods_cmd = sleep:<0|1|2>       doze timers (0 = Samsung's own, 1 = sooner, 2 = soonest); answer in sbmods_sleep
+#   sbmods_cmd = wlsys               takes the system apps in sbmods_wl_sys off the doze whitelist (again after a restart)
 #   sbmods_cmd = mem                 answer in sbmods_mem = memory pressure some|full (average of the last minute, percent; -1 = unknown)
 #   sbmods_cmd = top                 answer in sbmods_top = up to 3 "package:cpu%" comma-separated (empty = nothing above 1 %)
 #   sbmods_cmd = stop:<package>      force-stops one app (strictly validated, protected apps refused); answer in sbmods_result
@@ -333,6 +334,7 @@ while true; do
       else sp sbmods_result "Closed background apps: +$((a-b)) MB RAM free$kn"; fi;;
     battreport) sp sbmods_cmd none; sp sbmods_batt "$(battreport)";;
     mem) sp sbmods_cmd none; sp sbmods_mem "$(memstat)";;
+    wlsys) sp sbmods_cmd none; wl_apply;;
     sleep:*) sp sbmods_cmd none; n=${cmd#sleep:}; case "$n" in 0|1|2) dz_apply $n; sp sbmods_sleep $n;; esac;;
     top) sp sbmods_cmd none; sp sbmods_top "$(topapps)";;
     stop:*)

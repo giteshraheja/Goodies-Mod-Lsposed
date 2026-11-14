@@ -1508,59 +1508,131 @@ public final class SettingsActivity extends Activity {
                 || p.startsWith("com.samsung.android.knox") || p.equals("com.google.android.setupwizard") || p.equals("com.samsung.android.simagent");
     }
 
+    /** One switch row of the "stay awake" popup. */
+    private static final class AwakeRow {
+        String pkg; boolean sys, was; Ui.Switch sw; int level; View view;
+    }
+
     private void showAwakeList() {
         new Thread(() -> {
-            String out = Helper.rootOut("dumpsys deviceidle whitelist 2>/dev/null | grep '^user,'");
+            String out = Helper.rootOut("dumpsys deviceidle whitelist 2>/dev/null | grep -E '^(user|system),'");
+            String removedSys = Helper.rootOut("settings get global sbmods_wl_sys");
             runOnUiThread(() -> {
                 if (out == null) { Toast.makeText(this, "Root access was not granted to this app", Toast.LENGTH_LONG).show(); return; }
-                final java.util.List<String> allowed = new java.util.ArrayList<>();
+                final java.util.List<AwakeRow> rows = new java.util.ArrayList<>();
+                final java.util.Set<String> seen = new java.util.HashSet<>();
+                final java.util.Set<String> inSystem = new java.util.HashSet<>();
+                int hidden = 0;
                 for (String line : out.split("\\n")) {
                     String[] p = line.trim().split(",");
-                    if (p.length >= 2 && p[1].matches("[A-Za-z0-9._]+") && !awakeLocked(p[1]) && !allowed.contains(p[1])) allowed.add(p[1]);
+                    if (p.length < 2 || !p[1].matches("[A-Za-z0-9._]+")) continue;
+                    boolean sys = p[0].equals("system");
+                    if (sys) inSystem.add(p[1]);
+                    if (!seen.add(p[0] + p[1])) continue;
+                    if (sys ? dev.gitesh.sbmods.SysWhitelist.essential(p[1]) || awakeLocked(p[1]) : awakeLocked(p[1])) { if (sys) hidden++; continue; }
+                    if (!sys && inSystem.contains(p[1])) continue;
+                    AwakeRow r = new AwakeRow(); r.pkg = p[1]; r.sys = sys; r.was = true;
+                    r.level = sys ? dev.gitesh.sbmods.SysWhitelist.of(p[1]).level : dev.gitesh.sbmods.SysWhitelist.CAUTION;
+                    rows.add(r);
                 }
-                final java.util.List<String> removed = new java.util.ArrayList<>(prefs.getStringSet("wl_removed", new java.util.HashSet<>()));
-                removed.removeAll(allowed);
-                final java.util.Map<String, Ui.Switch> switches = new java.util.LinkedHashMap<>();
+                final java.util.Set<String> removedNow = new java.util.LinkedHashSet<>();
+                if (removedSys != null) for (String t : removedSys.trim().split("\\s+")) if (t.matches("[A-Za-z0-9._]+") && t.indexOf('.') > 0 && !inSystem.contains(t)) removedNow.add(t);
+                for (String pkg : removedNow) {
+                    AwakeRow r = new AwakeRow(); r.pkg = pkg; r.sys = true; r.was = false;
+                    r.level = dev.gitesh.sbmods.SysWhitelist.of(pkg).level;
+                    rows.add(r);
+                }
+                final java.util.Set<String> removedUser = new java.util.HashSet<>(prefs.getStringSet("wl_removed", new java.util.HashSet<>()));
+                for (String pkg : removedUser) {
+                    boolean dup = false;
+                    for (AwakeRow r : rows) if (r.pkg.equals(pkg)) dup = true;
+                    if (dup) continue;
+                    AwakeRow r = new AwakeRow(); r.pkg = pkg; r.sys = false; r.was = false; r.level = dev.gitesh.sbmods.SysWhitelist.CAUTION;
+                    rows.add(r);
+                }
+                rows.sort((x, y) -> Boolean.compare(x.was, y.was));   // apps already switched off first: easy to find and switch back on
                 LinearLayout col = new LinearLayout(this);
                 col.setOrientation(LinearLayout.VERTICAL);
                 col.setPadding(0, 0, 0, dp(Ui.S2));
-                for (String pkg : allowed) col.addView(awakeRow(pkg, true, switches));
-                for (String pkg : removed) col.addView(awakeRow(pkg, false, switches));
-                if (switches.isEmpty()) {
-                    TextView none = Ui.text(this, "No apps on the list that can be changed here.", Ui.T_BODY, pal.tx2, 400);
+                // the switch that shows the system apps (hidden until asked: they are many, and most are phone services)
+                LinearLayout top = new LinearLayout(this);
+                top.setGravity(Gravity.CENTER_VERTICAL);
+                top.setPadding(dp(Ui.S5), dp(Ui.S1), dp(Ui.S3), dp(Ui.S1));
+                TextView tt = Ui.text(this, "Show system apps", Ui.T_BODY, pal.tx, 600);
+                top.addView(tt, new LinearLayout.LayoutParams(0, -2, 1));
+                final Ui.Switch showSys = new Ui.Switch(this, pal);
+                top.addView(showSys);
+                top.setOnClickListener(v -> showSys.toggle());
+                col.addView(top);
+                final java.util.List<View> sysViews = new java.util.ArrayList<>();
+                // user-added apps first (always visible)
+                for (AwakeRow r : rows) if (!r.sys) { r.view = awakeRow(r); col.addView(r.view); }
+                // system apps: two groups, each with a coloured heading
+                final TextView hSafe = awakeHead("Fine to switch off", pal.ok), hCare = awakeHead("Switch off only if you don't use the feature", pal.warn);
+                final TextView all = awakeHead("Switch off all the green ones", pal.accInk);
+                all.setPadding(dp(Ui.S5), dp(Ui.S2), dp(Ui.S5), dp(Ui.S2));
+                all.setOnClickListener(v -> { for (AwakeRow r : rows) if (r.sys && r.level == dev.gitesh.sbmods.SysWhitelist.SAFE && r.sw != null) r.sw.setChecked(false); });
+                col.addView(all); sysViews.add(all);
+                col.addView(hSafe); sysViews.add(hSafe);
+                for (AwakeRow r : rows) if (r.sys && r.level == dev.gitesh.sbmods.SysWhitelist.SAFE) { r.view = awakeRow(r); col.addView(r.view); sysViews.add(r.view); }
+                col.addView(hCare); sysViews.add(hCare);
+                for (AwakeRow r : rows) if (r.sys && r.level != dev.gitesh.sbmods.SysWhitelist.SAFE) { r.view = awakeRow(r); col.addView(r.view); sysViews.add(r.view); }
+                TextView foot = Ui.text(this, hidden + " more are kept on for your safety (calls, messages, Wi-Fi calling, push, location, security).", Ui.T_CAPTION, pal.tx2, 400);
+                foot.setPadding(dp(Ui.S5), dp(Ui.S2), dp(Ui.S5), dp(Ui.S2));
+                col.addView(foot); sysViews.add(foot);
+                boolean anyUser = false;
+                for (AwakeRow r : rows) if (!r.sys) anyUser = true;
+                if (!anyUser) {
+                    TextView none = Ui.text(this, "No apps added by you or Samsung. Switch on \"Show system apps\" to see the built-in ones.", Ui.T_BODY, pal.tx2, 400);
                     none.setPadding(dp(Ui.S5), dp(Ui.S2), dp(Ui.S5), dp(Ui.S2));
                     col.addView(none);
                 }
-                Ui.Dlg d = new Ui.Dlg(this, pal).title("Apps allowed to stay awake")
-                        .message("On means the app may ignore deep sleep. Switch an app off to put it under the normal rules; its messages may then arrive a little late.")
+                for (View v : sysViews) v.setVisibility(View.GONE);
+                showSys.setOnChange(on -> { for (View v : sysViews) v.setVisibility(on ? View.VISIBLE : View.GONE); });
+                new Ui.Dlg(this, pal).title("Apps allowed to stay awake")
+                        .message("On means the app may ignore deep sleep. Switch an app off to put it under the normal rules; its messages may then arrive a little late. Everything here can be switched back on.")
                         .view(col)
-                        .button(0, "Cancel", null);
-                if (!switches.isEmpty()) d.button(2, "Apply", () -> new Thread(() -> {
-                    int n = 0;
-                    java.util.Set<String> keep = new java.util.HashSet<>(removed);
-                    for (java.util.Map.Entry<String, Ui.Switch> e : switches.entrySet()) {
-                        boolean was = allowed.contains(e.getKey()), now = e.getValue().isChecked();
-                        if (was == now) continue;
-                        if (Helper.rootOut("dumpsys deviceidle whitelist " + (now ? "+" : "-") + e.getKey()) != null) {
-                            n++;
-                            if (now) keep.remove(e.getKey()); else keep.add(e.getKey());
-                        }
-                    }
-                    prefs.edit().putStringSet("wl_removed", keep).apply();
-                    final int changed = n;
-                    runOnUiThread(() -> Toast.makeText(this, changed == 0 ? "Nothing changed" : changed + (changed == 1 ? " app changed" : " apps changed"), Toast.LENGTH_SHORT).show());
-                }).start());
-                d.show();
+                        .button(0, "Cancel", null)
+                        .button(2, "Apply", () -> new Thread(() -> applyAwake(rows, removedNow, removedUser)).start())
+                        .show();
             });
         }).start();
     }
 
-    /** One row of the list: app icon, name, package, and a switch (on = may stay awake). */
-    private View awakeRow(String pkg, boolean on, java.util.Map<String, Ui.Switch> switches) {
+    private TextView awakeHead(String text, int color) {
+        TextView h = Ui.text(this, text, Ui.T_SECTION, color, 700);
+        h.setPadding(dp(Ui.S5), dp(Ui.S3), dp(Ui.S5), dp(Ui.S1));
+        return h;
+    }
+
+    /** Runs the changes as root and remembers them: system-app removals are re-applied after every restart (Android forgets them). */
+    private void applyAwake(java.util.List<AwakeRow> rows, java.util.Set<String> removedSys, java.util.Set<String> removedUser) {
+        int n = 0;
+        java.util.Set<String> sysList = new java.util.LinkedHashSet<>(removedSys), userList = new java.util.HashSet<>(removedUser);
+        boolean sysChanged = false;
+        for (AwakeRow r : rows) {
+            boolean now = r.sw != null && r.sw.isChecked();
+            if (r.was == now || (r.sys && dev.gitesh.sbmods.SysWhitelist.essential(r.pkg))) continue;
+            String cmd = r.sys ? "dumpsys deviceidle sys-whitelist " + (now ? "+" : "-") + r.pkg : "dumpsys deviceidle whitelist " + (now ? "+" : "-") + r.pkg;
+            if (Helper.rootOut(cmd) == null) continue;
+            n++;
+            if (r.sys) { sysChanged = true; if (now) sysList.remove(r.pkg); else sysList.add(r.pkg); }
+            else if (now) userList.remove(r.pkg); else userList.add(r.pkg);
+        }
+        prefs.edit().putStringSet("wl_removed", userList).apply();
+        if (sysChanged) Helper.putGlobal("sbmods_wl_sys", android.text.TextUtils.join(" ", sysList));
+        final int changed = n;
+        final boolean again = sysChanged;
+        runOnUiThread(() -> Toast.makeText(this, changed == 0 ? "Nothing changed" : changed + (changed == 1 ? " app changed" : " apps changed") + (again ? " (repeated after each restart)" : ""), Toast.LENGTH_LONG).show());
+    }
+
+    /** One row: app icon, name, a line of guidance (system apps) or the package (others), and a switch (on = may stay awake). */
+    private View awakeRow(AwakeRow ar) {
         android.content.pm.PackageManager pm = getPackageManager();
-        String name = pkg;
+        dev.gitesh.sbmods.SysWhitelist.Info info = ar.sys ? dev.gitesh.sbmods.SysWhitelist.of(ar.pkg) : null;
+        String name = info != null && info.name != null ? info.name : ar.pkg;
         android.graphics.drawable.Drawable ic = null;
-        try { android.content.pm.ApplicationInfo ai = pm.getApplicationInfo(pkg, 0); name = ai.loadLabel(pm).toString(); ic = ai.loadIcon(pm); } catch (Throwable ignored) {}
+        try { android.content.pm.ApplicationInfo ai = pm.getApplicationInfo(ar.pkg, 0); name = ai.loadLabel(pm).toString(); ic = ai.loadIcon(pm); } catch (Throwable ignored) {}
         LinearLayout r = new LinearLayout(this);
         r.setGravity(Gravity.CENTER_VERTICAL);
         r.setMinimumHeight(dp(Ui.ROW_H));
@@ -1578,14 +1650,13 @@ public final class SettingsActivity extends Activity {
         n.setSingleLine(true);
         n.setEllipsize(android.text.TextUtils.TruncateAt.END);
         tx.addView(n);
-        TextView pk = Ui.text(this, pkg, Ui.T_CAPTION, pal.tx2, 400);
-        pk.setSingleLine(true);
-        pk.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
+        TextView pk = Ui.text(this, info != null ? info.why : ar.pkg, Ui.T_CAPTION, pal.tx2, 400);
+        if (info != null) pk.setMaxLines(3); else { pk.setSingleLine(true); pk.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE); }
         tx.addView(pk);
         r.addView(tx, new LinearLayout.LayoutParams(0, -2, 1));
         Ui.Switch sw = new Ui.Switch(this, pal);
-        sw.setChecked(on);
-        switches.put(pkg, sw);
+        sw.setChecked(ar.was);
+        ar.sw = sw;
         r.addView(sw);
         r.setOnClickListener(v -> sw.toggle());
         return r;

@@ -25,14 +25,18 @@ public final class BootReceiver extends BroadcastReceiver {
             } catch (Throwable ignored) {
             }
         }
-        if (!enabled) return;
+        final boolean wl = hasWlList(ctx);   // system apps taken off the doze whitelist: that is not kept across a restart
+        if (!enabled && !wl) return;
         final Context app = ctx.getApplicationContext();
         final PendingResult pr = goAsync();
+        final boolean helper = enabled;
         new Thread(() -> {
             final long t0 = System.currentTimeMillis();
             int boot = -2;
             String outcome;
             try {
+                if (wl) JobReceiver.run(app, "wlsys");   // one short root job, no status bar mod needed
+                if (!helper) { record(app, -2, "system whitelist re-applied"); pr.finish(); return; }
                 // Only when the status bar mod is on: it stamps global setting sbmods_alive when it loads in SystemUI (and clears it if it
                 // switches itself off). A stamp older than this boot, or none, means the mod is off: leave everything alone.
                 // compare boot counts, not clock times: the clock can jump right after boot (network time)
@@ -62,6 +66,13 @@ public final class BootReceiver extends BroadcastReceiver {
             record(app, boot, outcome);   // never throws; written before finish() so the process can't be frozen first
             pr.finish();
         }).start();
+    }
+
+    private static boolean hasWlList(Context c) {
+        try {
+            String v = android.provider.Settings.Global.getString(c.getContentResolver(), "sbmods_wl_sys");
+            return v != null && v.indexOf('.') > 0;
+        } catch (Throwable t) { return false; }
     }
 
     private static void record(Context app, int boot, String outcome) {
