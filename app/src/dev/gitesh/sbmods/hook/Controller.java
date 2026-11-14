@@ -249,6 +249,7 @@ public final class Controller {
         f.addAction(Intent.ACTION_LOCALE_CHANGED);
         ctx.registerReceiver(systemReceiver, f, null, main, Context.RECEIVER_NOT_EXPORTED);
         Smart.apply(ctx, prefs, cfg.smartOn);
+        ScreenSaver.start(ctx, main);
         Log.i("initialised v" + VERSION + ", clockId=" + Integer.toHexString(clockId));
     }
 
@@ -937,6 +938,7 @@ public final class Controller {
                     }, 1500);
                     Smart.resume();
                     SleepSmart.screenOn(ctx, prefs);
+                    ScreenSaver.screenOn(ctx);
                     main.post(shiftTick);
                     startPolling();
                     restartClockTick();
@@ -950,6 +952,7 @@ public final class Controller {
                     screenOn = false;
                     Smart.screenOff();
                     SleepSmart.screenOff(ctx, prefs);
+                    ScreenSaver.screenOff(ctx);
                     tips.stop();
                     main.removeCallbacks(shiftTick); // nothing to protect while the screen is off
                 } else {

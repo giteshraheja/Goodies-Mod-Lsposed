@@ -23,6 +23,8 @@ fi
 for f in $ST/cc*.max; do [ -f "$f" ] || continue; c=${f##*/cc}; c=${c%.max}; d=/sys/devices/system/cpu/cpu$c/core_ctl
   cat $ST/cc$c.max > $d/max_cpus; cat $ST/cc$c.min > $d/min_cpus; done
 [ -f $ST/ps.set ] && settings put global low_power 0
+# maximum saving while the screen is off: power saving back if it was ours (automatic sync is put back by the status bar part at the next screen-on)
+[ "$(settings get global sbmods_off_ps)" = "1" ] && { settings put global low_power 0; settings put global sbmods_off_ps 0; }
 # renderer: skiavk back to OpenGL (nothing is restarted; apps follow when they next open)
 [ "$(getprop debug.hwui.renderer)" = "skiavk" ] && { setprop debug.hwui.renderer skiagl; settings put global sbmods_gfx opengl; settings put global sbmods_gfx_keep 0; }
 # the battery charge limit stays unless asked ("all"): then the saved original goes back, but only if it is one of the allowed numbers
@@ -31,7 +33,7 @@ if [ "$1" = "all" ]; then
   case "$o" in 80|85|90|95|100) [ -f $cf ] && echo $o > $cf 2>/dev/null;; esac
   rm -f $B/sbmods_chg.orig
   # top screen speed: remove the cap only if it is ours (the note is a global that is wiped below)
-  case "$(settings get global sbmods_hz_max)" in 60|96) settings delete system peak_refresh_rate >/dev/null 2>&1;; esac
+  for k in sbmods_hz_max sbmods_hz_psm sbmods_hz_low; do case "$(settings get global $k)" in 60|96) settings delete system peak_refresh_rate >/dev/null 2>&1;; esac; done
   # system apps the owner took off the doze whitelist: back on it (the list is a global that is wiped below)
   for p in $(settings get global sbmods_wl_sys 2>/dev/null); do case "$p" in ''|*[!A-Za-z0-9._]*) ;; *.*) dumpsys deviceidle sys-whitelist +$p >/dev/null 2>&1;; esac; done
   # Sleep sooner: the doze setting back to what it was (nothing = nothing); lost note = delete our own value

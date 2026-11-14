@@ -37,22 +37,13 @@ final class Global {
         try { return Settings.Secure.putString(c.getContentResolver(), key, val); } catch (Throwable t) { Log.w("secure " + key + ": " + t); return false; }
     }
 
-    /** Top screen speed we ask for: 60 or 96, 0 = no cap (Android's own system setting, which the launcher may write). */
-    static int hzCap(Context c) {
-        try {
-            float f = Settings.System.getFloat(c.getContentResolver(), "peak_refresh_rate", 0f);
-            return f >= 119f || f <= 0f ? 0 : Math.round(f);
-        } catch (Throwable t) { return 0; }
-    }
+    /** The owner's chosen top screen speed: 60 or 96, 0 = no cap (the status bar part may lower what is really set, see ScreenSaver). */
+    static int hzCap(Context c) { int v = gint(c, "sbmods_hz_max", 0); return v == 60 || v == 96 ? v : 0; }
 
     static boolean hzSet(Context c, int cap) {
-        try {
-            android.content.ContentResolver cr = c.getContentResolver();
-            if (cap == 60 || cap == 96) Settings.System.putString(cr, "peak_refresh_rate", cap + ".0");
-            else { cap = 0; if (cr.delete(Settings.System.getUriFor("peak_refresh_rate"), null, null) < 1) Settings.System.putString(cr, "peak_refresh_rate", null); }
-            gset(c, "sbmods_hz_max", String.valueOf(cap));   // marks the cap as ours, for "Undo everything"
-            return true;
-        } catch (Throwable t) { Log.w("hz cap: " + t); return false; }
+        if (!gset(c, "sbmods_hz_max", String.valueOf(cap == 60 || cap == 96 ? cap : 0))) return false;
+        ScreenSaver.apply(c);
+        return true;
     }
 
     /** A clean-up (close apps / deep clean) was started by the owner: Smart learns which app is opened next. One settings write per tap. */

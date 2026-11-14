@@ -1491,12 +1491,31 @@ public final class SettingsActivity extends Activity {
     /** Top screen speed: Android's own cap, set through a root job (this app may not write that setting). */
     private void buildScreenSpeed() {
         group("screenspeed", "Screen speed", null, true);
-        cardResetAction(() -> setHz(0));
+        cardResetAction(() -> { setHz(0); putGl("sbmods_hz_psm", "0", "sbmods_hz_low", "0", "sbmods_hz_low_at", "20", "sbmods_off_max", "0"); });
         int cap = gl("sbmods_hz_max", 0);
         segmentedBlock("Top speed of the screen (times a second)", HZ_LABELS, cap == 96 ? 1 : cap == 60 ? 2 : 0, i -> setHz(i == 1 ? 96 : i == 2 ? 60 : 0));
+        divider();
+        choiceRow("Top speed while power saving is on", HZ_AUTO, hzIdx(gl("sbmods_hz_psm", 0)), i -> putGl("sbmods_hz_psm", String.valueOf(hzVal(i))));
+        divider();
+        choiceRow("Top speed when the battery is low", HZ_AUTO, hzIdx(gl("sbmods_hz_low", 0)), i -> putGl("sbmods_hz_low", String.valueOf(hzVal(i))));
+        if (gl("sbmods_hz_low", 0) > 0) {
+            divider();
+            final int[] at = {10, 15, 20, 30};
+            final String[] atN = {"10%", "15%", "20%", "30%"};
+            int ai = 2;
+            for (int i = 0; i < at.length; i++) if (at[i] == gl("sbmods_hz_low_at", 20)) ai = i;
+            choiceRow("Low battery means", atN, ai, i -> putGl("sbmods_hz_low_at", String.valueOf(at[i])));
+        }
+        divider();
+        switchRow("Maximum saving while the screen is off", "Turns power saving on and automatic sync off after the screen goes off, and puts them back when it comes on. Mail and chat apps that don't use Google's push service may catch up a little later.",
+                gl("sbmods_off_max", 0) == 1, v -> putGl("sbmods_off_max", v ? "1" : "0"));
         endGroup("The screen still slows down by itself when nothing moves. A lower top speed saves battery but looks a little less smooth. "
-                + "The same choice is on the Panel's Battery page. Needs root; nothing runs in the background.");
+                + "The lowest of your choices applies. The same top speed choice is on the Panel's Battery page. Nothing runs on a timer: it acts only when power saving changes or the screen turns on or off.");
     }
+
+    private static final String[] HZ_AUTO = {"No cap", "Up to 96", "Up to 60"};
+    private static int hzIdx(int v) { return v == 96 ? 1 : v == 60 ? 2 : 0; }
+    private static int hzVal(int i) { return i == 1 ? 96 : i == 2 ? 60 : 0; }
 
     private void setHz(int cap) {
         new Thread(() -> {
