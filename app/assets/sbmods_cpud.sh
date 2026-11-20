@@ -48,6 +48,14 @@ D=${0%/*}; [ "$D" = "$0" ] && D=.; . $D/sbmods_lib.sh   # shared functions (batt
 ST=$B/sbmods_state
 CPU=/sys/devices/system/cpu
 F=/data/system/users/0/settings_global.xml
+# weather (see Controller.wxAsk in the app): after Samsung Weather's "updated" message the status bar leaves a request file in
+# its own folder; we copy Samsung Weather's database into the two files the status bar made there (so they keep its owner and
+# security label) with two `cat`s. Samsung's own provider only serves its watch plug-ins, which is why this needs root.
+# Both paths go through PID 1's root: started from the app, the helper lives in the app's own mount namespace, where Android
+# hides every other app's data folder.
+WXS=/proc/1/root/data/data/com.sec.android.daemonapp/databases/WeatherClock
+WXD=/proc/1/root/data/user_de/0/com.android.systemui/files/sbmods_wx
+WXP=""
 G=/sys/class/kgsl/kgsl-3d0/devfreq
 # one helper at a time: if the pid file names a live helper that is not us, leave quietly (the app's start kills the old one first and waits for it).
 # Runs once at start; `grep` is the only program started.
@@ -199,8 +207,14 @@ gfx_vulkan() {
 
 # Clean-up that spares the apps the owner keeps reopening (global sbmods_keep = "pkg|count|day;...", count >= 2 = kept; used only when Smart
 # suggestions is on, sbmods_smart missing = on). Prints the kept packages as " a b c " (just " " = none).
-keptlist() { _r=$(val sbmods_keep); _o=" "
-  case "$(val sbmods_smart)" in 0) echo " "; return;; esac
+keptlist() { _o=" "; _r=$(val sbmods_games)   # games in the list are always spared (a running game is never cleaned away)
+  while [ -n "$_r" ]; do
+    _e=${_r%%;*}; case "$_r" in *\;*) _r=${_r#*;};; *) _r=;; esac
+    case "$_e" in ''|*[!A-Za-z0-9._]*) continue;; esac
+    _o="$_o$_e "
+  done
+  _r=$(val sbmods_keep)
+  case "$(val sbmods_smart)" in 0) echo "$_o"; return;; esac
   while [ -n "$_r" ]; do
     _e=${_r%%;*}; case "$_r" in *\;*) _r=${_r#*;};; *) _r=;; esac
     _p=${_e%%|*}; _c=${_e#*|}; _c=${_c%%|*}
@@ -234,9 +248,11 @@ if [ -p $ST/wait ]; then
     if read -t $1 _n <&9; then while read -t 0.05 _n <&9; do :; done
     else kill -0 $WP 2>/dev/null || IDLE=""; fi
   }
-  # a watcher left over from an earlier helper run goes first (only if the PID really is an inotifyd)
-  wp=$(cat $ST/inotify.pid 2>/dev/null); [ -n "$wp" ] && grep -q inotifyd /proc/$wp/cmdline 2>/dev/null && kill $wp 2>/dev/null
-  rm -f $ST/inotify.pid
+  # watchers left over from an earlier helper run go first (only if the PID really is an inotifyd)
+  for pf in $ST/inotify.pid $ST/inotify_wx.pid; do
+    wp=$(cat $pf 2>/dev/null); [ -n "$wp" ] && grep -q inotifyd /proc/$wp/cmdline 2>/dev/null && kill $wp 2>/dev/null
+  done
+  rm -f $ST/inotify.pid $ST/inotify_wx.pid
   if command -v inotifyd >/dev/null 2>&1; then
     inotifyd - ${F%/*}:nmw > $ST/wait 2>/dev/null <&- &
     WP=$!; echo $WP > $ST/inotify.pid
@@ -257,7 +273,25 @@ else nap() { sleep 1; }; fi
 # The app is gone (uninstalled without the restore script): the same undo as the restore script's "everything" mode runs and the helper ends.
 # A built-in test of the app's data folder (/data/user_de, readable even before the first unlock), run at the start of every wait, so in every mode
 # (idle, limit on, one-second fallback) and never as a wake-up of its own. stopw does nothing when there is no watcher.
-stopw() { [ -n "$WP" ] && kill $WP 2>/dev/null; rm -f $ST/inotify.pid; }
+stopw() { [ -n "$WP" ] && kill $WP 2>/dev/null; [ -n "$WXP" ] && kill $WXP 2>/dev/null; rm -f $ST/inotify.pid $ST/inotify_wx.pid; }
+# The weather folder gets its own watcher (a second inotifyd into the same fifo) once the status bar has made the folder.
+# Built-in tests only, so it runs on every wake-up for free; a watcher that died (folder removed) is started again.
+wxwatch() {
+  [ -n "$WXP" ] && kill -0 $WXP 2>/dev/null && return
+  WXP=""; [ -n "$IDLE" ] && [ -d $WXD ] || return
+  inotifyd - $WXD:w > $ST/wait 2>/dev/null <&- &
+  WXP=$!; echo $WXP > $ST/inotify_wx.pid
+}
+# A request newer than our last copy: copy once. Never through a link, and only into the two files the status bar made.
+wxcopy() {
+  [ -f $WXD/req ] || return
+  [ -f $ST/wx.seen ] && [ ! $WXD/req -nt $ST/wx.seen ] && return
+  : > $ST/wx.seen
+  [ -f $WXS ] && [ -f $WXD/wx.db ] && [ -f $WXD/wx.wal ] || return
+  { [ -L $WXD/wx.db ] || [ -L $WXD/wx.wal ]; } && return
+  cat $WXS > $WXD/wx.db 2>/dev/null
+  if [ -f $WXS-wal ]; then cat $WXS-wal > $WXD/wx.wal 2>/dev/null; else : > $WXD/wx.wal; fi   # written last: the status bar reads on this one
+}
 gone() { [ -d /data/user_de/0/dev.gitesh.sbmods ] && return
   [ -d /data/user_de/0/com.android.systemui ] || return   # the folder itself can't be seen (not a missing app): do nothing
   [ -f $B/sbmods_restore.sh ] && exec sh $B/sbmods_restore.sh all
@@ -290,6 +324,7 @@ fi
 
 on=0; w=0; pk=0; hi=0; force=1; cmd=none; lw=0; lc=0; lk=0; lr=0
 while true; do
+  wxwatch; wxcopy   # (built-in tests unless the status bar asked for the weather)
   ch=0; { [ "$force" = "1" ] || [ ! -f $ST/seen ] || [ $F -nt $ST/seen ]; } && ch=1   # built-in test: no program started
   now=$SECONDS
   # Overview open: publish CPU load every 4 s, only when it moved by 3+ points (apps may not read /proc/stat; each write touches flash)
@@ -310,8 +345,8 @@ while true; do
       fi
     fi
   else kt=""; hi=0; lk=$now; fi
-  # nothing changed: sleep (while a limit / parking is on, still look again every 10 s for the timeout / cool-down)
-  if [ "$ch" = "0" ] && { [ "$on" = "0" ] || [ $((now - lr)) -lt 10 ]; }; then rest; continue; fi
+  # nothing changed: sleep (while a limit / parking is on, still look again every 30 s for the timeout / cool-down)
+  if [ "$ch" = "0" ] && { [ "$on" = "0" ] || [ $((now - lr)) -lt 30 ]; }; then rest; continue; fi
   lr=$now
   # read the settings only when they changed (or we just wrote one): `settings list` starts a whole Java program.
   # The 10 s look-in while a limit is on re-uses the last read; one-off jobs run only on a fresh read, never twice.

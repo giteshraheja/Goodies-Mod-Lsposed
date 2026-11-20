@@ -22,6 +22,8 @@ import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Window;
+import android.view.WindowManager;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -67,9 +69,23 @@ final class RecentsChip {
 
     // ------------------------------------------------------------------ build
 
+    /** Overview asks for 120 on its own; hand it the same cap ScreenSaver writes to peak_refresh_rate. */
+    private static void applyTopSpeed(Activity a) {
+        try {
+            float cap = Settings.System.getFloat(a.getContentResolver(), "peak_refresh_rate", 0f);
+            float want = cap >= 1f && cap < 119f ? cap : 0f;
+            Window w = a.getWindow();
+            WindowManager.LayoutParams lp = w.getAttributes();
+            if (lp.preferredRefreshRate == want) return;
+            lp.preferredRefreshRate = want;
+            w.setAttributes(lp);
+        } catch (Throwable t) { Log.w("overview top speed: " + t); }
+    }
+
     private static void onResume(Activity a) {
         if (!a.getPackageName().equals(Entry.LAUNCHER)) return;
         Log.bindLauncher(a);
+        applyTopSpeed(a);
         if (Settings.Global.getInt(a.getContentResolver(), "sbmods_recents_chip", 1) == 0) {   // switched off: take away chips already there
             int rid = a.getResources().getIdentifier("recentContainer", "id", Entry.LAUNCHER);
             View rc = rid == 0 ? null : a.findViewById(rid);

@@ -42,9 +42,10 @@ final class PositionView extends View {
 
     private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint tp = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final android.text.TextPaint wtp = new android.text.TextPaint(Paint.ANTI_ALIAS_FLAG);   // the weather (its icon is a span)
     private final RectF r = new RectF();
 
-    private CharSequence clock = "10:04", temp = "34°", date = "";
+    private CharSequence clock = "10:04", temp = "34°", date = "", weather = "";
     private int battery = 27;
     private boolean clockRight;
     private float scale = 1f;
@@ -74,12 +75,17 @@ final class PositionView extends View {
         slop = ViewConfiguration.get(c).getScaledTouchSlop();
         tp.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         tp.setColor(0xFFFFFFFF);
+        wtp.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        wtp.setColor(0xFFFFFFFF);
     }
 
     /** Which side Samsung's clock is on in the real status bar ("right" for Good Lock layouts). */
     void setClockRight(boolean right) { clockRight = right; }
 
     void setDate(CharSequence d) { date = d == null ? "" : d; }
+
+    /** The weather as the status bar shows it (Weather.format), or null when it is hidden. */
+    void setWeather(CharSequence w) { weather = w == null ? "" : w; }
 
     void setTexts(CharSequence clock, CharSequence temp, int batteryPct) {
         this.clock = clock == null ? "" : clock;
@@ -103,6 +109,11 @@ final class PositionView extends View {
         if (i == ZoneLayout.BACK) return cfg.backEnabled ? backWidth() : 0;
         if (i == ZoneLayout.DATE) return cfg.dateSeparate ? textW(date, 1f) : 0;
         if (i == ZoneLayout.NETSPEED) return 30;
+        if (i == ZoneLayout.WEATHER) {
+            if (!cfg.wxEnabled || weather.length() == 0) return 0;
+            wtp.setTextSize(TEXT * cfg.wxSizePct / 100f);
+            return android.text.Layout.getDesiredWidth(weather, wtp);
+        }
         return 30; // battery icon
     }
 
@@ -171,14 +182,17 @@ final class PositionView extends View {
         notifClip = ln[1]; decoyClip = ln[3];
 
         float rx = ln[2];
-        int[] right = clockRight ? (cfg.dateAfterTime ? new int[]{ZoneLayout.DATE, ZoneLayout.CLOCK, ZoneLayout.TEMP, ZoneLayout.BATTERY}
-                        : new int[]{ZoneLayout.CLOCK, ZoneLayout.DATE, ZoneLayout.TEMP, ZoneLayout.BATTERY})
+        // the weather sits on the outer side of the temperature, as in the status bar
+        boolean wxStock = w[ZoneLayout.WEATHER] > 0 && pl.mode[ZoneLayout.WEATHER] == ZoneLayout.STOCK;
+        int[] right = clockRight ? (cfg.dateAfterTime ? new int[]{ZoneLayout.DATE, ZoneLayout.CLOCK, ZoneLayout.TEMP, ZoneLayout.WEATHER, ZoneLayout.BATTERY}
+                        : new int[]{ZoneLayout.CLOCK, ZoneLayout.DATE, ZoneLayout.TEMP, ZoneLayout.WEATHER, ZoneLayout.BATTERY})
                 : new int[]{ZoneLayout.BATTERY};
         for (int id : right) {
             if (w[id] <= 0 || pl.mode[id] != ZoneLayout.STOCK) continue;
             rx -= w[id];
             x[id] = rx;
-            boolean follows = (id == ZoneLayout.CLOCK || id == ZoneLayout.DATE) && w[ZoneLayout.TEMP] > 0 && pl.mode[ZoneLayout.TEMP] == ZoneLayout.STOCK;
+            boolean follows = ((id == ZoneLayout.CLOCK || id == ZoneLayout.DATE) && ((w[ZoneLayout.TEMP] > 0 && pl.mode[ZoneLayout.TEMP] == ZoneLayout.STOCK) || wxStock))
+                    || (id == ZoneLayout.TEMP && wxStock);
             rx -= follows ? cfg.gapDp : (cfg.itemGap >= 0 ? cfg.itemGap : 8);
         }
         decoyRight = rx;
@@ -187,11 +201,12 @@ final class PositionView extends View {
         if (!clockRight) {
             boolean before = cfg.labelPos == Config.POS_BEFORE;
             int[] ct = cfg.dateAfterTime ? new int[]{ZoneLayout.CLOCK, ZoneLayout.DATE} : new int[]{ZoneLayout.DATE, ZoneLayout.CLOCK};
-            int[] left = before ? new int[]{ZoneLayout.TEMP, ct[0], ct[1]} : new int[]{ct[0], ct[1], ZoneLayout.TEMP};
+            int[] left = before ? new int[]{ZoneLayout.WEATHER, ZoneLayout.TEMP, ct[0], ct[1]} : new int[]{ct[0], ct[1], ZoneLayout.TEMP, ZoneLayout.WEATHER};
             for (int id : left) {
                 if (w[id] <= 0 || pl.mode[id] != ZoneLayout.STOCK) continue;
                 x[id] = lx;
-                lx += w[id] + (id == ZoneLayout.TEMP || id == left[left.length - 1] ? (cfg.itemGap >= 0 ? cfg.itemGap : 8) : cfg.gapDp);
+                boolean wxNext = !before && id == ZoneLayout.TEMP && wxStock;
+                lx += w[id] + ((id == ZoneLayout.TEMP && !wxNext) || id == left[left.length - 1] ? (cfg.itemGap >= 0 ? cfg.itemGap : 8) : cfg.gapDp);
             }
         }
         if (w[ZoneLayout.BACK] > 0 && pl.mode[ZoneLayout.BACK] == ZoneLayout.STOCK) { x[ZoneLayout.BACK] = e; lx = Math.max(lx, leftBase); }
@@ -414,6 +429,7 @@ final class PositionView extends View {
         }
         if (i == ZoneLayout.BATTERY) { drawBattery(c, x, cy); return; }
         if (i == ZoneLayout.BACK) { drawBackChip(c, x, cy, w); return; }
+        if (i == ZoneLayout.WEATHER) { drawWeather(c, x, cy, w); return; }
         if (i == ZoneLayout.NETSPEED) {
             tp.setTextAlign(Paint.Align.CENTER);
             tp.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
@@ -438,6 +454,21 @@ final class PositionView extends View {
         tp.setColor(col);
         CharSequence s = i == ZoneLayout.CLOCK ? clock : i == ZoneLayout.DATE ? date : temp;
         c.drawText(s, 0, s.length(), x, cy + TEXT * k * 0.36f, tp);
+    }
+
+    /** The weather with its real icon: laid out like a TextView would, so the icon span draws too. */
+    private void drawWeather(Canvas c, float x, float cy, float w) {
+        float k = cfg.wxSizePct / 100f;
+        wtp.setTextSize(TEXT * k);
+        try {
+            android.text.StaticLayout l = android.text.StaticLayout.Builder
+                    .obtain(weather, 0, weather.length(), wtp, (int) Math.ceil(w) + 2)
+                    .setIncludePad(false).setMaxLines(1).build();
+            c.save();
+            c.translate(x, cy + TEXT * k * 0.36f - l.getLineBaseline(0));
+            l.draw(c);
+            c.restore();
+        } catch (RuntimeException ignored) {}   // a preview detail: never worth a crash
     }
 
     private void drawBattery(Canvas c, float x, float cy) {

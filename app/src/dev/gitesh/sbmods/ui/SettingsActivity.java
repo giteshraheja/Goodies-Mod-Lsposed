@@ -58,7 +58,9 @@ import dev.gitesh.sbmods.Config;
 import dev.gitesh.sbmods.Habits;
 import dev.gitesh.sbmods.Helper;
 import dev.gitesh.sbmods.PanelLayout;
+import dev.gitesh.sbmods.hook.Insights;
 import dev.gitesh.sbmods.Ui;
+import dev.gitesh.sbmods.Weather;
 import dev.gitesh.sbmods.ZoneLayout;
 import dev.gitesh.sbmods.items.TempItem;
 
@@ -89,7 +91,7 @@ public final class SettingsActivity extends Activity {
             {"Open", new int[]{Config.ACT_FINDER, Config.ACT_BATTERY_USAGE, Config.ACT_INTERNET, Config.ACT_CAMERA,
                     Config.ACT_ALARMS, Config.ACT_TIMER, Config.ACT_CALENDAR, Config.ACT_CALCULATOR,
                     Config.ACT_SETTINGS, Config.ACT_APP, Config.ACT_ROUTINES, Config.ACT_NOTES, Config.ACT_GALLERY,
-                    Config.ACT_MESSAGES, Config.ACT_CHROME, Config.ACT_MAPS, Config.ACT_REMINDERS}},
+                    Config.ACT_MESSAGES, Config.ACT_CHROME, Config.ACT_MAPS, Config.ACT_REMINDERS, Config.ACT_WEATHER}},
     };
     static {
         ACT_LABEL[Config.ACT_NONE] = "Do nothing";
@@ -130,11 +132,12 @@ public final class SettingsActivity extends Activity {
         ACT_LABEL[Config.ACT_HZ_NEXT] = "Screen top speed (120 / 96 / 60, cycle)";
         ACT_LABEL[Config.ACT_HZ_OFF] = "Screen top speed: no cap";
         ACT_LABEL[Config.ACT_SAVE_NOW] = "Maximum saving until the screen is on";
+        ACT_LABEL[Config.ACT_WEATHER] = "Samsung Weather";
     }
-    private static final String[] ITEM_TITLES = {"Battery icon", "Clock", "Temperature", "Front camera hole", "Wi-Fi icon", "Mobile signal icon"};
+    private static final String[] ITEM_TITLES = {"Battery icon", "Clock", "Temperature", "Front camera hole", "Wi-Fi icon", "Mobile signal icon", "Weather"};
     private static final String[] GESTURE_TITLES = {"Tap", "Double-tap", "Long-press"};
-    private static final String[] TABS = {"Layout", "Clock", "Panel", "System"};
-    private static final int T_LAYOUT = 0, T_CLOCK = 1, T_PANEL = 2, T_SYSTEM = 3;
+    private static final String[] TABS = {"Layout", "Clock", "Panel", "System", "Insights"};
+    private static final int T_LAYOUT = 0, T_CLOCK = 1, T_PANEL = 2, T_SYSTEM = 3, T_INSIGHTS = 4;
     private static final int[] COLORS = {0xFFFF9800, 0xFFF44336, 0xFFFFEB3B, 0xFFE91E63, 0xFF00BCD4, 0xFF4CAF50};
 
     // ------------------------------------------------------------------ state
@@ -168,7 +171,11 @@ public final class SettingsActivity extends Activity {
             gotPong = true;
             float t = i.getFloatExtra("tempValue", Float.NaN);
             if (!Float.isNaN(t)) liveTemp = t;
+            Weather.Snap ws = Weather.Snap.decode(i.getStringExtra("wx"));
+            boolean firstWx = ws != null && liveWx == null;
+            if (ws != null) liveWx = ws;
             showStatus(i);
+            if (firstWx && tab == T_CLOCK && scroll != null) refresh();   // the weather card can now show the real city and numbers
         }
     };
 
@@ -210,7 +217,7 @@ public final class SettingsActivity extends Activity {
         getWindow().setStatusBarColor(Color.TRANSPARENT);
         getWindow().setNavigationBarColor(Color.TRANSPARENT);
         getWindow().setNavigationBarContrastEnforced(false);
-        boolean night = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
+        night = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
                 == Configuration.UI_MODE_NIGHT_YES;
         pal = Ui.appPal(this);
         cBg = pal.bg; cCard = pal.card; cText = pal.tx; cSub = pal.tx2;
@@ -256,7 +263,7 @@ public final class SettingsActivity extends Activity {
         root.setBackgroundColor(cBg);
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
-        // The wallpaper sits behind the header and the live preview; the settings rise over it as a rounded sheet.
+        // The wallpaper fills the whole screen; the header, the preview and the cards sit on it.
         final LinearLayout topBox = new LinearLayout(this);
         topBox.setOrientation(LinearLayout.VERTICAL);
         topBox.setPadding(0, 0, 0, dp(20));
@@ -269,21 +276,16 @@ public final class SettingsActivity extends Activity {
         chipHost = new HorizontalScrollView(this);
         chipHost.setHorizontalScrollBarEnabled(false);
         chipHost.setVisibility(View.GONE);
-        chipHost.setBackground(Ui.topRound(cBg, dp(30)));
         chipRow = new LinearLayout(this);
         chipRow.setOrientation(LinearLayout.HORIZONTAL);
         chipRow.setPadding(dp(Ui.S4), dp(14), dp(Ui.S4), dp(Ui.S2));
         chipHost.addView(chipRow);
         content.addView(chipHost, new LinearLayout.LayoutParams(-1, -2));
         final View wall = new View(this);
-        wall.setBackground(new Ui.Wall(night));
-        topBox.addOnLayoutChangeListener((v, l, t, r, bt, ol, ot, or, ob) -> {
-            int hgt = content.getPaddingTop() + bt;   // from the very top of the screen, under the status bar
-            ViewGroup.LayoutParams wl = wall.getLayoutParams();
-            if (wl != null && wl.height != hgt) { wl.height = hgt; wall.setLayoutParams(wl); }
-        });
+        wallView = wall;
+        paintWall();
+        refreshWall();
         scroll = new ScrollView(this);
-        scroll.setBackgroundColor(cBg);
         scroll.setClipToPadding(false);
         scroll.setVerticalScrollBarEnabled(false);
         scroll.setOnScrollChangeListener((v, x, y, ox, oy) -> updateChipActive(y));
@@ -293,7 +295,7 @@ public final class SettingsActivity extends Activity {
         scroll.addView(page);
         LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-1, 0, 1);
         content.addView(scroll, sp);
-        root.addView(wall, new FrameLayout.LayoutParams(-1, dp(300)));
+        root.addView(wall, new FrameLayout.LayoutParams(-1, -1));
         root.addView(content, new FrameLayout.LayoutParams(-1, -1));
         final View nav = buildNav();
         final FrameLayout.LayoutParams np = new FrameLayout.LayoutParams(-1, dp(Ui.NAV_H), Gravity.BOTTOM);
@@ -330,6 +332,8 @@ public final class SettingsActivity extends Activity {
             return;
         }
         resumed = true;
+        paintWall();
+        refreshWall();
         registerReceiver(pong, new IntentFilter(Config.ACTION_PONG), Context.RECEIVER_EXPORTED);
         ping();
         selfCheck(false);
@@ -340,6 +344,7 @@ public final class SettingsActivity extends Activity {
     protected void onPause() {
         super.onPause();
         resumed = false;
+        if (wallBg != null) wallBg.finish();
         h.removeCallbacks(previewTick);
         h.removeCallbacks(hideUndo);
         try { unregisterReceiver(pong); } catch (Exception ignored) {}
@@ -347,8 +352,8 @@ public final class SettingsActivity extends Activity {
 
     // ================================================================ frame: header, preview, bottom bar
 
-    private static final String[] TAB_TITLES = {"Status bar", "Clock", "Panel", "System"};
-    private static final String[] TAB_ICONS = {"layout", "clock", "panel", "sys"};
+    private static final String[] TAB_TITLES = {"Status bar", "Clock", "Panel", "System", "Insights"};
+    private static final String[] TAB_ICONS = {"layout", "clock", "panel", "sys", "spark"};
     private TextView titleView;
     private LinearLayout navBar;
 
@@ -359,7 +364,22 @@ public final class SettingsActivity extends Activity {
         titleView = Ui.text(this, TAB_TITLES[tab], 34, 0xFFFFFFFF, 300);
         titleView.setLetterSpacing(-0.02f);
         titleView.setSingleLine(true);
-        row.addView(titleView, new LinearLayout.LayoutParams(0, -2, 1));
+        LinearLayout titles = new LinearLayout(this);
+        titles.setOrientation(LinearLayout.VERTICAL);
+        titles.addView(titleView, new LinearLayout.LayoutParams(-1, -2));
+        wallCaption = Ui.text(this, "", 12, 0xCCFFFFFF, 500);   // why the wallpaper looks the way it does
+        wallCaption.setSingleLine(true);
+        wallCaption.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        wallCaption.setVisibility(View.GONE);
+        titles.addView(wallCaption, new LinearLayout.LayoutParams(-1, -2));
+        row.addView(titles, new LinearLayout.LayoutParams(0, -2, 1));
+        FrameLayout find = new FrameLayout(this);   // search lives up here so the bottom bar has room for its five tabs
+        ImageView fi = Ui.icon(this, "search", 0xFFFFFFFF, 24);
+        ((FrameLayout.LayoutParams) fi.getLayoutParams()).gravity = Gravity.CENTER;
+        find.addView(fi);
+        find.setContentDescription("Search settings");
+        find.setOnClickListener(v -> showSearch());
+        row.addView(find, new LinearLayout.LayoutParams(dp(44), dp(44)));
         statusPill = Ui.text(this, "", 13, cOk, 600);
         statusPill.setGravity(Gravity.CENTER);
         statusPill.setMinHeight(dp(32));
@@ -375,7 +395,7 @@ public final class SettingsActivity extends Activity {
         previewHolder.removeAllViews();
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setBackground(Ui.card(this, pal));
+        card.setBackground(Ui.cardOverWall(this, pal));
         card.setPadding(dp(Ui.S3), dp(Ui.S3), dp(Ui.S3), dp(Ui.S2));   // compact: the bar and its tray only
         float d = getResources().getDisplayMetrics().density;
         android.view.WindowMetrics wm = getWindowManager().getMaximumWindowMetrics();
@@ -391,7 +411,7 @@ public final class SettingsActivity extends Activity {
             @Override public void changed() { apply(); if (tab == T_LAYOUT) refresh(); }
             @Override public void tapped(int element) {   // tap (no drag): the same choices as a list - easier than dragging, and works with TalkBack
                 if (elementOn(element)) zonePicker(element);
-                else switchTab(element == ZoneLayout.TEMP || element == ZoneLayout.DATE ? T_CLOCK : T_LAYOUT);
+                else switchTab(element == ZoneLayout.TEMP || element == ZoneLayout.DATE || element == ZoneLayout.WEATHER ? T_CLOCK : T_LAYOUT);
             }
         }, screenW, holeL, holeR, cAccent, cText, cSub, cField);
         card.addView(posView, new LinearLayout.LayoutParams(-1, -2));
@@ -401,13 +421,178 @@ public final class SettingsActivity extends Activity {
         updatePreview();
     }
 
-    /** The floating bottom bar: frosted glass, four tabs, the open one in a soft accent pill. */
+    /** The floating bottom bar: frosted glass, five tabs, the open one in a soft accent pill. */
     private View buildNav() {
         navBar = new LinearLayout(this);
-        navBar.setPadding(dp(6), dp(6), dp(6), dp(6));
-        navBar.setBackground(Ui.glass(this, pal, Ui.NAV_H / 2f));
+        navBar.setPadding(dp(10), dp(8), dp(10), dp(8));
+        Ui.Glass navGlass = Ui.glass(this, pal, Ui.NAV_H / 2f);
+        navGlass.setFill((pal.glass & 0x00FFFFFF) | 0xFF000000);   // solid: the page text no longer shows through the bar
+        navBar.setBackground(navGlass);
         fillTabs();
         return navBar;
+    }
+
+    // ================================================================ search
+
+    /** One findable row. */
+    private static final class Hit {
+        int tab; String card, title, text, adv; boolean setting;
+        String key() { return card + "|" + title; }
+    }
+    private List<Hit> index;                                  // non-null only while buildIndex() runs
+    private final java.util.Map<String, View> rowViews = new java.util.HashMap<>();   // "card|title" -> row, of the tab on screen
+    private String advNow;                                    // while indexing: the Advanced section the rows sit behind
+    private Set<String> touchedSet;
+
+    private String rowKey(String title) { return tab == T_INSIGHTS ? "*|" + title : (cardTitle == null ? "" : cardTitle) + "|" + title; }
+
+    /** Every row helper calls this: remembers the row's view (to scroll to it) and, while indexing, lists it. */
+    private void reg(String title, String sub, View row, boolean setting) {
+        if (title == null || tab == T_INSIGHTS) return;   // the Insights tab only repeats switches that live elsewhere
+        String card = cardTitle == null ? "" : cardTitle;
+        rowViews.put(card + "|" + title, row);
+        if (index == null) return;
+        for (Hit o : index) if (o.card.equals(card) && o.title.equals(title)) return;
+        Hit h = new Hit();
+        h.tab = tab; h.card = card; h.title = title; h.adv = advNow; h.setting = setting;
+        h.text = (title + " " + card + " " + TABS[tab] + " " + (sub == null ? "" : sub)).toLowerCase(Locale.ROOT);
+        index.add(h);
+    }
+
+    private Set<String> touched() {
+        if (touchedSet == null) touchedSet = new HashSet<>(prefs.getStringSet("touched", Collections.<String>emptySet()));
+        return touchedSet;
+    }
+
+    /** The owner changed this setting: it leaves the "not touched yet" list. */
+    private void touch(String key) {
+        if (touched().add(key)) prefs.edit().putStringSet("touched", new HashSet<>(touchedSet)).apply();
+    }
+
+    /** Lists the rows of every tab by drawing each tab once (only when search opens), then draws the open tab again. */
+    private List<Hit> buildIndex() {
+        List<Hit> out = new ArrayList<>();
+        final int keep = tab, y = scroll.getScrollY();
+        index = out;
+        try {
+            for (int t = 0; t < TABS.length; t++) if (t != T_INSIGHTS) { tab = t; build(); }
+        } catch (Throwable ignored) {
+        } finally {
+            index = null; advNow = null; tab = keep;
+            build();
+            scroll.post(() -> scroll.scrollTo(0, y));
+        }
+        return out;
+    }
+
+    private void showSearch() {
+        final List<Hit> all = buildIndex();
+        final android.app.Dialog dl = new android.app.Dialog(this);
+        dl.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
+        LinearLayout sheet = new LinearLayout(this);
+        sheet.setOrientation(LinearLayout.VERTICAL);
+        sheet.setPadding(dp(Ui.S4), dp(10), dp(Ui.S4), dp(Ui.S3));
+        sheet.setBackground(new Ui.Glass(pal.night ? 0xF01E242E : 0xF5FFFFFF, pal.glassBd, pal.glassHi, dp(36), Math.max(1, dp(1))));
+        sheet.setFocusableInTouchMode(true);   // the keyboard stays down until the field is tapped, so the lists show first
+        View handle = new View(this);
+        handle.setBackground(round((pal.tx2 & 0x00FFFFFF) | 0x8C000000, dp(3), 0, 0));
+        LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(dp(40), dp(5));
+        hp.gravity = Gravity.CENTER_HORIZONTAL;
+        hp.bottomMargin = dp(Ui.S3);
+        sheet.addView(handle, hp);
+        final EditText q = field("");
+        q.setHint("Search settings");
+        q.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
+        sheet.addView(q, new LinearLayout.LayoutParams(-1, dp(48)));
+        final LinearLayout list = new LinearLayout(this);
+        list.setOrientation(LinearLayout.VERTICAL);
+        int maxH = Math.round(getResources().getDisplayMetrics().heightPixels * 0.55f);
+        sheet.addView(new MaxHeightScroll(this, maxH, list), new LinearLayout.LayoutParams(-1, -2));
+        q.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence c, int a, int b, int d) {}
+            @Override public void onTextChanged(CharSequence c, int a, int b, int d) {}
+            @Override public void afterTextChanged(Editable e) { fillSearch(list, all, e.toString(), dl); }
+        });
+        FrameLayout wrap = new FrameLayout(this);
+        wrap.setPadding(dp(8), 0, dp(8), dp(8));
+        wrap.addView(sheet);
+        dl.setContentView(wrap);
+        android.view.Window w = dl.getWindow();
+        if (w != null) {
+            w.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
+            w.setGravity(Gravity.BOTTOM);
+            w.setLayout(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+            w.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            w.setDimAmount(pal.night ? 0.55f : 0.42f);
+            w.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE | WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN);
+        }
+        fillSearch(list, all, "", dl);
+        dl.show();
+    }
+
+    /** Top: the two rows opened from search last. Below: what matches, or (nothing typed) the settings not changed yet. */
+    private void fillSearch(LinearLayout list, List<Hit> all, String query, android.app.Dialog dl) {
+        list.removeAllViews();
+        String[] words = query.trim().toLowerCase(Locale.ROOT).split("\\s+");
+        boolean empty = query.trim().isEmpty();
+        List<Hit> rec = new ArrayList<>();
+        for (String k : prefs.getString("search_recent", "").split("\n")) for (Hit h : all) if (h.key().equals(k)) { rec.add(h); break; }
+        if (!rec.isEmpty()) {
+            searchHead(list, "Last opened");
+            for (Hit h : rec) searchRow(list, h, dl);
+        }
+        List<Hit> res = new ArrayList<>();
+        for (Hit h : all) {
+            if (rec.contains(h)) continue;
+            boolean ok;
+            if (empty) ok = h.setting && !touched().contains(h.key()) && !touched().contains("*|" + h.title);
+            else { ok = true; for (String wd : words) if (!h.text.contains(wd)) { ok = false; break; } }
+            if (ok) res.add(h);
+        }
+        searchHead(list, empty ? (res.isEmpty() ? "You have changed every setting" : "Not touched yet (" + res.size() + ")") : res.isEmpty() ? "Nothing found" : "Results (" + res.size() + ")");
+        for (Hit h : res) searchRow(list, h, dl);
+    }
+
+    private void searchHead(LinearLayout list, String t) {
+        TextView v = Ui.text(this, t, Ui.T_SECTION, pal.accInk, 600);
+        v.setPadding(dp(4), dp(Ui.S4), 0, dp(4));
+        list.addView(v);
+    }
+
+    private void searchRow(LinearLayout list, final Hit h, final android.app.Dialog dl) {
+        LinearLayout r = new LinearLayout(this);
+        r.setOrientation(LinearLayout.VERTICAL);
+        r.setGravity(Gravity.CENTER_VERTICAL);
+        r.setMinimumHeight(dp(Ui.ROW_H));
+        r.setPadding(dp(4), dp(6), dp(4), dp(6));
+        r.setBackground(ripple(0));
+        r.addView(Ui.text(this, h.title, Ui.T_BODY, cText, 500));
+        r.addView(Ui.text(this, TABS[h.tab] + (h.card.isEmpty() ? "" : "  ›  " + h.card), Ui.T_CAPTION, cSub, 400));
+        r.setOnClickListener(v -> {
+            String old = prefs.getString("search_recent", "");
+            String keepOld = "";
+            for (String k : old.split("\n")) if (!k.isEmpty() && !k.equals(h.key())) { keepOld = k; break; }
+            prefs.edit().putString("search_recent", h.key() + (keepOld.isEmpty() ? "" : "\n" + keepOld)).apply();
+            dl.dismiss();
+            openHit(h);
+        });
+        list.addView(r, new LinearLayout.LayoutParams(-1, -2));
+    }
+
+    /** Goes to the row: its tab, its Advanced section opened if it sits behind one, scrolled into view, one blink. */
+    private void openHit(Hit h) {
+        if (h.adv != null) prefs.edit().putBoolean("adv_" + h.adv, true).apply();
+        if (tab != h.tab) switchTab(h.tab); else build();
+        scroll.postDelayed(() -> {
+            View r = rowViews.get(h.key());
+            if (r == null || !r.isAttachedToWindow()) return;
+            android.graphics.Rect rc = new android.graphics.Rect();
+            r.getDrawingRect(rc);
+            page.offsetDescendantRectToMyCoords(r, rc);
+            scroll.smoothScrollTo(0, Math.max(0, rc.top - dp(96)));
+            r.setAlpha(0.25f);
+            r.animate().alpha(1f).setStartDelay(250).setDuration(900).start();
+        }, 200);
     }
 
     private void fillTabs() {
@@ -416,32 +601,40 @@ public final class SettingsActivity extends Activity {
             final int at = i;
             boolean on = i == tab;
             LinearLayout t = new LinearLayout(this);
-            t.setOrientation(LinearLayout.VERTICAL);
+            t.setOrientation(LinearLayout.HORIZONTAL);
             t.setGravity(Gravity.CENTER);
             t.setBackground(on ? round(pal.accSoft, dp(Ui.NAV_TAB_H / 2f), 0, 0) : null);
-            t.addView(Ui.icon(this, TAB_ICONS[i], on ? pal.accInk : cSub, 22));
-            TextView l = Ui.text(this, TABS[i], Ui.T_TAB, on ? pal.accInk : cSub, 600);
-            l.setSingleLine(true);
-            t.addView(l, new LinearLayout.LayoutParams(-2, -2));
+            t.addView(Ui.icon(this, TAB_ICONS[i], on ? pal.accInk : cSub, 24));
+            if (on) {   // only the open tab shows its name: less clutter, more air
+                TextView l = Ui.text(this, TABS[i], Ui.T_VALUE, pal.accInk, 600);
+                l.setSingleLine(true);
+                LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(-2, -2);
+                ll.setMargins(dp(6), 0, 0, 0);
+                t.addView(l, ll);
+            }
             t.setContentDescription(TABS[i]);
             t.setSelected(on);
             t.setOnClickListener(v -> switchTab(at));
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(Ui.NAV_TAB_H), 1);
-            lp.setMargins(dp(2), 0, dp(2), 0);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(Ui.NAV_TAB_H), on ? 2.6f : 1f);
+            lp.setMargins(dp(3), 0, dp(3), 0);
             navBar.addView(t, lp);
         }
     }
 
     private void switchTab(int t) {
         if (t == tab) return;
+        tabY[tab] = scroll.getScrollY();   // remember where this tab was, to come back to the same spot
         tab = t;
         prefs.edit().putInt("tab", t).apply();
         titleView.setText(TAB_TITLES[t]);
         fillTabs();
         build();
-        scroll.scrollTo(0, 0);
-        scroll.post(() -> scroll.scrollTo(0, 0));   // again after the new tab has been laid out
+        final int y = tabY[t];
+        scroll.scrollTo(0, y);
+        scroll.post(() -> scroll.scrollTo(0, y));   // again after the new tab has been laid out
     }
+
+    private final int[] tabY = new int[TABS.length];   // last scroll position of each tab
 
     // ================================================================ content
 
@@ -457,12 +650,15 @@ public final class SettingsActivity extends Activity {
         chipViews.clear();
         chipActive = -1;
         resetNow.clear();
+        rowViews.clear();
+        advNow = null;
         cur = page;
         previewHolder.setVisibility(tab == T_LAYOUT || tab == T_CLOCK ? View.VISIBLE : View.GONE);   // the preview only helps these two
         switch (tab) {
-            case T_CLOCK: buildClock(); buildTemp(); break;
+            case T_CLOCK: buildClock(); buildTemp(); buildWeather(); break;
             case T_PANEL: buildPanel(); break;
             case T_SYSTEM: buildSystem(); break;
+            case T_INSIGHTS: buildInsights(); break;
             default: buildLayout(); buildBack(); break;
         }
         fillChips();
@@ -538,7 +734,7 @@ public final class SettingsActivity extends Activity {
         group("Smart suggestions");
         cardResetAction(() -> { cfg.smartOn = new Config().smartOn; apply(); putGl("sbmods_smart", cfg.smartOn ? "1" : "0"); });
         switchRow("Smart suggestions", "The mod notices things and offers a fix. When it is off, it never checks anything.",
-                cfg.smartOn, v -> { cfg.smartOn = v; apply(); putGl("sbmods_smart", v ? "1" : "0"); });   // the Overview panel (launcher process) reads the global
+                cfg.smartOn, this::setSmart);
         if (cfg.smartOn) {
             divider();
             switchRow("Restart apps still on OpenGL", "When Vulkan is on, an app you open may still use the old renderer. If so, it is closed and reopened once so it can switch. Each app is restarted at most once until the phone restarts. Unsaved work in that app is lost.",
@@ -601,8 +797,221 @@ public final class SettingsActivity extends Activity {
                 + "If an app uses the older OpenGL, it can offer to switch the phone to Vulkan. If you often slow the phone down by hand in the same app, the Overview panel can offer to do it for you. Nothing happens until you say Yes, and each time it does, a message tells you. It only checks when you open an app, never in the background. It needs the root helper to be running.");
     }
 
+    private void setSmart(boolean v) { cfg.smartOn = v; apply(); putGl("sbmods_smart", v ? "1" : "0"); }   // the Overview panel (launcher process) reads the global
+
+    // ================================================================ Insights tab
+
+    /** Opens a card on another tab (card titles are the anchors). */
+    private void openCard(int t, String title) {
+        switchTab(t);
+        scroll.postDelayed(() -> { for (int i = 0; i < anchors.size(); i++) if (title.equals(anchors.get(i)[0])) { jumpTo(i); return; } }, 150);
+    }
+
+    private void optionsRow(int t, String card) {
+        divider();
+        actionRow("Open its options", null, cAccent, v -> openCard(t, card));
+    }
+
+    /** "A, B, C and 2 more" from package names. */
+    private String appNames(java.util.List<String> pkgs) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < pkgs.size() && i < 4; i++) {
+            String n = appLabel(pkgs.get(i));
+            sb.append(i == 0 ? "" : ", ").append(n != null ? n : pkgs.get(i));
+        }
+        if (pkgs.size() > 4) sb.append(" and ").append(pkgs.size() - 4).append(" more");
+        return sb.toString();
+    }
+
+    /**
+     * Insights tab: one card per thing the mod notices or does by itself, with what it is doing right now and its switch
+     * (or a jump to its options). Everything shown is read once when the tab is drawn, from the options and the mod's
+     * global settings: no root, no timer.
+     */
+    private void buildInsights() {
+        final boolean smart = cfg.smartOn;
+        final String off = "Off, because Smart suggestions is off";
+        final String rules = glStr("sbmods_rules"), keep = glStr("sbmods_keep");
+
+        group("Master switch");
+        switchRow("Smart suggestions", "Turns the next five cards (Live checks to Vulkan check) on or off together. When it is off, they never check anything.", smart, this::setSmart);
+        endGroup(null);
+
+        group("Live checks");
+        boolean cardOn = PanelLayout.order(glStr(PanelLayout.SETTING), PanelLayout.DEFAULTS).contains("insights");
+        statusRow("Right now", !smart ? off : cardOn ? "On. Worked out each time you open the Performance panel." : "Not shown: the Insights card is switched off under Panel, Panel cards");
+        divider();
+        infoRow("• Phone at " + Math.max(Insights.HOT_TENTHS, gl("sbmods_cool_at", 360)) / 10 + "°C or warmer: Cool down\n"
+                + "• An app using " + Insights.TOP_MIN_PCT + "% of a CPU core in the background: Stop\n"
+                + "• Memory " + Insights.RAM_MIN_PCT + "% full: Deep clean\n"
+                + "• A speed limit left on while charging, or about to end: Full speed\n"
+                + "• Vulkan off after a restart: Turn on\n"
+                + "• An app running but not opened for " + Insights.IDLE_MIN_DAYS + " days: Stop", null);
+        endGroup("The Insights card of the Performance panel shows up to " + Insights.MAX + " of these, the most important first, each with one button. "
+                + "Stop force-stops the app: it closes fully and starts again when you open it (or when something wakes it). Nothing is ever disabled or uninstalled, "
+                + "and the phone and call apps, the keyboard, Google's push service and Wi-Fi calling can never be stopped. Find it on the Overview screen: tap a chip to open the Performance panel; the Insights card is on its All page.");
+
+        group("Automatic speed rules");
+        java.util.List<Habits.R> rl = Habits.parseRules(rules);
+        int watching = 0;
+        for (Habits.H x : Habits.parseHabits(glStr("sbmods_habits"))) if (x.count > 0 && Habits.ruleOf(rules, x.pkg) == null) watching++;
+        StringBuilder rs = new StringBuilder();
+        for (Habits.R r : rl) { String n = appLabel(r.pkg); rs.append(rs.length() == 0 ? "" : "\n").append(n != null ? n : r.pkg).append(": ").append(Habits.describe(r)); }
+        statusRow("Right now", !smart ? off : (rl.isEmpty() ? "No rules yet" : rs.toString())
+                + (watching > 0 ? "\nLearning: " + watching + (watching == 1 ? " app" : " apps") + " you slowed down by hand" : ""));
+        optionsRow(T_SYSTEM, "Smart suggestions");
+        endGroup("Learns which apps you slow the phone down in. After " + Habits.NEED_DAYS + " days of doing it by hand in the same app, the Performance panel asks once whether to do it for you. "
+                + "With a Yes, the limit comes on when that app is in front and goes when you leave it. Remove a rule under System, Smart suggestions.");
+
+        group("Apps spared when cleaning");
+        java.util.List<String> kp = new java.util.ArrayList<>();
+        for (Habits.K k : Habits.kept(keep)) kp.add(k.pkg);
+        statusRow("Right now", !smart ? off : kp.isEmpty() ? "None learned yet" : appNames(kp));
+        optionsRow(T_SYSTEM, "Smart suggestions");
+        endGroup("Learns which apps you reopen right after a clean-up. An app you open straight after cleaning twice is left running by the next clean. Remove one under System, Smart suggestions.");
+
+        group("Game mode");
+        int games = gameList().size();
+        statusRow("Right now", !smart ? off : (!"0".equals(glStr("sbmods_game")) ? "On" : "Off") + (games > 0 ? ". Games you added: " + appNames(gameList()) : ""));
+        if (smart) {
+            divider();
+            switchRow("Game mode: full speed for games", null, !"0".equals(glStr("sbmods_game")), v -> putGl("sbmods_game", v ? "1" : "0"));
+            divider();
+            switchRow("Close other apps when a game starts", null, "1".equals(glStr("sbmods_gamesclean")), v -> putGl("sbmods_gamesclean", v ? "1" : "0"));
+        }
+        optionsRow(T_SYSTEM, "Smart suggestions");
+        endGroup("Notices when a game comes to the front and lifts any speed limit while you play. Your earlier limit comes back when you leave the game. It can also close background apps once when a game starts.");
+
+        group("Vulkan check");
+        String gfx = glStr("sbmods_gfx");
+        statusRow("Right now", !smart ? off : ("vulkan".equals(gfx) ? "Graphics: Vulkan" : "Graphics: Samsung's default (OpenGL)")
+                + ("1".equals(glStr("sbmods_smart_noask")) ? ". You chose “Don't ask again”" : ""));
+        if (smart) {
+            divider();
+            switchRow("Restart apps still on OpenGL", null, "1".equals(glStr("sbmods_gfx_restart")), v -> putGl("sbmods_gfx_restart", v ? "1" : "0"));
+        }
+        optionsRow(T_SYSTEM, "Smart suggestions");
+        endGroup("Checks how an app draws the screen the first time you open it, and tells you in a short message. If it uses the older OpenGL, it can offer to switch the phone to Vulkan. It checks once per app, only when you open it.");
+
+        group("Sleep sooner");
+        int sm = Math.max(0, Math.min(3, gl("sbmods_sleep_mode", 0)));
+        statusRow("Right now", SLEEP_MODES[sm] + (sm == 0 ? "" : ". " + dev.gitesh.sbmods.SleepPlan.describe(gl("sbmods_sleep", 0))));
+        optionsRow(T_SYSTEM, "Sleep sooner");
+        endGroup("In Smart mode it learns, hour by hour, how long the phone is left alone after the screen goes off, and lets it reach deep sleep sooner at those hours. It needs a few days, and acts only when the screen turns on or off.");
+
+        group("Screen speed");
+        int psm = gl("sbmods_hz_psm", 0), low = gl("sbmods_hz_low", 0);
+        statusRow("Right now", "While power saving is on: " + HZ_AUTO[hzIdx(psm)].toLowerCase(Locale.ROOT)
+                + "\nBattery below " + gl("sbmods_hz_low_at", 20) + "%: " + HZ_AUTO[hzIdx(low)].toLowerCase(Locale.ROOT));
+        divider();
+        switchRow("Maximum saving while the screen is off", null, gl("sbmods_off_max", 0) == 1, v -> putGl("sbmods_off_max", v ? "1" : "0"));
+        optionsRow(T_SYSTEM, "Screen speed");
+        endGroup("Lowers the screen's top speed by itself while power saving is on or the battery is low, and puts it back afterwards. Maximum saving turns power saving on and automatic sync off while the screen is off, and undoes both when it comes on.");
+
+        group("Speed limits that end by themselves");
+        int cp = gl("sbmods_cpu_pct", 0), gp = gl("sbmods_gpu_pct", 0);
+        boolean lim = (cp > 0 && cp < 100) || (gp > 0 && gp < 100) || gl("sbmods_cool", 0) == 1 || glStr("sbmods_cores").matches(".*[1-9].*");
+        statusRow("Right now", (lim ? "A limit is on" : "No limit on") + ". Limits end after " + gl("sbmods_limit_min", 15) + " minutes; cool-down stops at "
+                + gl("sbmods_cool_at", 360) / 10 + "°C");
+        optionsRow(T_SYSTEM, "CPU and GPU speed");
+        endGroup("A CPU or GPU limit never stays on by mistake: it ends after the time you chose, cool-down ends when the battery is cool, and none survives a restart.");
+
+        group("Tips on the status bar");
+        statusRow("Right now", new String[]{"Never", "Sometimes", "Often"}[Math.max(0, Math.min(2, cfg.tipsMode))]);
+        optionsRow(T_SYSTEM, "Feedback");
+        endGroup("After unlocking, one line now and then reminds you of a gesture you set up or says what is new. Every tip is shown once before any repeats.");
+
+        group("Battery advice");
+        statusRow("Where", "Performance panel, Battery page");
+        endGroup("Reads battery health, idle drain, sleep and screen use in plain words, and says what to do about each. Worked out only when you open that page.");
+
+        group("Self-check");
+        statusRow("Right now", scFacts == null ? "Checking…" : findings.isEmpty() ? "Everything is working"
+                : findings.size() + (findings.size() == 1 ? " thing needs a look" : " things need a look"));
+        optionsRow(T_SYSTEM, "Self-check");
+        endGroup("Looks for what is wrong while this app is open: helper off, a stuck limit, the mod switched off, things Samsung changed. Each finding comes with a fix where there is one.");
+
+        group("Daily backup");
+        statusRow("How it works", "One backup a day in Downloads, the newest " + dev.gitesh.sbmods.Backup.KEEP + " are kept");
+        optionsRow(T_SYSTEM, "Your options");
+        endGroup("Saves your options once a day and deletes the old daily ones. It uses one daily alarm that never wakes the phone by itself, and also checks when you open this app. A backup you save by hand is never deleted.");
+
+        group("Safety guard");
+        statusRow("Always on", "Nothing to set");
+        endGroup("Errors never reach the status bar. Too many errors switch the mod off until the next restart, and a crash loop keeps it off by itself.");
+    }
+
     /** System tab: what taps do, the root helper and speed limits, the Overview chips, help, and starting over. */
+    private View wallView;
+    private Ui.Wall wallBg;
+    private TextView wallCaption;
+    private boolean night;
+
+    /** Shows the wallpaper for this moment (a slow blend when it changed) and the small line that says why. */
+    private void paintWall() {
+        if (wallView == null) return;
+        dev.gitesh.sbmods.WallTheme.readPhone(this);
+        int[] p = dev.gitesh.sbmods.WallTheme.palette(prefs);
+        if (wallBg == null) { wallBg = new Ui.Wall(night, p); wallView.setBackground(wallBg); }
+        else wallBg.fadeTo(p);
+        if (wallCaption != null) {
+            String c = dev.gitesh.sbmods.WallTheme.caption(prefs);
+            wallCaption.setText(c);
+            wallCaption.setVisibility(c.isEmpty() ? View.GONE : View.VISIBLE);
+        }
+    }
+
+    /** Fetches the weather in the background (at most every 3 hours, only while this app is open), then repaints the wallpaper. */
+    private void refreshWall() {
+        if (!dev.gitesh.sbmods.WallTheme.stale(prefs)) return;
+        new Thread(() -> {
+            if (dev.gitesh.sbmods.WallTheme.refresh(prefs)) runOnUiThread(this::paintWall);
+        }).start();
+    }
+
+    private void buildWallpaper() {
+        group("Wallpaper");
+        segmentedBlock("Wallpaper", new String[]{"Normal", "Changes by day"}, prefs.getInt(dev.gitesh.sbmods.WallTheme.K_MODE, 0), v -> {
+            prefs.edit().putInt(dev.gitesh.sbmods.WallTheme.K_MODE, v).apply();
+            paintWall();
+            refreshWall();
+            refresh();
+        });
+        if (prefs.getInt(dev.gitesh.sbmods.WallTheme.K_MODE, 0) == 1) {
+            divider();
+            LinearLayout box = block("City for the weather (optional)");
+            EditText e = field(prefs.getString(dev.gitesh.sbmods.WallTheme.K_CITY, ""));
+            e.setHint("e.g. Mumbai");
+            e.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
+            box.addView(e, new LinearLayout.LayoutParams(-1, -2));
+            e.addTextChangedListener(new TextWatcher() {
+                final Runnable push = () -> {
+                    prefs.edit().putString(dev.gitesh.sbmods.WallTheme.K_CITY, e.getText().toString().trim()).apply();
+                    paintWall();
+                    refreshWall();
+                };
+                public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+                public void onTextChanged(CharSequence s, int a, int b, int c) {}
+                public void afterTextChanged(Editable s) { h.removeCallbacks(push); h.postDelayed(push, 900); }
+            });
+            divider();
+            switchRow("Warn when hot or battery is low", "Calm red from 40°C, amber from 15% battery", prefs.getBoolean(dev.gitesh.sbmods.WallTheme.K_ALERT, true), v -> {
+                prefs.edit().putBoolean(dev.gitesh.sbmods.WallTheme.K_ALERT, v).apply();
+                paintWall();
+                refresh();
+            });
+            divider();
+            statusRow("Showing now", dev.gitesh.sbmods.WallTheme.describe(prefs));
+        }
+        endGroup("With a city, the wallpaper follows its weather (cloudy, rain, storm, snow, fog) and, when the sky is clear, its real sunrise and sunset. "
+                + "Very hot or cold days tint the glow, and a small line under the title says what is showing. "
+                + "The warning uses the battery's own temperature and level, read once when this app opens. "
+                + "Without a city it follows the clock only. Normal keeps the violet look. "
+                + "The weather is fetched at most every 3 hours, only while this app is open, so it costs no battery. Only the city name is sent, to open-meteo.com.");
+    }
+
     private void buildSystem() {
+        buildWallpaper();
         buildSelfCheck();
         buildGestures();
         buildNotifs();
@@ -769,7 +1178,7 @@ public final class SettingsActivity extends Activity {
 
     private boolean elementOn(int element) {
         return !((element == ZoneLayout.TEMP && !cfg.tempEnabled) || (element == ZoneLayout.BACK && !cfg.backEnabled)
-                || (element == ZoneLayout.DATE && !cfg.dateSeparate));
+                || (element == ZoneLayout.DATE && !cfg.dateSeparate) || (element == ZoneLayout.WEATHER && !cfg.wxEnabled));
     }
 
     private boolean anyMoved() {
@@ -1050,6 +1459,80 @@ public final class SettingsActivity extends Activity {
                 }).show();
     }
 
+    // ---------------------------------------------------------------- Weather (Clock tab)
+
+    private Weather.Snap liveWx;   // the status bar's last reading (from its status reply), null until one arrives
+
+    /** Shown until the status bar has a real reading. */
+    private static Weather.Snap sampleWx() {
+        Weather.Snap s = new Weather.Snap();
+        s.temp = 26; s.feels = 28; s.hi = 31; s.lo = 19;
+        s.glyph = Weather.G_PART_DAY; s.city = "Mumbai"; s.text = "Partly sunny";
+        s.updated = System.currentTimeMillis();
+        return s;
+    }
+
+    private void buildWeather() {
+        group("Weather");
+        cardReset((c, d) -> c.wxEnabled = d.wxEnabled);
+        switchRow("Show the weather", "Samsung Weather's own reading with an icon. It changes when Samsung Weather updates, so it uses no extra battery.",
+                cfg.wxEnabled, v -> { cfg.wxEnabled = v; apply(); refresh(); });
+        endGroup(wxStatusText());
+        if (!cfg.wxEnabled) return;
+
+        Weather.Snap s = liveWx != null ? liveWx : sampleWx();
+        String city = s.city == null || s.city.isEmpty() ? "Mumbai" : s.city;
+        int t = Math.round(cfg.wxUnitF ? s.temp * 9f / 5f + 32f : s.temp);
+        String unit = cfg.wxUnitF ? "°F" : "°C";
+        String full = city.length() > 9 ? city.substring(0, 8).trim() + "…" : city;
+
+        group("wxwhat", "What it shows", null, true);
+        cardReset((c, d) -> { c.wxIcon = d.wxIcon; c.wxDeg = d.wxDeg; c.wxCity = d.wxCity; c.wxUnitF = d.wxUnitF; c.wxFeels = d.wxFeels;
+            c.wxHiLo = d.wxHiLo; c.wxCond = d.wxCond; c.wxCityFirst = d.wxCityFirst; });
+        segmentedBlock("Icon", new String[]{"Hide", "Simple", "Colour"}, cfg.wxIcon, v -> { cfg.wxIcon = v; apply(); refresh(); });
+        divider();
+        segmentedBlock("Temperature", new String[]{"Hide", t + "", t + "°", t + unit}, cfg.wxDeg, v -> { cfg.wxDeg = v; apply(); refresh(); });
+        divider();
+        segmentedBlock("City", new String[]{"Hide", full, Weather.cityText(Config.WX_CITY_2, city), Weather.cityText(Config.WX_CITY_3, city)}, cfg.wxCity,
+                v -> { cfg.wxCity = v; apply(); refresh(); });
+        if (advanced("wxwhat")) {
+            divider();
+            segmentedBlock("Units", new String[]{"Celsius (°C)", "Fahrenheit (°F)"}, cfg.wxUnitF ? 1 : 0, v -> { cfg.wxUnitF = v == 1; apply(); refresh(); });
+            divider();
+            switchRow("Feels like", "How warm it feels outside (wind and humidity counted), instead of the measured temperature", cfg.wxFeels,
+                    v -> { cfg.wxFeels = v; apply(); refresh(); });
+            divider();
+            switchRow("Today's high and low", "Adds them in small type after the temperature", cfg.wxHiLo, v -> { cfg.wxHiLo = v; apply(); refresh(); });
+            divider();
+            switchRow("Describe the weather", "Adds Samsung's words, like “Clear” or “Light rain”", cfg.wxCond, v -> { cfg.wxCond = v; apply(); refresh(); });
+            if (cfg.wxCity != Config.WX_CITY_HIDE) {
+                divider();
+                String cs = Weather.cityText(cfg.wxCity, city);
+                if (cs.length() > 9) cs = cs.substring(0, 8).trim() + "…";
+                segmentedBlock("City goes", new String[]{"After  " + t + "° " + cs, "Before  " + cs + " " + t + "°"}, cfg.wxCityFirst ? 1 : 0,
+                        v -> { cfg.wxCityFirst = v == 1; apply(); refresh(); });
+            }
+        }
+        endGroup("Simple draws the icon in the status bar's own colour. Colour paints the sun, moon, rain and lightning.");
+
+        group("wxlook", "Look and position", null, true);
+        cardReset((c, d) -> c.wxSizePct = d.wxSizePct);
+        slider("Size", 50, 150, cfg.wxSizePct, v -> v + "% of the clock", v -> cfg.wxSizePct = v, 100);
+        endGroup("Drag the weather in the preview above to put it anywhere: either side, by the camera, or next to another item. Tap it to pick a spot from a list. Tap it in the status bar to open Samsung Weather (change this on the System tab, under gestures).");
+    }
+
+    /** One line about where the weather comes from and how fresh it is. */
+    private String wxStatusText() {
+        Weather.Snap s = liveWx;
+        if (s == null) return "The weather comes from Samsung Weather, through the PulseBar helper (root): Samsung only lets its watch apps read it. "
+                + "If nothing shows, open Samsung Weather once and let it use your location.";
+        String when = s.updated > 0 ? DateFormat.getTimeFormat(this).format(new Date(s.updated)) : "";
+        if (s.updated > 0 && System.currentTimeMillis() - s.updated > Weather.STALE_MS)
+            return "Samsung Weather hasn't updated since " + DateFormat.getDateFormat(this).format(new Date(s.updated)) + " " + when
+                    + ", so the weather is hidden for now. Open Samsung Weather to refresh it.";
+        return "From Samsung Weather" + (s.city.isEmpty() ? "" : ", " + s.city) + (when.isEmpty() ? "." : ", updated at " + when + ".");
+    }
+
     // ---------------------------------------------------------------- Back button tab
 
     private void buildBack() {
@@ -1163,6 +1646,7 @@ public final class SettingsActivity extends Activity {
     private void gestureRow(int slot) {
         int a = cfg.action(slot);
         LinearLayout r = rowShell(v -> actionPicker(slot));
+        reg(GESTURE_TITLES[slot % 3], "gesture", r, true);
         r.addView(labelBlock("tap", GESTURE_TITLES[slot % 3], null, cText, dp(130)), new LinearLayout.LayoutParams(0, -2, 1));
         TextView val = Ui.text(this, actionName(slot), Ui.T_SECTION, a == Config.ACT_NONE ? cSub : pal.accInk, 600);
         val.setMaxWidth(dp(190));
@@ -1215,6 +1699,7 @@ public final class SettingsActivity extends Activity {
     }
 
     private void pick(int slot, int action) {
+        touch(ITEM_TITLES[slot / 3] + "|" + GESTURE_TITLES[slot % 3]);
         cfg.setAction(slot, action);
         apply();
         refresh();
@@ -1332,7 +1817,7 @@ public final class SettingsActivity extends Activity {
         new Thread(() -> {
             boolean on0 = Helper.isRunning();
             final boolean on = on0 && !Helper.isCurrent(this) ? Helper.start(this) : on0;   // app was updated: run the new helper
-            runOnUiThread(() -> { helperChecking = false; boolean changed = helperRunning == null || helperRunning != on; helperRunning = on; if (changed && tab == T_SYSTEM) refresh(); });
+            runOnUiThread(() -> { helperChecking = false; boolean changed = helperRunning == null || helperRunning != on; helperRunning = on; if (changed && (tab == T_SYSTEM || tab == T_INSIGHTS)) refresh(); });
         }).start();
     }
 
@@ -1516,7 +2001,7 @@ public final class SettingsActivity extends Activity {
         group("screenspeed", "Screen speed", null, true);
         cardResetAction(() -> { setHz(0); putGl("sbmods_hz_psm", "0", "sbmods_hz_low", "0", "sbmods_hz_low_at", "20", "sbmods_off_max", "0"); });
         int cap = gl("sbmods_hz_max", 0);
-        segmentedBlock("Top speed of the screen (times a second)", HZ_LABELS, cap == 96 ? 1 : cap == 60 ? 2 : 0, i -> setHz(i == 1 ? 96 : i == 2 ? 60 : 0));
+        segmentedBlock("Top speed of the screen (times a second)", HZ_LABELS, cap == 96 ? 1 : cap == 60 ? 2 : 0, i -> askHz(i == 1 ? 96 : i == 2 ? 60 : 0));
         divider();
         choiceRow("Top speed while power saving is on", HZ_AUTO, hzIdx(gl("sbmods_hz_psm", 0)), i -> putGl("sbmods_hz_psm", String.valueOf(hzVal(i))));
         divider();
@@ -1577,6 +2062,20 @@ public final class SettingsActivity extends Activity {
     private static final String[] HZ_AUTO = {"No cap", "Up to 96", "Up to 60"};
     private static int hzIdx(int v) { return v == 96 ? 1 : v == 60 ? 2 : 0; }
     private static int hzVal(int i) { return i == 1 ? 96 : i == 2 ? 60 : 0; }
+
+    /** A speed above an automatic cap that is in force would not apply: ask, and on Yes switch that rule off too. */
+    private void askHz(int cap) {
+        final dev.gitesh.sbmods.HzRules.Block b = dev.gitesh.sbmods.HzRules.check(this, cap);
+        if (b == null) { setHz(cap); return; }
+        final int want = cap > 0 ? cap : 120;
+        new Ui.Dlg(this, pal).title("Change to " + want + "?").message(b.question(want))
+                .button(0, "Keep " + b.cap, this::refresh)
+                .button(2, "Yes, " + want, () -> {
+                    if (b.psm && b.low) putGl("sbmods_hz_psm", "0", "sbmods_hz_low", "0");
+                    else putGl(b.psm ? "sbmods_hz_psm" : "sbmods_hz_low", "0");
+                    setHz(cap);
+                }).show();
+    }
 
     private void setHz(int cap) {
         new Thread(() -> {
@@ -2017,6 +2516,7 @@ public final class SettingsActivity extends Activity {
         } catch (Exception ignored) {}
         posView.setClockRight("right".equals(clockSide));
         posView.setDate(ClockFormat.dateText(cfg, new Date(), Locale.getDefault()));
+        posView.setWeather(Weather.format(cfg, liveWx != null ? liveWx : sampleWx(), System.currentTimeMillis()));
         posView.setTexts(clockText(), lab, pct);
     }
 
@@ -2341,9 +2841,10 @@ public final class SettingsActivity extends Activity {
     private void group(String key, String title, String summary, boolean openByDefault) {
         groupOpen = true;
         cardTitle = title;
+        advNow = null;
         LinearLayout c = new LinearLayout(this);
         c.setOrientation(LinearLayout.VERTICAL);
-        c.setBackground(Ui.card(this, pal));
+        c.setBackground(Ui.cardOverWall(this, pal));
         c.setClipToOutline(true);
         c.setPadding(dp(Ui.S4), 0, dp(Ui.S4), dp(4));
         page.addView(c, cardParams());
@@ -2416,7 +2917,8 @@ public final class SettingsActivity extends Activity {
     private boolean advanced(String key) { return advanced(key, "Advanced"); }
 
     private boolean advanced(String key, String label) {
-        final boolean open = prefs.getBoolean("adv_" + key, false);
+        final boolean open = index != null || prefs.getBoolean("adv_" + key, false);
+        if (index != null) advNow = key;
         if (cur.getChildCount() > 0) divider();
         LinearLayout r = rowShell(v -> { prefs.edit().putBoolean("adv_" + key, !open).apply(); refresh(); });
         r.addView(labelBlock("sys", label, null, cText, dp(28)), new LinearLayout.LayoutParams(0, -2, 1));
@@ -2612,10 +3114,12 @@ public final class SettingsActivity extends Activity {
     private void switchRow(String title, String sub, boolean value, BoolSetter s) {
         Ui.Switch sw = new Ui.Switch(this, pal);
         LinearLayout r = rowShell(v -> sw.toggle());
+        final String key = rowKey(title);
+        reg(title, sub, r, true);
         r.addView(labelBlock(autoIcon(title), title, sub, cText, dp(56)), new LinearLayout.LayoutParams(0, -2, 1));
         sw.setChecked(value);
         sw.setContentDescription(title);
-        sw.setOnChange(v -> s.set(v));
+        sw.setOnChange(v -> { touch(key); s.set(v); });
         LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(dp(56), dp(Ui.TAP));
         sp.setMarginEnd(dp(-4));
         r.addView(sw, sp);
@@ -2623,9 +3127,11 @@ public final class SettingsActivity extends Activity {
 
     private void choiceRow(String title, String[] labels, int current, IntSetter s) {
         final int sel = current < 0 || current >= labels.length ? 0 : current;
+        final String key = rowKey(title);
         LinearLayout r = rowShell(v -> Ui.picker(this, pal, title, labels, sel, which -> {
-            if (which != sel) s.set(which);
+            if (which != sel) { touch(key); s.set(which); }
         }).show());
+        reg(title, null, r, true);
         r.addView(labelBlock(autoIcon(title), title, null, cText, dp(130)), new LinearLayout.LayoutParams(0, -2, 1));
         TextView value = Ui.text(this, labels[sel], Ui.T_SECTION, pal.accInk, 600);
         value.setGravity(Gravity.END);
@@ -2657,7 +3163,9 @@ public final class SettingsActivity extends Activity {
 
     private void segmentedBlock(String title, String[] labels, int selected, IntSetter s) {
         LinearLayout box = block(title);
-        box.addView(segmented(labels, Math.max(0, selected), s));
+        final String key = rowKey(title);
+        reg(title, null, box, true);
+        box.addView(segmented(labels, Math.max(0, selected), v -> { touch(key); s.set(v); }));
     }
 
     /** Segmented control directly under the previous row (no title). */
@@ -2670,6 +3178,7 @@ public final class SettingsActivity extends Activity {
 
     private void actionRow(String title, String sub, int color, View.OnClickListener l) {
         LinearLayout r = rowShell(l);
+        reg(title, sub, r, false);
         r.addView(labelBlock(autoIcon(title), title, sub, color == cAccent ? pal.accInk : color, 0), new LinearLayout.LayoutParams(0, -2, 1));
     }
 
@@ -2698,6 +3207,8 @@ public final class SettingsActivity extends Activity {
     /** Slider with its value on the right and a "Reset" button whenever it differs from the starting value. */
     private void slider(String t, int min, int max, int current, Label label, IntSetter s, int def) {
         LinearLayout box = new LinearLayout(this);
+        final String key = rowKey(t);
+        reg(t, null, box, true);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setPadding(0, dp(Ui.S2), 0, dp(2));
         LinearLayout top = new LinearLayout(this);
@@ -2734,7 +3245,7 @@ public final class SettingsActivity extends Activity {
             @Override public void onProgressChanged(SeekBar b, int p, boolean user) {
                 val.setText(label.of(p + min));
                 reset.setVisibility(p + min == def ? View.INVISIBLE : View.VISIBLE);
-                if (user) { s.set(p + min); updatePreview(); }
+                if (user) { touch(key); s.set(p + min); updatePreview(); }
             }
             @Override public void onStartTrackingTouch(SeekBar b) {}
             @Override public void onStopTrackingTouch(SeekBar b) { apply(); refresh(); }

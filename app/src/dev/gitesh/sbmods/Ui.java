@@ -121,7 +121,7 @@ public final class Ui {
 
     public static final int R_CARD = 24, R_TILE = 26, R_SHEET = 38, R_ICON = 12, R_CHIP = 16, R_SEG = 24, R_FIELD = 12, R_BUTTON = 28;
     public static final int S1 = 4, S2 = 8, S3 = 12, S4 = 16, S5 = 24;
-    public static final int ROW_H = 56, TAP = 48, NAV_H = 68, NAV_TAB_H = 56;
+    public static final int ROW_H = 56, TAP = 48, NAV_H = 64, NAV_TAB_H = 48;
     public static final float T_TITLE = 28, T_PANEL = 24, T_SHEET = 22, T_BODY = 16, T_LABEL = 15, T_SECTION = 14, T_VALUE = 13, T_CAPTION = 12, T_TAB = 11;
 
     public static int dp(Context c, float v) {
@@ -153,6 +153,11 @@ public final class Ui {
     /** A solid content card. */
     public static Drawable card(Context c, Pal p) { return round(p.card, dp(c, R_CARD), 0, 0); }
 
+    /** A card the full-screen wallpaper shows through a little (the settings app); still solid enough to read on. */
+    public static Drawable cardOverWall(Context c, Pal p) {
+        return round((p.card & 0x00FFFFFF) | (p.night ? 0xC2000000 : 0xD9000000), dp(c, R_CARD), 0, 0);
+    }
+
     /** A fill with only the top corners rounded (the sheet that rises over the wallpaper). */
     public static Drawable topRound(int fill, int radiusPx) {
         GradientDrawable g = new GradientDrawable();
@@ -173,10 +178,60 @@ public final class Ui {
         private final Path r1 = new Path(), r2 = new Path(), ln = new Path();
         private final RectF box = new RectF();
 
-        public Wall(boolean night) {
+        // gradient top/middle/bottom, glow centre, glow middle: what is drawn now, and where a fade is heading
+        private final int[] cols = new int[5], from = new int[5], to = new int[5];
+        private android.animation.ValueAnimator fade;
+
+        /** pal: null = the normal violet look; else gradient top/middle/bottom + glow colour. */
+        public Wall(boolean night, int[] pal) {
             this.night = night;
+            resolve(pal, to);
+            System.arraycopy(to, 0, cols, 0, 5);
             line.setStyle(Paint.Style.STROKE);
             line.setColor(0x4DE9E2FF);
+        }
+
+        private void resolve(int[] pal, int[] out) {
+            if (pal == null) {
+                out[0] = night ? 0xFF0B0824 : 0xFF1A1250; out[1] = night ? 0xFF1D1450 : 0xFF3A2A9A; out[2] = night ? 0xFF3A2A9A : 0xFF6C54E6;
+                out[3] = night ? 0x66FFC9A8 : 0xCCFFC9A8; out[4] = night ? 0x1FFF9EC4 : 0x47FF9EC4;
+            } else {
+                out[0] = pal[0]; out[1] = pal[1]; out[2] = pal[2];
+                out[3] = (pal[3] & 0xFFFFFF) | 0xA0000000; out[4] = (pal[3] & 0xFFFFFF) | 0x38000000;
+            }
+        }
+
+        /** Blends to another palette over about 2 seconds; does nothing when it is already the one shown. */
+        public void fadeTo(int[] pal) {
+            int[] n = new int[5];
+            resolve(pal, n);
+            if (java.util.Arrays.equals(n, to)) return;
+            if (fade != null) fade.cancel();
+            System.arraycopy(cols, 0, from, 0, 5);
+            System.arraycopy(n, 0, to, 0, 5);
+            fade = android.animation.ValueAnimator.ofFloat(0, 1).setDuration(2000);
+            fade.addUpdateListener(a -> {
+                float f = (float) a.getAnimatedValue();
+                for (int i = 0; i < 5; i++) cols[i] = WallTheme.mix(from[i], to[i], f);
+                shade();
+                invalidateSelf();
+            });
+            fade.start();
+        }
+
+        /** Jumps to the end of a running fade (the screen is going away). */
+        public void finish() {
+            if (fade != null) fade.end();
+            fade = null;
+        }
+
+        private void shade() {
+            float w = box.width(), h = box.height();
+            if (w <= 0 || h <= 0) return;
+            base.setShader(new LinearGradient(0, 0, w * 0.55f, h, new int[]{cols[0], cols[1], cols[2]},
+                    new float[]{0, 0.55f, 1}, Shader.TileMode.CLAMP));
+            glow.setShader(new android.graphics.RadialGradient(w * 0.8f, 160 * (w / 430f), w * 0.6f,
+                    new int[]{cols[3], cols[4], cols[4] & 0xFFFFFF}, new float[]{0, 0.5f, 1}, Shader.TileMode.CLAMP));
         }
 
         @Override protected void onBoundsChange(android.graphics.Rect b) {
@@ -184,12 +239,7 @@ public final class Ui {
             if (w <= 0 || h <= 0) return;
             float s = w / 430f;
             box.set(b);
-            base.setShader(new LinearGradient(0, 0, w * 0.55f, h,
-                    night ? new int[]{0xFF0B0824, 0xFF1D1450, 0xFF3A2A9A} : new int[]{0xFF1A1250, 0xFF3A2A9A, 0xFF6C54E6},
-                    new float[]{0, 0.55f, 1}, Shader.TileMode.CLAMP));
-            glow.setShader(new android.graphics.RadialGradient(w * 0.8f, 160 * s, w * 0.6f,
-                    new int[]{night ? 0x66FFC9A8 : 0xCCFFC9A8, night ? 0x1FFF9EC4 : 0x47FF9EC4, 0x00FF9EC4},
-                    new float[]{0, 0.5f, 1}, Shader.TileMode.CLAMP));
+            shade();
             r1.reset();
             r1.moveTo(-20 * s, 300 * s);
             r1.cubicTo(80 * s, 210 * s, 160 * s, 330 * s, 260 * s, 250 * s);
@@ -369,6 +419,8 @@ public final class Ui {
         ICONS.put("chevd", "M6 9.5l6 6 6-6");
         ICONS.put("layout", rr(3, 4, 18, 6, 2) + "|" + rr(3, 14, 8, 6, 2) + "|" + rr(15, 14, 6, 6, 2));
         ICONS.put("panel", rr(3.5f, 3.5f, 7, 7, 2) + "|" + rr(13.5f, 3.5f, 7, 7, 2) + "|" + rr(3.5f, 13.5f, 7, 7, 2) + "|" + rr(13.5f, 13.5f, 7, 7, 2));
+        ICONS.put("spark", "M12 3.5l2.1 6.4 6.4 2.1-6.4 2.1-2.1 6.4-2.1-6.4-6.4-2.1 6.4-2.1z");
+        ICONS.put("search", circ(10.5f, 10.5f, 6.5f) + "|M15.5 15.5 20.5 20.5");
         ICONS.put("sys", "M4 7h9M17 7h3M4 17h3M11 17h9|" + circ(15, 7, 2) + "|" + circ(9, 17, 2));
         ICONS.put("reset", "M4.5 4.5v4h4M5.3 8.5A8 8 0 1 1 4 12");
         ICONS.put("hole", rr(4, 4, 16, 16, 4.5f) + "|" + circ(12, 9, 1.7f));

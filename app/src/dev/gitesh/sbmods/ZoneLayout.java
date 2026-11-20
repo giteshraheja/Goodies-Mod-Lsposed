@@ -14,8 +14,8 @@ package dev.gitesh.sbmods;
  * Samsung's own icons (notifications on the left, system icons on the right) make room by themselves.
  */
 public final class ZoneLayout {
-    public static final int CLOCK = 0, TEMP = 1, BATTERY = 2, BACK = 3, DATE = 4, NETSPEED = 5, ELEMENTS = 6;
-    public static final String[] ELEMENT_NAMES = {"Clock", "Temperature", "Battery", "Back button", "Date", "Network speed"};
+    public static final int CLOCK = 0, TEMP = 1, BATTERY = 2, BACK = 3, DATE = 4, NETSPEED = 5, WEATHER = 6, ELEMENTS = 7;
+    public static final String[] ELEMENT_NAMES = {"Clock", "Temperature", "Battery", "Back button", "Date", "Network speed", "Weather"};
     public static final int STOCK = 0, FREE = 1, LINK = 2;
 
     private ZoneLayout() {}

@@ -127,7 +127,8 @@ killbg() {
     _seen="$_seen$_n "
     case "$_n" in com.sec.imsservice|com.sec.epdg) continue;; esac
     stopok "$_n" || continue
-    case "$1" in *" $_n "*) SPARED=$((SPARED+1)); continue;; esac
+    case "$1" in *" $_n "*) SPARED=$((SPARED+1)); echo "spare pid=${_d#/proc/} $_n adj=$_a" >> /data/adb/sbmods/clean.log; continue;; esac
+    echo "kill pid=${_d#/proc/} $_n adj=$_a" >> /data/adb/sbmods/clean.log
     am kill "$_n" >/dev/null 2>&1; KILLED=$((KILLED+1))
   done
 }

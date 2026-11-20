@@ -31,7 +31,7 @@ import dev.gitesh.sbmods.Config;
  * gesture you set up ("Double-tap the clock to …"). Then the normal status bar is back. Costs nothing between runs.
  */
 final class TipTicker {
-    private static final String[] ITEM = {"the battery icon", "the clock", "the temperature", "the camera hole", "the Wi-Fi icon", "the mobile signal icon"};
+    private static final String[] ITEM = {"the battery icon", "the clock", "the temperature", "the camera hole", "the Wi-Fi icon", "the mobile signal icon", "the weather"};
     /** What each action does, as the end of "Tap the clock to …" (index = Config.ACT_*). */
     private static final String[] DOES = {"", "turn power saving on or off", "see battery usage", "open your alarms",
             "open your calendar", "open Settings", "turn the flashlight on or off", "turn Wi-Fi on or off",
@@ -42,7 +42,8 @@ final class TipTicker {
             "take a screenshot", "make the screen brighter", "make the screen darker",
             "open Modes and Routines", "open Samsung Notes", "open Gallery",
             "open Messages", "open Chrome", "open Maps", "open Reminders", "switch auto brightness on or off",
-            "change the top screen speed (120, 96, 60)", "remove the screen speed cap", "switch maximum saving on until the screen comes on"};
+            "change the top screen speed (120, 96, 60)", "remove the screen speed cap", "switch maximum saving on until the screen comes on",
+            "open Samsung Weather"};
     private String lastTip;
     private SharedPreferences prefs;   // where the tips already shown in this round are kept (survives status bar restarts)
 

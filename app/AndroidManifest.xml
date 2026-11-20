@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="dev.gitesh.sbmods"
-    android:versionCode="62"
-    android:versionName="3.27.2">
+    android:versionCode="80"
+    android:versionName="3.34.0">
 
     <uses-sdk android:minSdkVersion="34" android:targetSdkVersion="35" />
 
@@ -11,6 +11,8 @@
         android:name="dev.gitesh.sbmods.permission.CONTROL"
         android:protectionLevel="signature" />
     <uses-permission android:name="dev.gitesh.sbmods.permission.CONTROL" />
+    <!-- Only used for the optional weather wallpaper (one small request, at most every 3 hours, while the settings app is open) -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <!-- Only used when "Start the helper when the phone starts" is switched on -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 

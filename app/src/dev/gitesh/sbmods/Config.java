@@ -52,9 +52,9 @@ public final class Config {
             ACT_SCREENSHOT = 24, ACT_BRIGHT_UP = 25, ACT_BRIGHT_DOWN = 26,
             ACT_ROUTINES = 27, ACT_NOTES = 28, ACT_GALLERY = 29,
             ACT_MESSAGES = 30, ACT_CHROME = 31, ACT_MAPS = 32, ACT_REMINDERS = 33, ACT_AUTO_BRIGHT = 34,
-            ACT_HZ_NEXT = 35, ACT_HZ_OFF = 36, ACT_SAVE_NOW = 37;
-    public static final int ACT_MAX = 37;
-    public static final int SLOTS = 18; // 6 items x 3 gestures
+            ACT_HZ_NEXT = 35, ACT_HZ_OFF = 36, ACT_SAVE_NOW = 37, ACT_WEATHER = 38;
+    public static final int ACT_MAX = 38;
+    public static final int SLOTS = 21; // 7 items x 3 gestures
     /** Short action names (index = ACT_*), shared by the app and the status bar tips. */
     public static final String[] ACT_NAMES = {"Nothing", "Power saving", "Battery usage", "Alarms", "Calendar",
             "Settings", "Flashlight", "Wi-Fi", "Bluetooth", "Do not disturb", "Auto rotate", "Dark mode",
@@ -62,9 +62,9 @@ public final class Config {
             "Notification panel", "Camera", "Timer", "Calculator", "Internet panel", "An app…", "Samsung Finder", "Close background apps",
             "Screenshot", "Brightness up", "Brightness down", "Modes and Routines", "Samsung Notes", "Gallery",
             "Messages", "Chrome", "Maps", "Reminders", "Auto brightness",
-            "Screen top speed", "Screen speed: no cap", "Maximum saving"};
+            "Screen top speed", "Screen speed: no cap", "Maximum saving", "Samsung Weather"};
     /** Gesture slots: item x gesture. Index = item * 3 + gesture. */
-    public static final String[] ITEMS = {"battery", "clock", "temp", "camera hole", "wifi", "mobile signal"};
+    public static final String[] ITEMS = {"battery", "clock", "temp", "camera hole", "wifi", "mobile signal", "weather"};
     public static final String[] GESTURES = {"Tap", "Double-tap", "Long-press"};
 
     // ---- temperature ----
@@ -76,6 +76,21 @@ public final class Config {
     public int showAbove = 0;          // 0 = always show
     public int warnAt = 42;            // 0 = off
     public int warnColor = 0xFFFF9800; // orange
+
+    // ---- weather (Samsung Weather's own data, see Weather) ----
+    public static final int WX_ICON_HIDE = 0, WX_ICON_SIMPLE = 1, WX_ICON_COLOUR = 2;
+    public static final int WX_DEG_HIDE = 0, WX_DEG_NUM = 1, WX_DEG_DEG = 2, WX_DEG_UNIT = 3;
+    public static final int WX_CITY_HIDE = 0, WX_CITY_FULL = 1, WX_CITY_2 = 2, WX_CITY_3 = 3;
+    public boolean wxEnabled = true;
+    public int wxIcon = WX_ICON_COLOUR;
+    public int wxDeg = WX_DEG_DEG;
+    public boolean wxUnitF = false;       // °F instead of °C
+    public boolean wxFeels = false;       // "feels like" instead of the measured temperature
+    public boolean wxHiLo = false;        // today's high / low after it
+    public int wxCity = WX_CITY_HIDE;
+    public boolean wxCityFirst = false;   // city before the icon
+    public boolean wxCond = false;        // Samsung's words ("Clear", "Light rain")
+    public int wxSizePct = 100;           // % of the clock's size
 
     // ---- clock ----
     public int clockMode = CLOCK_STOCK;
@@ -133,6 +148,8 @@ public final class Config {
     public int cameraTap = ACT_FINDER, cameraDouble = ACT_NONE, cameraLong = ACT_NONE;
     /** Slots 12-14 Wi-Fi icon, 15-17 mobile signal icon (tap, double-tap, long-press). */
     public int[] netActs = new int[6];
+    /** Slots 18-20 the weather (tap opens Samsung Weather by default). */
+    public int[] wxActs = {ACT_WEATHER, ACT_NONE, ACT_NONE};
     /** Package to open for ACT_APP, per slot (item * 3 + gesture). */
     public String[] apps = new String[SLOTS];
     public boolean tapHaptic = true;
@@ -215,6 +232,11 @@ public final class Config {
         backStyle = clamp(backStyle, 0, 1);
         backLive = clamp(backLive, 0, 4);
         tipsMode = clamp(tipsMode, 0, 2);
+        wxIcon = clamp(wxIcon, 0, 2);
+        wxDeg = clamp(wxDeg, 0, 3);
+        wxCity = clamp(wxCity, 0, 3);
+        wxSizePct = clamp(wxSizePct, 50, 150);
+        if (wxActs == null || wxActs.length != 3) wxActs = new int[]{ACT_WEATHER, ACT_NONE, ACT_NONE};
         return this;
     }
 
@@ -225,7 +247,7 @@ public final class Config {
             case 3: return clockTap; case 4: return clockDouble; case 5: return clockLong;
             case 6: return tempTap; case 7: return tempDouble; case 8: return tempLong;
             case 9: return cameraTap; case 10: return cameraDouble; case 11: return cameraLong;
-            default: return slot >= 12 && slot < 18 ? netActs[slot - 12] : 0;
+            default: return slot >= 12 && slot < 18 ? netActs[slot - 12] : slot >= 18 && slot < 21 ? wxActs[slot - 18] : 0;
         }
     }
 
@@ -235,7 +257,7 @@ public final class Config {
             case 3: clockTap = v; break; case 4: clockDouble = v; break; case 5: clockLong = v; break;
             case 6: tempTap = v; break; case 7: tempDouble = v; break; case 8: tempLong = v; break;
             case 9: cameraTap = v; break; case 10: cameraDouble = v; break; case 11: cameraLong = v; break;
-            default: if (slot >= 12 && slot < 18) netActs[slot - 12] = v;
+            default: if (slot >= 12 && slot < 18) netActs[slot - 12] = v; else if (slot >= 18 && slot < 21) wxActs[slot - 18] = v;
         }
     }
 
@@ -280,6 +302,9 @@ public final class Config {
         o.b("backEnabled", backEnabled); o.i("backChars", backChars);
         o.b("smartOn", smartOn);
         o.b("dateFirst", dateFirst); o.i("gapDayDate", gapDayDate); o.i("gapDateTime", gapDateTime);
+        o.b("wxEnabled", wxEnabled); o.i("wxIcon", wxIcon); o.i("wxDeg", wxDeg); o.b("wxUnitF", wxUnitF); o.b("wxFeels", wxFeels);
+        o.b("wxHiLo", wxHiLo); o.i("wxCity", wxCity); o.b("wxCityFirst", wxCityFirst); o.b("wxCond", wxCond); o.i("wxSizePct", wxSizePct);
+        for (int i = 0; i < 3; i++) o.i("wxAct" + i, wxActs[i]);
     }
 
     private Config read(Source in) {
@@ -333,6 +358,11 @@ public final class Config {
         smartOn = in.b("smartOn", smartOn);
         dateFirst = in.b("dateFirst", dateFirst); gapDayDate = in.i("gapDayDate", gapDayDate);
         gapDateTime = in.i("gapDateTime", gapDateTime);
+        wxEnabled = in.b("wxEnabled", wxEnabled); wxIcon = in.i("wxIcon", wxIcon); wxDeg = in.i("wxDeg", wxDeg);
+        wxUnitF = in.b("wxUnitF", wxUnitF); wxFeels = in.b("wxFeels", wxFeels); wxHiLo = in.b("wxHiLo", wxHiLo);
+        wxCity = in.i("wxCity", wxCity); wxCityFirst = in.b("wxCityFirst", wxCityFirst); wxCond = in.b("wxCond", wxCond);
+        wxSizePct = in.i("wxSizePct", wxSizePct);
+        for (int i = 0; i < 3; i++) wxActs[i] = in.i("wxAct" + i, wxActs[i]);
         return sanitize();
     }
 

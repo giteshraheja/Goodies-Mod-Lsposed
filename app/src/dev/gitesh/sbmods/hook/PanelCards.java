@@ -683,15 +683,49 @@ final class PanelCards {
                     r.setPadding(dp(a, 14), 0, dp(a, 14), 0);
                     r.setOnClickListener(safe(() -> {
                         pw.dismiss();
-                        if (hz != 60 && Global.sint(a, "refresh_rate_mode", 1) == 0) Global.sput(a, "refresh_rate_mode", "1");   // Standard would hold it at 60 whatever the cap
-                        Global.hzSet(a, hz == 120 ? 0 : hz);
-                        used(a, "smooth");
-                        PerfPanel.rebuild(a);
+                        final Runnable set = () -> {
+                            if (hz != 60 && Global.sint(a, "refresh_rate_mode", 1) == 0) Global.sput(a, "refresh_rate_mode", "1");   // Standard would hold it at 60 whatever the cap
+                            Global.hzSet(a, hz == 120 ? 0 : hz);
+                            used(a, "smooth");
+                            PerfPanel.rebuild(a);
+                        };
+                        final dev.gitesh.sbmods.HzRules.Block b = dev.gitesh.sbmods.HzRules.check(a, hz == 120 ? 0 : hz);
+                        if (b == null) set.run(); else askHz(a, b, hz, set);
                     }));
                     box.addView(r, new LinearLayout.LayoutParams(-1, dp(a, 48)));
                 }
                 if (PerfPanel.pBox != null) pw.showAtLocation(PerfPanel.pBox, Gravity.CENTER, 0, 0);
             } catch (Throwable t) { Log.w("hz picker: " + t); }
+        }
+        /** The pick is above an automatic cap in force (power saving / low battery): ask; Yes switches that rule off, then applies. */
+        private void askHz(final Activity a, final dev.gitesh.sbmods.HzRules.Block b, final int hz, final Runnable set) {
+            Ui.Pal p = Ui.cur;
+            LinearLayout box = new LinearLayout(a);
+            box.setOrientation(LinearLayout.VERTICAL);
+            box.setPadding(dp(a, 6), dp(a, 6), dp(a, 6), dp(a, 6));
+            box.setBackground(Ui.round(p.night ? 0xFF2B3136 : 0xFFF6F8F9, dp(a, Ui.R_TILE), 1, p.night ? 0xFF434B52 : 0xFFD5DCE0));
+            final android.widget.PopupWindow pw = new android.widget.PopupWindow(box, dp(a, 280), -2, true);
+            pw.setOutsideTouchable(true);
+            pw.setElevation(dp(a, 8));
+            TextView q = tv(a, b.question(hz), 14, p.tx, false);
+            q.setPadding(dp(a, 14), dp(a, 10), dp(a, 14), dp(a, 6));
+            box.addView(q, new LinearLayout.LayoutParams(-1, -2));
+            String[] t = {"Yes, up to " + hz, "Keep up to " + b.cap};
+            for (int i = 0; i < 2; i++) {
+                final boolean yes = i == 0;
+                TextView r = tv(a, t[i], 15, yes ? p.accInk : p.tx, yes);
+                r.setGravity(Gravity.CENTER_VERTICAL);
+                r.setPadding(dp(a, 14), 0, dp(a, 14), 0);
+                r.setOnClickListener(safe(() -> {
+                    pw.dismiss();
+                    if (!yes) return;
+                    if (b.psm) Global.gset(a, "sbmods_hz_psm", "0");
+                    if (b.low) Global.gset(a, "sbmods_hz_low", "0");
+                    set.run();
+                }));
+                box.addView(r, new LinearLayout.LayoutParams(-1, dp(a, 48)));
+            }
+            if (PerfPanel.pBox != null) pw.showAtLocation(PerfPanel.pBox, Gravity.CENTER, 0, 0);
         }
         @Override String icon() { return "gauge"; }
         @Override String state(Activity a) { int v = Global.sint(a, "refresh_rate_mode", 1), c = Global.hzCap(a); return v == 0 ? "Standard · 60" : c > 0 ? "Up to " + c : v == 2 ? "Smooth · 120" : "Smooth · up to 120"; }

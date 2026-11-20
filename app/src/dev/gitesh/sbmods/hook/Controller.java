@@ -32,6 +32,7 @@ import java.util.Locale;
 
 import dev.gitesh.sbmods.ClockFormat;
 import dev.gitesh.sbmods.Config;
+import dev.gitesh.sbmods.Weather;
 import dev.gitesh.sbmods.items.Item;
 import dev.gitesh.sbmods.items.Items;
 
@@ -85,6 +86,7 @@ public final class Controller {
     private final TapActions cutoutTaps = new TapActions(this, "cutout", 3);
     private final TapActions wifiTaps = new TapActions(this, "wifi", 4);
     private final TapActions mobileTaps = new TapActions(this, "mobile", 5);
+    private final TapActions wxTaps = new TapActions(this, "weather", 6);
     private final Mover mover = new Mover();
     private final BackChip backChip = new BackChip(this);
     private final TipTicker tips = new TipTicker(this);
@@ -110,7 +112,12 @@ public final class Controller {
     private boolean screenOn = true, polling;
 
     private WeakReference<TextView> clockRef = new WeakReference<>(null);
-    private TextView label, dateView;
+    private TextView label, dateView, wxView;
+    // weather: Samsung Weather's last reading, kept in prefs so a status bar restart needs no new read
+    private volatile Weather.Snap wx;
+    private volatile long wxReadAt;   // elapsedRealtime of our last request to the helper (0 = none yet)
+    private boolean wxWarned;
+    private String wxKey;             // what the weather view shows now (text + icon), to skip needless relayouts
     private ViewTreeObserver observer;
     private final ViewTreeObserver.OnPreDrawListener preDraw = () -> {
         try { syncWithClock(); } catch (Throwable t) { fail("predraw", t); }
@@ -250,6 +257,12 @@ public final class Controller {
         f.addAction(Intent.ACTION_TIMEZONE_CHANGED);
         f.addAction(Intent.ACTION_LOCALE_CHANGED);
         ctx.registerReceiver(systemReceiver, f, null, main, Context.RECEIVER_NOT_EXPORTED);
+        wx = Weather.Snap.decode(prefs.getString("wx_snap", null));
+        Log.i("weather: " + (wx == null ? "no saved reading" : "saved reading from " + (System.currentTimeMillis() - wx.updated) / 60000 + " min ago"));
+        // Samsung Weather tells SystemUI itself after each update (it is on its list of partner apps): no polling of our own
+        try { ctx.registerReceiver(wxReceiver, new IntentFilter(Weather.ACTION_SYNC), null, main, Context.RECEIVER_EXPORTED); }
+        catch (Throwable t) { Log.w("weather updates not available: " + t); }
+        if (cfg.wxEnabled && wxOld()) askWeather(5000);
         Smart.apply(ctx, prefs, cfg.smartOn);
         ScreenSaver.start(ctx, main);
         Log.i("initialised v" + VERSION + ", clockId=" + Integer.toHexString(clockId));
@@ -282,7 +295,16 @@ public final class Controller {
         dateView.setGravity(Gravity.CENTER_VERTICAL);
         dateView.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         dateView.setVisibility(View.GONE);
+        wxView = new TextView(clock.getContext());
+        wxView.setTag("sbmods_weather");
+        wxView.setSingleLine(true);
+        wxView.setIncludeFontPadding(clock.getIncludeFontPadding());
+        wxView.setGravity(Gravity.CENTER_VERTICAL);
+        wxView.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        wxView.setVisibility(View.GONE);
+        wxKey = null;
         place();
+        showWeather();
 
         stockText = clock.getText() == null ? null : clock.getText().toString();
         clock.addTextChangedListener(clockWatcher);
@@ -328,6 +350,7 @@ public final class Controller {
         cutoutTaps.unbind();
         wifiTaps.unbind();
         mobileTaps.unbind();
+        wxTaps.unbind();
         backChip.detach();
         tips.stop();
         mover.releaseAll();
@@ -344,8 +367,13 @@ public final class Controller {
             ViewParent dp = dateView.getParent();
             if (dp instanceof ViewGroup) ((ViewGroup) dp).removeView(dateView);
         }
+        if (wxView != null) {
+            ViewParent wp = wxView.getParent();
+            if (wp instanceof ViewGroup) ((ViewGroup) wp).removeView(wxView);
+        }
         label = null;
         dateView = null;
+        wxView = null;
         clockTouched = false;
         clockRef = new WeakReference<>(null);
     }
@@ -387,6 +415,15 @@ public final class Controller {
             if (cfg.dateAfterTime) dlp.setMarginStart(gap); else dlp.setMarginEnd(gap);
             parent.addView(dateView, cfg.dateAfterTime ? ci + 1 : ci, dlp);
         }
+        if (wxView != null) {   // Samsung's place for the weather: the outer side of the temperature
+            if (wxView.getParent() instanceof ViewGroup) ((ViewGroup) wxView.getParent()).removeView(wxView);
+            int li = parent.indexOfChild(label);
+            LinearLayout.LayoutParams wlp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT);
+            wlp.gravity = Gravity.CENTER_VERTICAL;
+            if (before) wlp.setMarginEnd(gap); else wlp.setMarginStart(gap);
+            parent.addView(wxView, before ? li : li + 1, wlp);
+        }
         applyStyle(clock, true);
     }
 
@@ -395,6 +432,10 @@ public final class Controller {
         if (p != clock.getParent() || !(p instanceof ViewGroup)) return false;
         ViewGroup g = (ViewGroup) p;
         int ci = g.indexOfChild(clock), li = g.indexOfChild(label);
+        if (wxView != null) {
+            if (wxView.getParent() != g) return false;
+            if (g.indexOfChild(wxView) != (wantBefore(clock) ? li - 1 : li + 1)) return false;
+        }
         if (dateView != null) {
             if (dateView.getParent() != g) return false;
             int di = g.indexOfChild(dateView);
@@ -455,7 +496,7 @@ public final class Controller {
                 touchBack = backChip.hitBack(downX, downY);
                 if (!touchBack) {
                     Config c = cfg;
-                    for (TapActions t : new TapActions[]{batteryTaps, clockTaps, labelTaps, wifiTaps, mobileTaps})
+                    for (TapActions t : new TapActions[]{batteryTaps, clockTaps, labelTaps, wxTaps, wifiTaps, mobileTaps})
                         if (t.wants(c) && hit(t.view(), downX, downY)) { touchItem = t; break; }
                     if (touchItem == null && cutoutTaps.wants(c) && statusRoot != null
                             && hitCutout(statusRoot, downX, downY)) {
@@ -625,6 +666,7 @@ public final class Controller {
         if (clock == null) return;
         clockTaps.bind(clock, cfg);
         if (label != null) labelTaps.bind(label, cfg);
+        if (wxView != null) wxTaps.bind(wxView, cfg);
         bindNet(clock.getRootView());
         View bat = batteryTaps.view();
         if (force || bat == null || !bat.isShown()) bat = findBattery(clock.getRootView());
@@ -676,6 +718,126 @@ public final class Controller {
             int dv = dshow ? View.VISIBLE : View.GONE;
             if (dateView.getVisibility() != dv) dateView.setVisibility(dv);
         }
+        if (wxView != null) {
+            if (force || wxView.getCurrentTextColor() != color) wxView.setTextColor(color);   // the icon is drawn in this colour too
+            float wsize = clock.getTextSize() * cfg.wxSizePct / 100f;
+            if (force || Math.abs(wxView.getTextSize() - wsize) > 0.5f) wxView.setTextSize(TypedValue.COMPLEX_UNIT_PX, wsize);
+            if (force || wxView.getTypeface() != clock.getTypeface()) wxView.setTypeface(clock.getTypeface());
+            if (force || wxView.getLetterSpacing() != clock.getLetterSpacing()) wxView.setLetterSpacing(clock.getLetterSpacing());
+            boolean wshow = clock.getVisibility() == View.VISIBLE && cfg.wxEnabled && !TextUtils.isEmpty(wxView.getText());
+            int wv = wshow ? View.VISIBLE : View.GONE;
+            if (wxView.getVisibility() != wv) wxView.setVisibility(wv);
+        }
+    }
+
+    // ---------------------------------------------------------------- weather
+
+    private final BroadcastReceiver wxReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context c, Intent i) {
+            try { if (!disabled && cfg.wxEnabled) askWeather(2000); } catch (Throwable t) { fail("weather", t); }
+        }
+    };
+
+    /** Nothing, or Samsung's reading is over 2 hours old (it normally updates about hourly and tells us). */
+    private boolean wxOld() {
+        Weather.Snap s = wx;
+        return s == null || System.currentTimeMillis() - s.updated > 2 * 3600_000L;
+    }
+
+    /*
+     * How the weather gets here: Samsung Weather's provider only serves its watch plug-ins, so SystemUI may not query it.
+     * After Samsung Weather's "updated" message, SystemUI leaves a request file in its own folder (files/sbmods_wx/req);
+     * the root helper, asleep on that folder, copies Samsung's database into the two files SystemUI made there (wx.db, wx.wal:
+     * SystemUI owns them, so nothing changes owner or security label); a file event then makes SystemUI read a private copy
+     * and empty the two files again. No polling, no network, no Java program started: two `cat`s and one small database read.
+     */
+    private java.io.File wxDir;
+    private android.os.FileObserver wxObs;
+
+    /** A burst of Samsung's messages becomes one request (each one moves it back). */
+    private void askWeather(long delayMs) {
+        if (bg == null) return;
+        bg.removeCallbacks(wxAsk);
+        bg.postDelayed(wxAsk, delayMs);
+    }
+
+    private final Runnable wxAsk = () -> {
+        try {
+            java.io.File d = wxFolder();
+            if (d == null) return;
+            for (String n : new String[]{"wx.db", "wx.wal"}) { java.io.File f = new java.io.File(d, n); if (!f.exists()) f.createNewFile(); }
+            try (java.io.FileOutputStream o = new java.io.FileOutputStream(new java.io.File(d, "req"))) {
+                o.write(Long.toString(System.currentTimeMillis()).getBytes());
+            }
+            wxReadAt = SystemClock.elapsedRealtime();
+        } catch (Throwable t) {
+            if (!wxWarned) { wxWarned = true; Log.w("weather request failed: " + t); }   // optional polish: never counts as an error
+        }
+    };
+
+    /** files/sbmods_wx in SystemUI's own (device) storage, watched for the helper's copy. Background thread. */
+    private java.io.File wxFolder() {
+        if (wxDir == null) wxDir = new java.io.File(ctx.createDeviceProtectedStorageContext().getFilesDir(), "sbmods_wx");
+        if (!wxDir.isDirectory() && !wxDir.mkdirs()) return null;
+        if (wxObs == null) {
+            wxObs = new android.os.FileObserver(wxDir, android.os.FileObserver.CLOSE_WRITE) {
+                @Override public void onEvent(int ev, String path) {
+                    if ("wx.wal".equals(path) && bg != null) { bg.removeCallbacks(wxRead); bg.postDelayed(wxRead, 200); }   // the helper writes it last
+                }
+            };
+            wxObs.startWatching();
+        }
+        return wxDir;
+    }
+
+    private final Runnable wxRead = () -> {
+        java.io.File d = wxDir;
+        if (d == null) return;
+        java.io.File db = new java.io.File(d, "wx.db"), wal = new java.io.File(d, "wx.wal");
+        if (db.length() == 0) return;   // (also our own emptying below)
+        java.io.File tmp = ctx.createDeviceProtectedStorageContext().getCacheDir();
+        java.io.File rdb = new java.io.File(tmp, "sbmods_wx.db"), rwal = new java.io.File(tmp, "sbmods_wx.db-wal");
+        try {
+            long cpu0 = SystemClock.currentThreadTimeMillis(), t0 = SystemClock.elapsedRealtime();
+            copyFile(db, rdb);
+            if (wal.length() > 0) copyFile(wal, rwal); else rwal.delete();
+            new java.io.File(tmp, "sbmods_wx.db-shm").delete();
+            Weather.Snap s = Weather.fromDb(rdb);
+            Log.i("weather read: " + (s == null ? "no data" : "ok") + ", " + (SystemClock.currentThreadTimeMillis() - cpu0) + " ms CPU, " + (SystemClock.elapsedRealtime() - t0) + " ms total");
+            if (s == null) {
+                if (!wxWarned) { wxWarned = true; Log.w("weather: Samsung Weather has no data (open it once and allow location)"); }
+                return;
+            }
+            wx = s;
+            prefs.edit().putString("wx_snap", s.encode()).apply();
+            main.post(() -> { try { showWeather(); } catch (Throwable t) { fail("weather show", t); } });
+        } catch (Throwable t) {
+            if (!wxWarned) { wxWarned = true; Log.w("weather read failed: " + t); }   // optional polish: never counts as an error
+        } finally {
+            for (String n : new String[]{"sbmods_wx.db", "sbmods_wx.db-wal", "sbmods_wx.db-shm", "sbmods_wx.db-journal"}) new java.io.File(tmp, n).delete();
+            // keep no second copy of Samsung's data around: empty the helper's two files (they stay, so they keep their owner)
+            for (java.io.File f : new java.io.File[]{db, wal}) { try { new java.io.FileOutputStream(f).close(); } catch (Throwable ignored) {} }
+        }
+    };
+
+    private static void copyFile(java.io.File from, java.io.File to) throws java.io.IOException {
+        try (java.io.FileInputStream in = new java.io.FileInputStream(from); java.io.FileOutputStream out = new java.io.FileOutputStream(to)) {
+            byte[] buf = new byte[64 * 1024];
+            for (int n; (n = in.read(buf)) > 0; ) out.write(buf, 0, n);
+        }
+    }
+
+    /** Puts the latest reading into the weather view (main thread). Cheap when nothing changed. */
+    private void showWeather() {
+        if (wxView == null) return;
+        CharSequence t = disabled ? null : Weather.format(cfg, wx, System.currentTimeMillis());
+        Weather.Snap s = wx;
+        String key = (t == null ? "" : t.toString()) + '|' + cfg.wxIcon + '|' + (s == null ? -1 : s.glyph);
+        if (key.equals(wxKey)) return;
+        wxKey = key;
+        wxView.setText(t == null ? "" : t);
+        TextView c = clockRef.get();
+        if (c != null) applyStyle(c, false);
     }
 
     // ----------------------------------------------------------- custom clock
@@ -944,6 +1106,10 @@ public final class Controller {
                     main.post(shiftTick);
                     startPolling();
                     restartClockTick();
+                    if (cfg.wxEnabled) {   // normally Samsung Weather's own messages keep it fresh; this only catches up after a long gap
+                        if (wxOld() && SystemClock.elapsedRealtime() - wxReadAt > 30 * 60_000L) askWeather(3000);
+                        showWeather();
+                    }
                 } else if (Intent.ACTION_USER_PRESENT.equals(a)) {
                     Smart.resume();
                     final int w = wake;
@@ -992,6 +1158,8 @@ public final class Controller {
                     n.save(prefs);
                     publishLockMax(n);
                     if (label != null) place();
+                    if (n.wxEnabled && wxOld() && SystemClock.elapsedRealtime() - wxReadAt > 60_000) askWeather(0);
+                    showWeather();
                     bindTaps(true);
                     TextView ck = clockRef.get();
                     safeMove(n, statusRoot, ck);
@@ -1049,7 +1217,7 @@ public final class Controller {
         long now = android.os.SystemClock.elapsedRealtime();
         if (now < moverPausedUntil) return;
         try {
-            mover.update(c, root, clock, label, batteryTaps.view(), backChip.view(), dateView);
+            mover.update(c, root, clock, label, batteryTaps.view(), backChip.view(), dateView, null, wxView);
         } catch (Throwable t) {
             moverPausedUntil = now + 30_000;
             try { mover.releaseAll(); } catch (Throwable ignored) {}
@@ -1073,6 +1241,8 @@ public final class Controller {
         r.putExtra("text", String.valueOf(lastText));
         r.putExtra("source", sensors.lastSource);
         r.putExtra("tempValue", sensors.lastValue);
+        Weather.Snap ws = wx;
+        r.putExtra("wx", ws == null ? "" : ws.encode());
         View bv = batteryTaps.view();
         r.putExtra("battery", bv != null);
         r.putExtra("batteryClass", bv == null ? "-" : bv.getClass().getSimpleName());

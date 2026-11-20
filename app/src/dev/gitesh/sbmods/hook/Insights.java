@@ -11,18 +11,18 @@ import java.util.function.Predicate;
  * The Insights card's simple rules: numbers in, up to three ranked suggestions out. No Android classes (easy to test),
  * nothing is read or started here; the caller passes in numbers the panel already has.
  */
-final class Insights {
+public final class Insights {
     private Insights() {}
 
-    static final int MAX = 3;                   // at most this many lines on the card
-    static final int TOP_MIN_PCT = 30;          // an app counts as heavy at this share of one CPU core (the helper's "top" list)
-    static final int RAM_MIN_PCT = 90;          // memory this full = tight (the Memory card turns red here). A full swap alone is normal on Samsung and never counts.
-    static final int IDLE_MIN_DAYS = 7;         // running but not opened for this long = worth a suggestion
+    public static final int MAX = 3;                   // at most this many lines on the card
+    public static final int TOP_MIN_PCT = 30;          // an app counts as heavy at this share of one CPU core (the helper's "top" list)
+    public static final int RAM_MIN_PCT = 90;          // memory this full = tight (the Memory card turns red here). A full swap alone is normal on Samsung and never counts.
+    public static final int IDLE_MIN_DAYS = 7;         // running but not opened for this long = worth a suggestion
     static final int IDLE_WINDOW_DAYS = 30;     // usage is only looked up this far back
     static final int LIMIT_END_SEC = 60;        // a limit with less than this left is "nearly over"
 
     static final int HOT = 0, APP = 1, MEMORY = 2, LIMIT = 3, VULKAN = 4, HABIT = 5, IDLE = 6;   // also the rank: lower comes first
-    static final int HOT_TENTHS = 370;   // the "Phone is N°C" line shows from 37°C
+    public static final int HOT_TENTHS = 370;   // the "Phone is N°C" line shows from 37°C
 
     static final class Item {
         final int kind;

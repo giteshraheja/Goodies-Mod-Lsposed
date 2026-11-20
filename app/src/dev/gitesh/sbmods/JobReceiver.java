@@ -125,9 +125,11 @@ public final class JobReceiver extends BroadcastReceiver {
     private static String kept(Context c) {
         StringBuilder sb = new StringBuilder(" ");
         try {
-            if (Settings.Global.getInt(c.getContentResolver(), "sbmods_smart", 1) == 0) return " ";
+            String games = Settings.Global.getString(c.getContentResolver(), "sbmods_games");
+            if (games != null) for (String g : games.split(";")) if (PKG.matcher(g).matches()) sb.append(g).append(' ');
+            if (Settings.Global.getInt(c.getContentResolver(), "sbmods_smart", 1) == 0) return sb.toString();
             String raw = Settings.Global.getString(c.getContentResolver(), "sbmods_keep");
-            if (raw == null) return " ";
+            if (raw == null) return sb.toString();
             for (String e : raw.split(";")) {
                 String[] p = e.split("\\|");
                 if (p.length < 2 || !PKG.matcher(p[0]).matches()) continue;

@@ -44,7 +44,7 @@ final class TapActions {
 
     private final Controller owner;
     private final String name;
-    private final int item; // 0 battery, 1 clock, 2 temp, 3 camera hole -> slots item*3 + {0 tap, 1 double, 2 long}
+    private final int item; // 0 battery, 1 clock, 2 temp, 3 camera hole, 4 wifi, 5 mobile, 6 weather -> slots item*3 + {0 tap, 1 double, 2 long}
     private WeakReference<View> target = new WeakReference<>(null);
     private Runnable pendingTap;
 
@@ -249,11 +249,12 @@ final class TapActions {
                 case Config.ACT_AUTO_BRIGHT: toggleAutoBrightness(ctx); break;
                 case Config.ACT_HZ_NEXT: {
                     int cur = Global.hzCap(ctx), next = cur == 0 ? 96 : cur == 96 ? 60 : 0;
-                    if (Global.hzSet(ctx, next)) toast(ctx, next == 0 ? "Screen: up to 120" : "Screen: up to " + next);
+                    if (Global.hzSet(ctx, next)) toast(ctx, hzSaid(ctx, next));
                     break;
                 }
-                case Config.ACT_HZ_OFF: if (Global.hzSet(ctx, 0)) toast(ctx, "Screen: up to 120"); break;
+                case Config.ACT_HZ_OFF: if (Global.hzSet(ctx, 0)) toast(ctx, hzSaid(ctx, 0)); break;
                 case Config.ACT_SAVE_NOW: toast(ctx, ScreenSaver.saveNow(ctx) ? "Maximum saving on until the screen comes on" : "Maximum saving off"); break;
+                case Config.ACT_WEATHER: openPackage(ctx, dev.gitesh.sbmods.Weather.APP); break;
                 default: break;
             }
             Log.i("performed action " + action);
@@ -262,6 +263,13 @@ final class TapActions {
             Log.w("action " + action + " failed: " + c);
             toast(ctx, "Couldn't do that (" + c.getClass().getSimpleName() + ")");
         }
+    }
+
+    /** What the gesture really got: a cap in force (power saving / low battery) is named instead of promising a speed that will not apply. */
+    private static String hzSaid(Context ctx, int cap) {
+        int want = cap == 0 ? 120 : cap;
+        dev.gitesh.sbmods.HzRules.Block b = dev.gitesh.sbmods.HzRules.check(ctx, cap);
+        return b == null ? "Screen: up to " + want : "Screen: " + want + " chosen, but held at " + b.cap + " (" + b.why().toLowerCase(java.util.Locale.ROOT) + ")";
     }
 
     private static void toast(Context ctx, String s) {

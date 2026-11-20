@@ -1,12 +1,17 @@
 # PulseBar
 
 An LSPosed / Vector module for the Samsung status bar (and the Recents screen) on a rooted Galaxy S23 Ultra, plus a settings app.
-Formerly "StatusBar Mods". Package `dev.gitesh.sbmods` (unchanged), version 3.27.2.
+Formerly "StatusBar Mods". Package `dev.gitesh.sbmods` (unchanged), version 3.34.0.
 
 ## What it does
 - **Status bar items and positions:** a phone temperature next to the clock (skin, battery or CPU sensor, optional warning colour), a custom clock
   (builder or pattern: 12 / 24 hour, seconds, AM/PM style, weekday, date, year), and a live preview where you drag items to the left, middle or right
   (or back to Samsung's place). Spacing, edge padding, notification icon count and merging the Wi-Fi and mobile icons are options too.
+- **Weather:** Samsung Weather's current reading with a drawn icon (simple, in the status bar's colour, or in colour), placed anywhere like the
+  other items. Choose the temperature style (14, 14°, 14°C, or °F), the city (full, 2 or 3 letters, before or after), feels-like, today's high / low
+  and the description. It is read only when Samsung Weather says it updated (it tells the status bar itself), so there is no polling and no network.
+  Samsung's weather provider only serves its watch apps, so the root helper copies Samsung Weather's database into the status bar's own folder
+  on each update (two `cat`s); the status bar reads that copy and empties it again.
 - **Gestures:** tap, double-tap and long-press on the battery, clock, temperature, camera hole, Wi-Fi and mobile signal. Actions include power saving,
   flashlight, Wi-Fi, Bluetooth, do not disturb, lock the screen, close apps, Samsung Finder, camera, any app you pick, and more. "Test" tries one.
 - **Back pill:** a small chip in the status bar that jumps back to the previous app. It can merge with a live activity or stack with it.

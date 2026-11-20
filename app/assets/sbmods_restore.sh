@@ -58,6 +58,7 @@ if [ "$1" = "all" ]; then
   # every other setting the mod keeps, the one-off job notes and our own scripts (this one is deleted last; the shell has it open)
   for k in $(settings list global | grep '^sbmods_' | grep -v '^sbmods_off_sync=[12]$' | cut -d= -f1); do settings delete global $k >/dev/null 2>&1; done   # (an unanswered sync note stays)
   rm -rf $B/sbmods_job $B/sbmods_cpud.sh $B/sbmods_lib.sh
+  rm -rf /proc/1/root/data/user_de/0/com.android.systemui/files/sbmods_wx   # the weather hand-over folder (see sbmods_cpud.sh; global path)
   rm -f $B/sbmods_restore.sh   # (also when this run is a copy from the app's cache folder)
   rmdir $B 2>/dev/null
   echo "SBMods: everything undone"
