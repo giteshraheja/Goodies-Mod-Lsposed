@@ -136,8 +136,8 @@ public final class SettingsActivity extends Activity {
     }
     private static final String[] ITEM_TITLES = {"Battery icon", "Clock", "Temperature", "Front camera hole", "Wi-Fi icon", "Mobile signal icon", "Weather"};
     private static final String[] GESTURE_TITLES = {"Tap", "Double-tap", "Long-press"};
-    private static final String[] TABS = {"Layout", "Clock", "Panel", "Gestures", "System", "Insights"};
-    private static final int T_LAYOUT = 0, T_CLOCK = 1, T_PANEL = 2, T_GESTURES = 3, T_SYSTEM = 4, T_INSIGHTS = 5;
+    private static final String[] TABS = {"Bar", "Clock", "Taps", "Battery", "Apps", "Help"};   // short names for the bottom bar; TAB_TITLES are the headings
+    private static final int T_LAYOUT = 0, T_CLOCK = 1, T_GESTURES = 2, T_BATTERY = 3, T_APPS = 4, T_HELP = 5;
     private static final int[] COLORS = {0xFFFF9800, 0xFFF44336, 0xFFFFEB3B, 0xFFE91E63, 0xFF00BCD4, 0xFF4CAF50};
 
     // ------------------------------------------------------------------ state
@@ -252,12 +252,13 @@ public final class SettingsActivity extends Activity {
         lastCfg = cfg.copy();
         tab = prefs.getInt("tab", T_LAYOUT);
         int tabv = prefs.getInt("tabv", 1);
-        if (tabv < 4) {
-            if (tabv < 3) {   // older versions had 6 or 7 tabs; fold the saved one into today's
+        if (tabv < 5) {   // fold the saved tab of an older layout into today's six
+            if (tabv < 3) {
                 if (tabv < 2 && tab >= 5) tab = 6;   // the first versions had no Overview tab: their index 5 was "More"
-                tab = new int[]{T_LAYOUT, T_CLOCK, T_CLOCK, T_LAYOUT, T_SYSTEM, T_PANEL, T_SYSTEM}[Math.max(0, Math.min(tab, 6))];
-            } else if (tab >= 3) tab++;   // v3: System 3, Insights 4 (Gestures got its own tab at 3)
-            prefs.edit().putInt("tab", tab).putInt("tabv", 4).apply();
+                tab = new int[]{T_LAYOUT, T_CLOCK, T_CLOCK, T_LAYOUT, T_HELP, T_APPS, T_HELP}[Math.max(0, Math.min(tab, 6))];
+            } else if (tabv == 3) tab = new int[]{T_LAYOUT, T_CLOCK, T_APPS, T_HELP, T_HELP}[Math.max(0, Math.min(tab, 4))];   // Layout, Clock, Panel, System, Insights
+            else tab = new int[]{T_LAYOUT, T_CLOCK, T_APPS, T_GESTURES, T_HELP, T_HELP}[Math.max(0, Math.min(tab, 5))];      // + Gestures
+            prefs.edit().putInt("tab", tab).putInt("tabv", 5).apply();
         }
         tab = Math.max(0, Math.min(tab, TABS.length - 1));
 
@@ -354,8 +355,8 @@ public final class SettingsActivity extends Activity {
 
     // ================================================================ frame: header, preview, bottom bar
 
-    private static final String[] TAB_TITLES = {"Status bar", "Clock", "Panel", "Gestures", "System", "Insights"};
-    private static final String[] TAB_ICONS = {"layout", "clock", "panel", "tap", "sys", "spark"};
+    private static final String[] TAB_TITLES = {"Status bar", "Clock & weather", "Taps", "Battery", "Apps & games", "Help"};
+    private static final String[] TAB_ICONS = {"layout", "clock", "tap", "batt", "apps", "help"};
     private TextView titleView;
     private LinearLayout navBar;
 
@@ -441,23 +442,44 @@ public final class SettingsActivity extends Activity {
         int tab; String card, title, text, adv; boolean setting;
         String key() { return card + "|" + title; }
     }
+    /** Old names (v3.36 and before) and plain synonyms, so search still finds a renamed option. */
+    private static final java.util.Map<String, String> ALIAS = new java.util.HashMap<>();
+    static {
+        String[][] a = {
+            {"Switch apps to faster graphics", "restart apps still on opengl vulkan renderer"},
+            {"Ask again about faster graphics", "ask about vulkan again"},
+            {"Faster graphics", "vulkan check opengl"},
+            {"Processor and graphics limits", "cpu and gpu speed limit throttle"},
+            {"Processor limit", "cpu quick limit"}, {"Graphics limit", "gpu quick limit"},
+            {"Background helper", "root helper su needs root"}, {"Backup", "your options save restore"}, {"Smoothness while power saving is on", "top speed power saving"}, {"Smoothness when the battery is low", "top speed low battery"}, {"Turn on the helper", "run the helper root"},
+            {"Notification icons shown", "icons before the dot"},
+            {"With music or a timer", "live activities"}, {"When music or a timer is in the bar", "while one is showing live activity"},
+            {"Apps kept in memory", "recents kept-open apps locked"},
+            {"Screen smoothness", "screen speed refresh rate hz"}, {"Screen smoothness (Hz)", "top speed of the screen refresh rate 120 96 60"},
+            {"Deep sleep sooner", "sleep sooner doze"},
+            {"Recent apps chips", "overview screen chips"}, {"Recent apps panel: cards", "panel cards overview performance"},
+            {"Full speed for games", "game mode"}, {"Right now", "insights status"},
+            {"How often it updates", "battery saving refresh interval"},
+        };
+        for (String[] e : a) ALIAS.put(e[0], e[1]);
+    }
     private List<Hit> index;                                  // non-null only while buildIndex() runs
     private final java.util.Map<String, View> rowViews = new java.util.HashMap<>();   // "card|title" -> row, of the tab on screen
     private String advNow;                                    // while indexing: the Advanced section the rows sit behind
     private Set<String> touchedSet;
 
-    private String rowKey(String title) { return tab == T_INSIGHTS ? "*|" + title : (cardTitle == null ? "" : cardTitle) + "|" + title; }
+    private String rowKey(String title) { return (cardTitle == null ? "" : cardTitle) + "|" + title; }
 
     /** Every row helper calls this: remembers the row's view (to scroll to it) and, while indexing, lists it. */
     private void reg(String title, String sub, View row, boolean setting) {
-        if (title == null || tab == T_INSIGHTS) return;   // the Insights tab only repeats switches that live elsewhere
+        if (title == null) return;
         String card = cardTitle == null ? "" : cardTitle;
         rowViews.put(card + "|" + title, row);
         if (index == null) return;
         for (Hit o : index) if (o.card.equals(card) && o.title.equals(title)) return;
         Hit h = new Hit();
         h.tab = tab; h.card = card; h.title = title; h.adv = advNow; h.setting = setting;
-        h.text = (title + " " + card + " " + TABS[tab] + " " + (sub == null ? "" : sub)).toLowerCase(Locale.ROOT);
+        h.text = (title + " " + card + " " + TAB_TITLES[tab] + " " + (sub == null ? "" : sub) + " " + ALIAS.getOrDefault(title, "") + " " + ALIAS.getOrDefault(card, "")).toLowerCase(Locale.ROOT);
         index.add(h);
     }
 
@@ -477,7 +499,7 @@ public final class SettingsActivity extends Activity {
         final int keep = tab, y = scroll.getScrollY();
         index = out;
         try {
-            for (int t = 0; t < TABS.length; t++) if (t != T_INSIGHTS) { tab = t; build(); }
+            for (int t = 0; t < TABS.length; t++) { tab = t; build(); }
         } catch (Throwable ignored) {
         } finally {
             index = null; advNow = null; tab = keep;
@@ -569,7 +591,7 @@ public final class SettingsActivity extends Activity {
         r.setPadding(dp(Ui.S1), dp(Ui.S2), dp(Ui.S1), dp(Ui.S2));
         r.setBackground(ripple(0));
         r.addView(Ui.text(this, h.title, Ui.T_BODY, cText, 500));
-        r.addView(Ui.text(this, TABS[h.tab] + (h.card.isEmpty() ? "" : "  ›  " + h.card), Ui.T_CAPTION, cSub, 400));
+        r.addView(Ui.text(this, TAB_TITLES[h.tab] + (h.card.isEmpty() ? "" : "  ›  " + h.card), Ui.T_CAPTION, cSub, 400));
         r.setOnClickListener(v -> {
             String old = prefs.getString("search_recent", "");
             String keepOld = "";
@@ -657,18 +679,19 @@ public final class SettingsActivity extends Activity {
         cur = page;
         previewHolder.setVisibility(tab == T_LAYOUT || tab == T_CLOCK ? View.VISIBLE : View.GONE);   // the preview only helps these two
         switch (tab) {
-            case T_CLOCK: {   // three sections: one jump chip each instead of one per card
+            case T_CLOCK: {   // one jump chip per section instead of one per card
                 int a0 = anchors.size(); buildClock();
                 int a1 = anchors.size(); buildTemp();
                 int a2 = anchors.size(); buildWeather();
-                sectionChips(new String[]{"Clock", "Temperature", "Weather"}, new int[]{a0, a1, a2});
+                int a3 = anchors.size(); buildWallpaper();
+                sectionChips(new String[]{"Clock", "Temperature", "Weather", "Wallpaper"}, new int[]{a0, a1, a2, a3});
                 break;
             }
-            case T_PANEL: buildPanel(); break;
-            case T_GESTURES: buildGestures(); buildNotifs(); break;
-            case T_SYSTEM: buildSystem(); break;
-            case T_INSIGHTS: buildInsights(); break;
-            default: buildLayout(); buildBack(); break;
+            case T_GESTURES: buildGestures(); buildNotifs(); buildCheatSheet(); break;
+            case T_BATTERY: buildScreenSpeed(); buildSleep(); buildLimits(); break;
+            case T_APPS: buildSmart(); buildGames(); buildGraphics(); buildRules(); buildSpared(); buildPanel(); buildOverviewChips(); buildKeptApps(); break;
+            case T_HELP: buildRightNow(); buildSelfCheck(); buildHelper(); buildFixes(); buildBackup(); buildStartOver(); break;
+            default: buildLayout(); buildBack(); buildScreenCare(); break;
         }
         fillChips();
         resetShown = new java.util.HashSet<>(resetNow);
@@ -721,11 +744,12 @@ public final class SettingsActivity extends Activity {
     }
 
     private void updateChipActive(int y) {
-        int best = -1, line = y + dp(160);
+        int best = -1, line = y + dp(Ui.TAP);   // the card whose top has reached the chip row (160 dp lit the NEXT card when a short one was on top)
         for (int i = 0; i < anchors.size(); i++) {
             View c = (View) anchors.get(i)[1];
             if (c != null && c.getTop() <= line) best = i;
         }
+        if (!scroll.canScrollVertically(1) && y > 0 && !anchors.isEmpty()) best = anchors.size() - 1;   // at the bottom: the last card, even if short
         if (best == chipActive) return;
         chipActive = best;
         paintChips();
@@ -755,16 +779,43 @@ public final class SettingsActivity extends Activity {
                 cfg.smartOn, this::setSmart);
         if (cfg.smartOn) {
             divider();
-            switchRow("Restart apps still on OpenGL", "When Vulkan is on, an app you open may still use the old renderer. If so, it is closed and reopened once so it can switch. Each app is restarted at most once until the phone restarts. Unsaved work in that app is lost.",
+            actionRow("Forget what it learned", "Clears the apps it noticed, the ones you said No to and the apps kept when cleaning. Your automatic rules stay.", cAccent, v -> {
+                putGl("sbmods_habits", "", "sbmods_keep", "");
+                Toast.makeText(this, "Forgotten", Toast.LENGTH_SHORT).show();
+            });
+        }
+        endGroup("When an app comes to the front, the mod asks the background helper (Help tab) how that app draws the screen. It does this once per app and tells you in a short message. "
+                + "If an app uses older graphics, it can offer to switch the phone to faster graphics. If you often slow the phone down by hand in the same app, the Recent apps panel can offer to do it for you. Nothing happens until you say Yes, and each time it does, a message tells you. It only checks when you open an app, never in the background. Game mode, faster graphics, automatic rules and apps spared when cleaning below all need this switch on.");
+    }
+
+    /** Faster graphics (Vulkan) for apps (Apps & games tab). Needs Smart suggestions. */
+    private void buildGraphics() {
+        if (!cfg.smartOn) return;
+        group("gfx", "Faster graphics", null, true);
+        {
+            switchRow("Switch apps to faster graphics", "When faster graphics is on, an app that still draws the old way is closed and reopened once so it can switch (at most once per app until the phone restarts). Unsaved work in that app is lost.",
                     "1".equals(glStr("sbmods_gfx_restart")), v -> putGl("sbmods_gfx_restart", v ? "1" : "0"));
             divider();
-            switchRow("Game mode: full speed for games", "When you open a game, any speed limit is lifted while the game is in front. Your earlier limit comes back when you leave it. A game with its own automatic rule keeps that rule.",
+            actionRow("Ask again about faster graphics", "Use this after you chose “Don't ask again” when it offered faster graphics (Vulkan).", cAccent, v -> {
+                putGl("sbmods_smart_noask", "0");
+                Toast.makeText(this, "It may ask about faster graphics again", Toast.LENGTH_SHORT).show();
+            });
+        }
+        endGroup("Vulkan is a newer, faster way for apps to draw the screen. Phone apps use the older OpenGL until you switch. The switch only affects apps that start afterwards, and it switches back by itself if Wi-Fi calling stops working.");
+    }
+
+    /** Game mode and the games list (Apps & games tab). Needs Smart suggestions. */
+    private void buildGames() {
+        if (!cfg.smartOn) return;
+        group("games", "Game mode", null, true);
+        {
+            switchRow("Full speed for games", "When you open a game, any speed limit is lifted while the game is in front. Your earlier limit comes back when you leave it. A game with its own automatic rule keeps that rule.",
                     !"0".equals(glStr("sbmods_game")), v -> putGl("sbmods_game", v ? "1" : "0"));
             divider();
             switchRow("Close other apps when a game starts", "Closes background apps once when you open a game. Apps you keep reopening are spared.",
                     "1".equals(glStr("sbmods_gamesclean")), v -> putGl("sbmods_gamesclean", v ? "1" : "0"));
             divider();
-            infoRow("Games you added: games that do not announce themselves as games to Android. Add them here and they get full speed and the other game options like any other game.", null);
+            infoRow("Your games: add the ones Android doesn't recognise as games, so they get full speed too.", null);
             for (String pk : gameList()) {
                 LinearLayout row = rowShell(null);
                 String nm = appLabel(pk);
@@ -776,14 +827,17 @@ public final class SettingsActivity extends Activity {
                 }));
             }
             actionRow("Add a game…", "Pick an installed app to treat as a game.", cAccent, v -> gamePicker());
-            divider();
-            actionRow("Ask about Vulkan again", "Use this after you chose “Don't ask again” on the Vulkan question.", cAccent, v -> {
-                putGl("sbmods_smart_noask", "0");
-                Toast.makeText(this, "It may ask about Vulkan again", Toast.LENGTH_SHORT).show();
-            });
-            divider();
+        }
+        endGroup("When you open a game, any speed limit is lifted while you play and comes back when you leave.");
+    }
+
+    /** Automatic speed rules (Apps & games tab). Needs Smart suggestions. */
+    private void buildRules() {
+        if (!cfg.smartOn) return;
+        group("rules", "Automatic rules", null, true);
+        {
             java.util.List<Habits.R> rl = Habits.parseRules(glStr("sbmods_rules"));
-            if (rl.isEmpty()) infoRow("Automatic rules: none yet. When you often slow the phone down in the same app, the Overview panel offers to do it for you.", null);
+            if (rl.isEmpty()) infoRow("Automatic rules: none yet. When you often slow the phone down in the same app, the Recent apps panel offers to do it for you.", null);
             for (Habits.R r : rl) {
                 LinearLayout row = rowShell(null);
                 String nm = r.pkg;
@@ -793,7 +847,15 @@ public final class SettingsActivity extends Activity {
                 final String pk = r.pkg;
                 row.addView(textButton("Remove", v -> putGl("sbmods_rules", Habits.removeRule(glStr("sbmods_rules"), pk))));
             }
-            divider();
+        }
+        endGroup("After " + Habits.NEED_DAYS + " days of slowing the phone down by hand in the same app, the Recent apps panel asks once whether to do it for you. With a Yes, the limit comes on when that app is in front and goes when you leave it.");
+    }
+
+    /** Apps spared when cleaning (Apps & games tab). Needs Smart suggestions. */
+    private void buildSpared() {
+        if (!cfg.smartOn) return;
+        group("spared", "Apps spared when cleaning", null, true);
+        {
             java.util.List<Habits.K> kl = Habits.kept(glStr("sbmods_keep"));
             infoRow(kl.isEmpty() ? "Apps kept when cleaning: none yet. An app you open right after cleaning twice is spared by the next clean."
                     : "Apps kept when cleaning (spared when you close background apps):", null);
@@ -805,30 +867,13 @@ public final class SettingsActivity extends Activity {
                 final String pk = k.pkg;
                 row.addView(textButton("Remove", v -> putGl("sbmods_keep", Habits.removeKeep(glStr("sbmods_keep"), pk))));
             }
-            divider();
-            actionRow("Forget what it learned", "Clears the apps it noticed, the ones you said No to and the apps kept when cleaning. Your automatic rules stay.", cAccent, v -> {
-                putGl("sbmods_habits", "", "sbmods_keep", "");
-                Toast.makeText(this, "Forgotten", Toast.LENGTH_SHORT).show();
-            });
         }
-        endGroup("When an app comes to the front, the mod asks the root helper (see below) how that app draws the screen. It does this once per app and tells you in a short message. "
-                + "If an app uses the older OpenGL, it can offer to switch the phone to Vulkan. If you often slow the phone down by hand in the same app, the Overview panel can offer to do it for you. Nothing happens until you say Yes, and each time it does, a message tells you. It only checks when you open an app, never in the background. It needs the root helper to be running.");
+        endGroup("An app you open straight after cleaning twice is left running by the next clean.");
     }
 
     private void setSmart(boolean v) { cfg.smartOn = v; apply(); putGl("sbmods_smart", v ? "1" : "0"); }   // the Overview panel (launcher process) reads the global
 
     // ================================================================ Insights tab
-
-    /** Opens a card on another tab (card titles are the anchors). */
-    private void openCard(int t, String title) {
-        switchTab(t);
-        scroll.postDelayed(() -> { for (int i = 0; i < anchors.size(); i++) if (title.equals(anchors.get(i)[0])) { jumpTo(i); return; } }, 150);
-    }
-
-    private void optionsRow(int t, String card) {
-        divider();
-        actionRow("Open its options", null, cAccent, v -> openCard(t, card));
-    }
 
     /** "A, B, C and 2 more" from package names. */
     private String appNames(java.util.List<String> pkgs) {
@@ -846,117 +891,28 @@ public final class SettingsActivity extends Activity {
      * (or a jump to its options). Everything shown is read once when the tab is drawn, from the options and the mod's
      * global settings: no root, no timer.
      */
-    private void buildInsights() {
+    private void buildRightNow() {
         final boolean smart = cfg.smartOn;
-        final String off = "Off, because Smart suggestions is off";
-        final String rules = glStr("sbmods_rules"), keep = glStr("sbmods_keep");
-
-        group("Master switch");
-        switchRow("Smart suggestions", "Turns the next five cards (Live checks to Vulkan check) on or off together. When it is off, they never check anything.", smart, this::setSmart);
-        endGroup(null);
-
-        group("Live checks");
-        boolean cardOn = PanelLayout.order(glStr(PanelLayout.SETTING), PanelLayout.DEFAULTS).contains("insights");
-        statusRow("Right now", !smart ? off : cardOn ? "On. Worked out each time you open the Performance panel." : "Not shown: the Insights card is switched off under Panel, Panel cards");
-        divider();
-        infoRow("• Phone at " + Math.max(Insights.HOT_TENTHS, gl("sbmods_cool_at", 360)) / 10 + "°C or warmer: Cool down\n"
-                + "• An app using " + Insights.TOP_MIN_PCT + "% of a CPU core in the background: Stop\n"
-                + "• Memory " + Insights.RAM_MIN_PCT + "% full: Deep clean\n"
-                + "• A speed limit left on while charging, or about to end: Full speed\n"
-                + "• Vulkan off after a restart: Turn on\n"
-                + "• An app running but not opened for " + Insights.IDLE_MIN_DAYS + " days: Stop", null);
-        endGroup("The Insights card of the Performance panel shows up to " + Insights.MAX + " of these, the most important first, each with one button. "
-                + "Stop force-stops the app: it closes fully and starts again when you open it (or when something wakes it). Nothing is ever disabled or uninstalled, "
-                + "and the phone and call apps, the keyboard, Google's push service and Wi-Fi calling can never be stopped. Find it on the Overview screen: tap a chip to open the Performance panel; the Insights card is on its All page.");
-
-        group("Automatic speed rules");
-        java.util.List<Habits.R> rl = Habits.parseRules(rules);
-        int watching = 0;
-        for (Habits.H x : Habits.parseHabits(glStr("sbmods_habits"))) if (x.count > 0 && Habits.ruleOf(rules, x.pkg) == null) watching++;
-        StringBuilder rs = new StringBuilder();
-        for (Habits.R r : rl) { String n = appLabel(r.pkg); rs.append(rs.length() == 0 ? "" : "\n").append(n != null ? n : r.pkg).append(": ").append(Habits.describe(r)); }
-        statusRow("Right now", !smart ? off : (rl.isEmpty() ? "No rules yet" : rs.toString())
-                + (watching > 0 ? "\nLearning: " + watching + (watching == 1 ? " app" : " apps") + " you slowed down by hand" : ""));
-        optionsRow(T_SYSTEM, "Smart suggestions");
-        endGroup("Learns which apps you slow the phone down in. After " + Habits.NEED_DAYS + " days of doing it by hand in the same app, the Performance panel asks once whether to do it for you. "
-                + "With a Yes, the limit comes on when that app is in front and goes when you leave it. Remove a rule under System, Smart suggestions.");
-
-        group("Apps spared when cleaning");
-        java.util.List<String> kp = new java.util.ArrayList<>();
-        for (Habits.K k : Habits.kept(keep)) kp.add(k.pkg);
-        statusRow("Right now", !smart ? off : kp.isEmpty() ? "None learned yet" : appNames(kp));
-        optionsRow(T_SYSTEM, "Smart suggestions");
-        endGroup("Learns which apps you reopen right after a clean-up. An app you open straight after cleaning twice is left running by the next clean. Remove one under System, Smart suggestions.");
-
-        group("Game mode");
-        int games = gameList().size();
-        statusRow("Right now", !smart ? off : (!"0".equals(glStr("sbmods_game")) ? "On" : "Off") + (games > 0 ? ". Games you added: " + appNames(gameList()) : ""));
+        final String rules = glStr("sbmods_rules");
+        group("now", "Right now", null, true);
+        statusRow("Smart suggestions", smart ? "On" : "Off: game mode, faster graphics, rules and spared apps are paused");
         if (smart) {
-            divider();
-            switchRow("Game mode: full speed for games", null, !"0".equals(glStr("sbmods_game")), v -> putGl("sbmods_game", v ? "1" : "0"));
-            divider();
-            switchRow("Close other apps when a game starts", null, "1".equals(glStr("sbmods_gamesclean")), v -> putGl("sbmods_gamesclean", v ? "1" : "0"));
+            java.util.List<Habits.R> rl = Habits.parseRules(rules);
+            divider(); statusRow("Game mode", (!"0".equals(glStr("sbmods_game")) ? "On" : "Off") + (gameList().isEmpty() ? "" : ". Your games: " + appNames(gameList())));
+            divider(); statusRow("Graphics", "vulkan".equals(glStr("sbmods_gfx")) ? "Faster (Vulkan)" : "Samsung's default (OpenGL)");
+            divider(); statusRow("Automatic rules", rl.isEmpty() ? "None yet" : rl.size() + (rl.size() == 1 ? " app" : " apps"));
+            java.util.List<String> kp = new java.util.ArrayList<>();
+            for (Habits.K kk : Habits.kept(glStr("sbmods_keep"))) kp.add(kk.pkg);
+            divider(); statusRow("Spared when cleaning", kp.isEmpty() ? "None learned yet" : appNames(kp));
         }
-        optionsRow(T_SYSTEM, "Smart suggestions");
-        endGroup("Notices when a game comes to the front and lifts any speed limit while you play. Your earlier limit comes back when you leave the game. It can also close background apps once when a game starts.");
-
-        group("Vulkan check");
-        String gfx = glStr("sbmods_gfx");
-        statusRow("Right now", !smart ? off : ("vulkan".equals(gfx) ? "Graphics: Vulkan" : "Graphics: Samsung's default (OpenGL)")
-                + ("1".equals(glStr("sbmods_smart_noask")) ? ". You chose “Don't ask again”" : ""));
-        if (smart) {
-            divider();
-            switchRow("Restart apps still on OpenGL", null, "1".equals(glStr("sbmods_gfx_restart")), v -> putGl("sbmods_gfx_restart", v ? "1" : "0"));
-        }
-        optionsRow(T_SYSTEM, "Smart suggestions");
-        endGroup("Checks how an app draws the screen the first time you open it, and tells you in a short message. If it uses the older OpenGL, it can offer to switch the phone to Vulkan. It checks once per app, only when you open it.");
-
-        group("Sleep sooner");
         int sm = Math.max(0, Math.min(3, gl("sbmods_sleep_mode", 0)));
-        statusRow("Right now", SLEEP_MODES[sm] + (sm == 0 ? "" : ". " + dev.gitesh.sbmods.SleepPlan.describe(gl("sbmods_sleep", 0))));
-        optionsRow(T_SYSTEM, "Sleep sooner");
-        endGroup("In Smart mode it learns, hour by hour, how long the phone is left alone after the screen goes off, and lets it reach deep sleep sooner at those hours. It needs a few days, and acts only when the screen turns on or off.");
-
-        group("Screen speed");
-        int psm = gl("sbmods_hz_psm", 0), low = gl("sbmods_hz_low", 0);
-        statusRow("Right now", "While power saving is on: " + HZ_AUTO[hzIdx(psm)].toLowerCase(Locale.ROOT)
-                + "\nBattery below " + gl("sbmods_hz_low_at", 20) + "%: " + HZ_AUTO[hzIdx(low)].toLowerCase(Locale.ROOT));
-        divider();
-        switchRow("Maximum saving while the screen is off", null, gl("sbmods_off_max", 0) == 1, v -> putGl("sbmods_off_max", v ? "1" : "0"));
-        optionsRow(T_SYSTEM, "Screen speed");
-        endGroup("Lowers the screen's top speed by itself while power saving is on or the battery is low, and puts it back afterwards. Maximum saving turns power saving on and automatic sync off while the screen is off, and undoes both when it comes on.");
-
-        group("Speed limits that end by themselves");
+        divider(); statusRow("Deep sleep", SLEEP_MODES[sm]);
         int cp = gl("sbmods_cpu_pct", 0), gp = gl("sbmods_gpu_pct", 0);
         boolean lim = (cp > 0 && cp < 100) || (gp > 0 && gp < 100) || gl("sbmods_cool", 0) == 1 || glStr("sbmods_cores").matches(".*[1-9].*");
-        statusRow("Right now", (lim ? "A limit is on" : "No limit on") + ". Limits end after " + gl("sbmods_limit_min", 15) + " minutes; cool-down stops at "
-                + gl("sbmods_cool_at", 360) / 10 + "°C");
-        optionsRow(T_SYSTEM, "CPU and GPU speed");
-        endGroup("A CPU or GPU limit never stays on by mistake: it ends after the time you chose, cool-down ends when the battery is cool, and none survives a restart.");
-
-        group("Tips on the status bar");
-        statusRow("Right now", new String[]{"Never", "Sometimes", "Often"}[Math.max(0, Math.min(2, cfg.tipsMode))]);
-        optionsRow(T_SYSTEM, "Feedback");
-        endGroup("After unlocking, one line now and then reminds you of a gesture you set up or says what is new. Every tip is shown once before any repeats.");
-
-        group("Battery advice");
-        statusRow("Where", "Performance panel, Battery page");
-        endGroup("Reads battery health, idle drain, sleep and screen use in plain words, and says what to do about each. Worked out only when you open that page.");
-
-        group("Self-check");
-        statusRow("Right now", scFacts == null ? "Checking…" : findings.isEmpty() ? "Everything is working"
-                : findings.size() + (findings.size() == 1 ? " thing needs a look" : " things need a look"));
-        optionsRow(T_SYSTEM, "Self-check");
-        endGroup("Looks for what is wrong while this app is open: helper off, a stuck limit, the mod switched off, things Samsung changed. Each finding comes with a fix where there is one.");
-
-        group("Daily backup");
-        statusRow("How it works", "One backup a day in Downloads, the newest " + dev.gitesh.sbmods.Backup.KEEP + " are kept");
-        optionsRow(T_SYSTEM, "Your options");
-        endGroup("Saves your options once a day and deletes the old daily ones. It uses one daily alarm that never wakes the phone by itself, and also checks when you open this app. A backup you save by hand is never deleted.");
-
-        group("Safety guard");
-        statusRow("Always on", "Nothing to set");
-        endGroup("Errors never reach the status bar. Too many errors switch the mod off until the next restart, and a crash loop keeps it off by itself.");
+        divider(); statusRow("Speed limit", (lim ? "On" : "Off") + ". Ends by itself after " + gl("sbmods_limit_min", 15) + " min");
+        divider(); statusRow("Tips on the status bar", new String[]{"Never", "Sometimes", "Often"}[Math.max(0, Math.min(2, cfg.tipsMode))]);
+        divider(); statusRow("Backup", "Daily, in Downloads (newest " + dev.gitesh.sbmods.Backup.KEEP + " kept)");
+        endGroup("A quick look at what PulseBar is doing by itself. Change any of these on its own tab. The safety guard is always on: errors never reach the status bar, and a crash loop switches the mod off by itself.");
     }
 
     /** System tab: what taps do, the root helper and speed limits, the Overview chips, help, and starting over. */
@@ -1028,15 +984,6 @@ public final class SettingsActivity extends Activity {
                 + "The weather is fetched at most every 3 hours, only while this app is open, so it costs no battery. Only the city name is sent, to open-meteo.com.");
     }
 
-    private void buildSystem() {
-        buildSmart();
-        buildScreenSpeed();
-        buildSleep();
-        buildHelperSpeed();
-        buildWallpaper();
-        buildMore();
-        buildSelfCheck();   // diagnostics last
-    }
 
     // ---------------------------------------------------------------- Layout tab
 
@@ -1068,17 +1015,11 @@ public final class SettingsActivity extends Activity {
 
         group("notif", "Notification icons", null, true);
         cardReset((c, d) -> c.notifMax = d.notifMax);
-        slider("Icons before the “•” dot", 0, 12, cfg.notifMax, v -> v == 0 ? "Samsung's (3)" : v + " icons",
+        slider("Notification icons shown", 0, 12, cfg.notifMax, v -> v == 0 ? "Samsung's (3)" : v + " icons",
                 v -> cfg.notifMax = v, 0);
         endGroup("Samsung shows 3 app icons, then a dot for the rest. This takes effect after the next status bar restart.");
 
         buildStatusIcons();
-
-        group("locks", "Recents: kept-open apps", null, true);
-        cardReset((c, d) -> c.lockMax = d.lockMax);
-        slider("Apps you can keep open", 0, 12, cfg.lockMax, v -> v == 0 ? "Samsung's (3)" : v + " apps",
-                v -> cfg.lockMax = v, 0);
-        endGroup("Samsung allows 3 locked apps in Recents. Each app you keep open uses memory.");
 
         group("Connection icon");
         cardReset((c, d) -> c.mergeNet = d.mergeNet);
@@ -1287,7 +1228,7 @@ public final class SettingsActivity extends Activity {
                         v -> { cfg.dateFirst = v == 1; apply(); refresh(); });
             }
             divider();
-            switchRow("Date as its own item", "Lets you place the day and date anywhere, apart from the time. Set the place on the Layout tab.", cfg.dateSeparate,
+            switchRow("Date as its own item", "Lets you place the day and date anywhere, apart from the time. Set the place on the Status bar tab.", cfg.dateSeparate,
                     v -> { cfg.dateSeparate = v; apply(); refresh(); });
             divider();
             String dd = hasDay ? sample(cfg.weekday, 0) : sample(-1, cfg.date);
@@ -1413,9 +1354,9 @@ public final class SettingsActivity extends Activity {
             divider();
             slider("Space between temperature and clock", 0, 16, cfg.gapDp, v -> v + " dp", v -> cfg.gapDp = v, 4);
         }
-        endGroup("To move the temperature elsewhere, use the Layout tab.");
+        endGroup("To move the temperature elsewhere, use the Status bar tab.");
 
-        group("tmpsave", "Battery saving", null, true);
+        group("tmpsave", "How often it updates", null, true);
         cardReset((c, d) -> { c.intervalSec = d.intervalSec; });
         final int[] secs = {1, 2, 5, 10, 15, 30, 60};
         choiceRow("Refresh every", new String[]{"1 second", "2 seconds", "5 seconds", "10 seconds", "15 seconds", "30 seconds", "1 minute"},
@@ -1550,7 +1491,7 @@ public final class SettingsActivity extends Activity {
         group("Back button");
         cardReset((c, d) -> c.backEnabled = d.backEnabled);
         switchRow("Show a back button", "Shows the app you used before. Tap it to jump back to that app. It appears at the left of the status bar and only updates when you switch apps, so it uses no battery. "
-                + "You can move it on the Layout tab. It stays hidden on the home screen and the lock screen.", cfg.backEnabled,
+                + "You can move it on the Status bar tab. It stays hidden on the home screen and the lock screen.", cfg.backEnabled,
                 v -> { cfg.backEnabled = v; apply(); refresh(); });
         endGroup(null);
         if (!cfg.backEnabled) return;
@@ -1577,11 +1518,11 @@ public final class SettingsActivity extends Activity {
 
         final String[] liveNames = {"Keep both side by side", "Back button as plain text", "Hide the back button",
                 "Stack (flick to swap)", "Merge (a small back tab on the live activity)"};
-        group("backlive", "Live activities", null, true);
+        group("backlive", "With music or a timer", null, true);
         cardReset((c, d) -> c.backLive = d.backLive);
-        choiceRow("While one is showing", liveNames, cfg.backLive,
+        choiceRow("When music or a timer is in the bar", liveNames, cfg.backLive,
                 v -> { cfg.backLive = v; apply(); refresh(); });
-        endGroup("Music and other live activities share the left side with this button. Stack and Merge are explained in the cheat sheet on the System tab.");
+        endGroup("Music and other live activities share the left side with this button. Stack and Merge are explained in the cheat sheet on the Taps tab.");
     }
 
     // ---------------------------------------------------------------- Gestures tab
@@ -1813,7 +1754,7 @@ public final class SettingsActivity extends Activity {
         new Thread(() -> {
             boolean on0 = Helper.isRunning();
             final boolean on = on0 && !Helper.isCurrent(this) ? Helper.start(this) : on0;   // app was updated: run the new helper
-            runOnUiThread(() -> { helperChecking = false; boolean changed = helperRunning == null || helperRunning != on; helperRunning = on; if (changed && (tab == T_SYSTEM || tab == T_INSIGHTS)) refresh(); });
+            runOnUiThread(() -> { helperChecking = false; boolean changed = helperRunning == null || helperRunning != on; helperRunning = on; if (changed && (tab == T_HELP || tab == T_APPS)) refresh(); });
         }).start();
     }
 
@@ -1868,7 +1809,7 @@ public final class SettingsActivity extends Activity {
         pinned.removeAll(hidden);
         int total = PanelLayout.DEFAULTS.length;
 
-        group("panelcards", "Panel cards", null, true);
+        group("panelcards", "Recent apps panel: cards", null, true);
         cardResetAction(() -> putGl(PanelLayout.SETTING, "", PanelLayout.PINS, ""));
         for (int page = PanelLayout.PAGE_ALL; page < PanelLayout.PAGE_NAMES.length; page++) {
             TextView hd = Ui.text(this, page == PanelLayout.PAGE_ALL ? "All page only" : PanelLayout.PAGE_NAMES[page], Ui.T_VALUE, cSub, 600);
@@ -1909,7 +1850,7 @@ public final class SettingsActivity extends Activity {
         }
         endGroup(null);
 
-        group("aboutpanel", "About the panel", null, true);
+        group("aboutpanel", "About the Recent apps panel", null, true);
         infoRow("The Performance panel", "It opens from the CPU or GPU chip on the recent apps screen and has four pages: All, Speed, Battery and Memory.\n\n"
                 + "All = every shown card in your order (or the five cards you used last, if you chose that below). "
                 + "Speed = modes, CPU and GPU limits, resting cores, Vulkan graphics, options. "
@@ -1919,15 +1860,24 @@ public final class SettingsActivity extends Activity {
         endGroup(null);
     }
 
-    /** The root helper, the CPU / GPU speed limits and the Overview chips (System tab). */
-    private void buildHelperSpeed() {
-        group("helper", "Root helper", null, true);
+    /** Apps kept in memory (Apps & games tab). */
+    private void buildKeptApps() {
+        group("locks", "Apps kept in memory", null, true);
+        cardReset((c, d) -> c.lockMax = d.lockMax);
+        slider("Apps you can keep open", 0, 12, cfg.lockMax, v -> v == 0 ? "Samsung's (3)" : v + " apps",
+                v -> cfg.lockMax = v, 0);
+        endGroup("Samsung lets you lock 3 apps in Recent apps so they are not closed. Each app you keep open uses memory.");
+    }
+
+    /** The background helper (Help tab). */
+    private void buildHelper() {
+        group("helper", "Background helper", null, true);
         cardResetAction(() -> { prefs.edit().putBoolean("helperAtBoot", false).apply(); Helper.setAtBoot(this, false); refresh(); });
         statusRow("Status", helperRunning == null ? "Not checked yet. Checking needs root." : helperRunning ? "Running" : "Not running");
         divider();
         actionRow("Check again", null, cAccent, v -> { helperRunning = null; checkHelper(); });
         divider();
-        switchRow("Run the helper", "Closing apps and speed limits need root, so this small helper does them for the Overview screen. Allow root for this app when asked. "
+        switchRow("Turn on the helper", "Closing apps and speed limits need root, so this small helper does them for the Recent apps screen. Allow root for this app when asked. "
                         + (helperRunning == null ? "It has not been checked yet." : helperRunning ? "It is running." : "It is not running – the RAM, swap and speed buttons won't do anything."),
                 helperRunning != null && helperRunning, v -> {
                     new Thread(() -> {
@@ -1948,19 +1898,23 @@ public final class SettingsActivity extends Activity {
         }
         endGroup("While idle, it sleeps until one of its settings changes. It does not keep the phone awake.");
 
+    }
+
+    /** Processor and graphics limits (Battery tab). */
+    private void buildLimits() {
         // ---- speed limits
         final int[] pcts = {85, 70, 55, 40};
         final String[] pctNames = {"85% – barely noticeable", "70% – cooler, still smooth", "55% – battery saver", "40% – lowest (slow)"};
         int cpuPick = gl("sbmods_cpu_pick", 55), gpuPick = gl("sbmods_gpu_pick", 55);
-        group("speed", "CPU and GPU speed", null, true);
+        group("speed", "Processor and graphics limits", null, true);
         cardResetAction(() -> putGl("sbmods_cpu_pick", "55", "sbmods_gpu_pick", "55", "sbmods_limit_min", "15", "sbmods_cool_at", "360"));
         statusRow("Right now", speedNow());
         divider();
         int ci = 2, gi = 2;
         for (int i = 0; i < pcts.length; i++) { if (pcts[i] == cpuPick) ci = i; if (pcts[i] == gpuPick) gi = i; }
-        choiceRow("CPU quick limit", pctNames, ci, i -> putGl("sbmods_cpu_pick", String.valueOf(pcts[i])));
+        choiceRow("Processor limit", pctNames, ci, i -> putGl("sbmods_cpu_pick", String.valueOf(pcts[i])));
         divider();
-        choiceRow("GPU quick limit", pctNames, gi, i -> putGl("sbmods_gpu_pick", String.valueOf(pcts[i])));
+        choiceRow("Graphics limit", pctNames, gi, i -> putGl("sbmods_gpu_pick", String.valueOf(pcts[i])));
         divider();
         actionRow("Full speed now", "Ends any CPU / GPU limit, cool-down and core parking. A CPU limit also turns on power saving until it ends. Samsung's own heat protection always stays on.", cAccent, v ->
                 putGl(dev.gitesh.sbmods.Config.limitsOff()));
@@ -1980,7 +1934,11 @@ public final class SettingsActivity extends Activity {
                 + "When the phone gets warm, Samsung lowers that maximum by itself. You may see this as a “heat limit”. This app never removes it. "
                 + "The quick limit is what a long-press on the CPU or GPU chip turns on. The Performance panel (tap) lets you pick any level.");
 
-        group("Overview screen");
+    }
+
+    /** The chips on the Recent apps screen (Apps & games tab). */
+    private void buildOverviewChips() {
+        group("Recent apps chips");
         cardResetAction(() -> putGl("sbmods_recents_chip", "1"));
         switchRow("Show the chips", "RAM, swap and temperature show at the top of Recents. CPU and GPU show at the bottom.",
                 gl("sbmods_recents_chip", 1) != 0, v -> putGl("sbmods_recents_chip", v ? "1" : "0"));
@@ -1994,14 +1952,14 @@ public final class SettingsActivity extends Activity {
 
     /** Top screen speed: Android's own cap, set through a root job (this app may not write that setting). */
     private void buildScreenSpeed() {
-        group("screenspeed", "Screen speed", null, true);
+        group("screenspeed", "Screen smoothness", null, true);
         cardResetAction(() -> { setHz(0); putGl("sbmods_hz_psm", "0", "sbmods_hz_low", "0", "sbmods_hz_low_at", "20", "sbmods_off_max", "0"); });
         int cap = gl("sbmods_hz_max", 0);
-        segmentedBlock("Top speed of the screen (times a second)", HZ_LABELS, cap == 96 ? 1 : cap == 60 ? 2 : 0, i -> askHz(i == 1 ? 96 : i == 2 ? 60 : 0));
+        segmentedBlock("Screen smoothness (Hz)", HZ_LABELS, cap == 96 ? 1 : cap == 60 ? 2 : 0, i -> askHz(i == 1 ? 96 : i == 2 ? 60 : 0));
         divider();
-        choiceRow("Top speed while power saving is on", HZ_AUTO, hzIdx(gl("sbmods_hz_psm", 0)), i -> putGl("sbmods_hz_psm", String.valueOf(hzVal(i))));
+        choiceRow("Smoothness while power saving is on", HZ_AUTO, hzIdx(gl("sbmods_hz_psm", 0)), i -> putGl("sbmods_hz_psm", String.valueOf(hzVal(i))));
         divider();
-        choiceRow("Top speed when the battery is low", HZ_AUTO, hzIdx(gl("sbmods_hz_low", 0)), i -> putGl("sbmods_hz_low", String.valueOf(hzVal(i))));
+        choiceRow("Smoothness when the battery is low", HZ_AUTO, hzIdx(gl("sbmods_hz_low", 0)), i -> putGl("sbmods_hz_low", String.valueOf(hzVal(i))));
         if (gl("sbmods_hz_low", 0) > 0) {
             divider();
             final int[] at = {10, 15, 20, 30};
@@ -2016,7 +1974,7 @@ public final class SettingsActivity extends Activity {
         switchRow("Maximum saving while the screen is off", "Turns power saving on and automatic sync off after the screen goes off, and puts them back when it comes on. Mail and chat apps that don't use Google's push service may catch up a little later.",
                 gl("sbmods_off_max", 0) == 1, v -> putGl("sbmods_off_max", v ? "1" : "0"));
         endGroup("The screen still slows down by itself when nothing moves. A lower top speed saves battery but looks a little less smooth. "
-                + "The lowest of your choices applies. The same top speed choice is on the Panel's Battery page. Nothing runs on a timer: it acts only when power saving changes or the screen turns on or off.");
+                + "The lowest of your choices applies. The same choice is on the Battery page of the Recent apps panel. Nothing runs on a timer: it acts only when power saving changes or the screen turns on or off.");
     }
 
     private final android.os.Handler animH = new android.os.Handler(android.os.Looper.getMainLooper());
@@ -2084,7 +2042,7 @@ public final class SettingsActivity extends Activity {
 
     /** Deep sleep timing while the screen is off, and the apps that are allowed to ignore deep sleep. */
     private void buildSleep() {
-        group("sleep", "Sleep sooner", null, true);
+        group("sleep", "Deep sleep sooner", null, true);
         cardResetAction(() -> setSleepMode(0));
         segmentedBlock("Deep sleep after the screen goes off", SLEEP_MODES, Math.max(0, Math.min(3, gl("sbmods_sleep_mode", 0))), this::setSleepMode);
         divider();
@@ -2095,7 +2053,7 @@ public final class SettingsActivity extends Activity {
                 + "Smart learns, hour by hour, how long the phone is usually left alone after the screen goes off, and sleeps sooner only at those hours; it needs a few days. "
                 + "Sooner is about 10 minutes, Soonest about 3. Picking up or moving the phone wakes it as usual, and calls and alarm clocks still work. "
                 + "Messages from apps that don't use Google's push service can arrive a little late while the phone sleeps. "
-                + "The gain is small: check the sleep report on the Panel's Battery page after a night. Needs root; nothing runs in the background.");
+                + "The gain is small: check the sleep report on the Battery page of the Recent apps panel after a night. Needs root; nothing runs in the background.");
     }
 
     private void setSleepMode(int mode) {
@@ -2392,15 +2350,15 @@ public final class SettingsActivity extends Activity {
         try { return android.provider.Settings.Global.getString(getContentResolver(), key); } catch (Throwable t) { return null; }
     }
 
-    private void buildMore() {
-        group("cheat", "Cheat sheet: what taps do", "In the app, on the status bar, on the Overview screen", false);
+    private void buildCheatSheet() {
+        group("cheat", "Cheat sheet: what taps do", "In the app, on the status bar, on the Recent apps screen", false);
         infoRow("In this app",
                 "Preview: press an item and drag it; drop it on the grey tray to put it back in Samsung's place.\n"
                 + "Sliders: tap “Reset” next to a value to go back to the starting value.\n"
-                + "System tab: every status bar item can have a tap, double-tap and long-press action. “Test” tries it.");
+                + "Taps tab: every status bar item can have a tap, double-tap and long-press action. “Test” tries it.");
         divider();
         infoRow("Status bar",
-                "Clock, temperature and battery: tap, double-tap and long-press do whatever you chose in the System tab.\n"
+                "Clock, temperature and battery: tap, double-tap and long-press do whatever you chose in the Taps tab.\n"
                 + "Back button: tap = jump back to the previous app.\n"
                 + "Camera hole: tap = Samsung Finder (or your choice). Empty spot, double-tap (if on) = lock the screen.");
         divider();
@@ -2409,7 +2367,7 @@ public final class SettingsActivity extends Activity {
                 + "\u201cStack\u201d lets them share one spot, with the back button's edge peeking out underneath. Flick sideways on the live activity (or long-press it) to bring the back button forward. "
                 + "Tap the button to go back, flick it away or double-tap it to return to the live activity.");
         divider();
-        infoRow("Overview screen (recent apps)",
+        infoRow("Recent apps screen",
                 "RAM: tap = close background apps. Swap: tap = deep clean. Temp: tap = cool-down on / off. Long-press any of them = Device care.\n"
                 + "CPU (bottom right) and GPU (bottom left) show the live speed and what holds it back (full speed, Samsung's heat or power saving limit, or your limit). "
                 + "Tap = Performance panel, long-press = quick limit on / off.\n"
@@ -2417,14 +2375,22 @@ public final class SettingsActivity extends Activity {
                 + "Speed = modes, CPU and GPU limits, resting cores, Vulkan graphics, options. "
                 + "Battery = power saving switch, screen smoothness (120 / 60 Hz), battery report, battery health with a shortcut to Samsung's battery protection. "
                 + "Memory = memory and swap, clean-up buttons, busiest apps with Stop. "
-                + "The panel opens on the page you used last. Choose which cards show and in what order in the Panel tab.");
+                + "The panel opens on the page you used last. Choose which cards show and in what order in the Apps & games tab.");
         endGroup(null);
 
+    }
+
+    /** Burn-in protection (Status bar tab). */
+    private void buildScreenCare() {
         group("Screen care");
         switchRow("Protect against screen burn-in", "Moves the status bar a few pixels every couple of minutes so fixed icons don't leave marks. Runs only while the screen is on.",
                 cfg.pixelShift, v -> { cfg.pixelShift = v; apply(); });
         endGroup(null);
 
+    }
+
+    /** Restart / re-enable (Help tab). */
+    private void buildFixes() {
         group("wrong", "If something looks wrong", "Restart the status bar, turn the mod back on", false);
         actionRow("Restart the status bar", "Reloads it. Use this after installing an update.", cAccent, v -> restartSystemUi());
         divider();
@@ -2435,7 +2401,11 @@ public final class SettingsActivity extends Activity {
                 });
         endGroup("After you restart the phone without root, the status bar goes back to Samsung's own.");
 
-        group("Backup", "Your options", "Saved as a file in Downloads. Restoring puts back the newest backup and replaces the current options.", false);
+    }
+
+    /** Backup and restore (Help tab). */
+    private void buildBackup() {
+        group("Backup", "Backup", "Saved as a file in Downloads. Restoring puts back the newest backup and replaces the current options.", false);
         actionRow("Setup guide", "Root, the module and bringing back a backup, step by step", cAccent, v ->
                 startActivity(new Intent(this, OnboardingActivity.class).putExtra("reopen", true)));
         divider();
@@ -2469,6 +2439,10 @@ public final class SettingsActivity extends Activity {
                         }).start()).show());
         endGroup("Saved once a day automatically; the newest 7 daily backups are kept. A backup holds only the options and panel settings, not speed limits or the charge limit.");
 
+    }
+
+    /** Restore defaults / undo everything (Help tab). */
+    private void buildStartOver() {
         group("Start over");
         actionRow("Restore defaults", "Every option goes back to how it was at the start, and the Performance panel shows all its cards again", cErr, v ->
                 new Ui.Dlg(this, pal)
@@ -2636,7 +2610,7 @@ public final class SettingsActivity extends Activity {
             state = 2;
             shortText = "Switched off";
             detail = "The mod switched itself off because the status bar crashed three times right after loading it.\n\n"
-                    + "Open the System tab, tap “Turn the mod back on”, then restart the status bar.";
+                    + "Open the Help tab, tap “Turn the mod back on”, then restart the status bar.";
         } else if (modDisabled) {
             state = 2;
             shortText = "Stopped";
@@ -2707,7 +2681,7 @@ public final class SettingsActivity extends Activity {
         boolean changed = !sb.toString().equals(scSig);
         scSig = sb.toString();
         refreshStatusPill();
-        if (changed && tab == T_SYSTEM) refresh();
+        if (changed && tab == T_HELP) refresh();
     }
 
     private View findingView(SelfCheck.Finding f, Runnable before) {
