@@ -277,6 +277,7 @@ public final class SettingsActivity extends Activity {
         content.addView(topBox, new LinearLayout.LayoutParams(-1, -2));
         // the chip row sits outside the scrolling list, so it stays on screen while the cards scroll
         chipHost = new HorizontalScrollView(this);
+        chipHost.setOnScrollChangeListener((v, x, y, ox, oy) -> Ui.Frost.invalidateShown());
         chipHost.setHorizontalScrollBarEnabled(false);
         chipHost.setVisibility(View.GONE);
         chipRow = new LinearLayout(this);
@@ -286,12 +287,13 @@ public final class SettingsActivity extends Activity {
         content.addView(chipHost, new LinearLayout.LayoutParams(-1, -2));
         final View wall = new View(this);
         wallView = wall;
+        Ui.Frost.setWall(wall);
         paintWall();
         refreshWall();
         scroll = new ScrollView(this);
         scroll.setClipToPadding(false);
         scroll.setVerticalScrollBarEnabled(false);
-        scroll.setOnScrollChangeListener((v, x, y, ox, oy) -> updateChipActive(y));
+        scroll.setOnScrollChangeListener((v, x, y, ox, oy) -> { updateChipActive(y); Ui.Frost.invalidateShown(); });   // glass shows the wallpaper behind its new spot
         page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
         page.setPadding(dp(Ui.S4), dp(Ui.S1), dp(Ui.S4), dp(Ui.NAV_H + 32));
@@ -398,7 +400,7 @@ public final class SettingsActivity extends Activity {
         previewHolder.removeAllViews();
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setBackground(Ui.cardOverWall(this, pal));
+        card.setBackground(Ui.liquid(card, pal, dp(Ui.R_CARD)));
         card.setPadding(dp(Ui.S3), dp(Ui.S3), dp(Ui.S3), dp(Ui.S2));   // compact: the bar and its tray only
         float d = getResources().getDisplayMetrics().density;
         android.view.WindowMetrics wm = getWindowManager().getMaximumWindowMetrics();
@@ -428,9 +430,10 @@ public final class SettingsActivity extends Activity {
     private View buildNav() {
         navBar = new LinearLayout(this);
         navBar.setPadding(dp(Ui.S3), dp(Ui.S2), dp(Ui.S3), dp(Ui.S2));
-        Ui.Glass navGlass = Ui.glass(this, pal, Ui.NAV_H / 2f);
-        navGlass.setFill((pal.glass & 0x00FFFFFF) | 0xFF000000);   // solid: the page text no longer shows through the bar
+        Ui.Liquid navGlass = Ui.liquid(navBar, pal, dp(Ui.NAV_H / 2f));   // frost of the wallpaper: the page text never shows through
+        navGlass.setTint(pal.night ? 0xA6140F2E : 0xC7FFFFFF);
         navBar.setBackground(navGlass);
+        navBar.setElevation(dp(Ui.S2));
         fillTabs();
         return navBar;
     }
@@ -733,7 +736,7 @@ public final class SettingsActivity extends Activity {
         for (int i = 0; i < chipViews.size(); i++) {
             TextView t = chipViews.get(i);
             boolean on = i == chipActive;
-            t.setBackground(Ui.ripple(pal, round(on ? pal.acc : pal.card, dp(Ui.R_CARD), on ? 0 : dp(1), pal.line), null));
+            t.setBackground(Ui.ripple(pal, on ? round(pal.acc, dp(Ui.R_CARD), 0, 0) : Ui.liquid(t, pal, dp(Ui.R_CARD)), null));
             t.setTextColor(on ? pal.onAcc : cSub);
         }
     }
@@ -2814,7 +2817,7 @@ public final class SettingsActivity extends Activity {
         advNow = null;
         LinearLayout c = new LinearLayout(this);
         c.setOrientation(LinearLayout.VERTICAL);
-        c.setBackground(Ui.cardOverWall(this, pal));
+        c.setBackground(Ui.liquid(c, pal, dp(Ui.R_CARD)));
         c.setClipToOutline(true);
         c.setPadding(dp(Ui.S4), 0, dp(Ui.S4), dp(Ui.S1));
         page.addView(c, cardParams());

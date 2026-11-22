@@ -208,6 +208,9 @@ public final class Ui {
                 shade();
                 invalidateSelf();
             });
+            fade.addListener(new android.animation.AnimatorListenerAdapter() {
+                @Override public void onAnimationEnd(android.animation.Animator a) { Frost.build(Wall.this); }   // once, at the end (not per frame)
+            });
             fade.start();
         }
 
@@ -252,6 +255,7 @@ public final class Ui {
                 ln.cubicTo(90 * s, 190 * s + dy, 170 * s, 300 * s + dy, 270 * s, 222 * s + dy);
                 ln.cubicTo(370 * s, 144 * s + dy, 400 * s, 140 * s + dy, 460 * s, 205 * s + dy);
             }
+            Frost.build(this);
         }
 
         @Override public void draw(Canvas c) {
@@ -309,6 +313,127 @@ public final class Ui {
     }
 
     /** Glass for the settings app (nav bar, info sheet): frosted fill plus the highlight border, no realtime blur. */
+    /**
+     * The frosted copy of the settings wallpaper that liquid glass shows through: the wallpaper drawn once at 1/SCALE size and
+     * box-blurred once (a few ms), redone only when the wallpaper's size or colours change. No live blur, nothing per frame.
+     */
+    public static final class Frost {
+        static final int SCALE = 6;
+        static android.graphics.Bitmap bmp;
+        static java.lang.ref.WeakReference<View> wallView = new java.lang.ref.WeakReference<>(null);
+        static final java.util.ArrayList<java.lang.ref.WeakReference<View>> users = new java.util.ArrayList<>();
+        private Frost() {}
+
+        /** Redraws the glass that is on screen (its view moved: scrolling). */
+        public static void invalidateShown() {
+            for (int i = users.size() - 1; i >= 0; i--) { View v = users.get(i).get(); if (v == null) users.remove(i); else if (v.isAttachedToWindow()) v.invalidate(); }
+        }
+
+        /** The view the wallpaper is drawn on (glass positions are measured from it). */
+        public static void setWall(View v) { wallView = new java.lang.ref.WeakReference<>(v); }
+
+        static void build(Wall w) {
+            android.graphics.Rect b = w.getBounds();
+            int bw = Math.max(1, b.width() / SCALE), bh = Math.max(1, b.height() / SCALE);
+            if (b.isEmpty()) return;
+            android.graphics.Bitmap m = bmp != null && bmp.getWidth() == bw && bmp.getHeight() == bh ? bmp
+                    : android.graphics.Bitmap.createBitmap(bw, bh, android.graphics.Bitmap.Config.ARGB_8888);
+            Canvas c = new Canvas(m);
+            c.scale(1f / SCALE, 1f / SCALE);
+            c.translate(-b.left, -b.top);
+            w.draw(c);
+            int[] px = new int[bw * bh];
+            m.getPixels(px, 0, bw, 0, 0, bw, bh);
+            for (int pass = 0; pass < 3; pass++) { boxBlur(px, bw, bh, 4, true); boxBlur(px, bw, bh, 4, false); }
+            m.setPixels(px, 0, bw, 0, 0, bw, bh);
+            bmp = m;
+            for (int i = users.size() - 1; i >= 0; i--) { View v = users.get(i).get(); if (v == null) users.remove(i); else v.invalidate(); }
+        }
+
+        /** One horizontal or vertical running-sum box blur pass, edges clamped. */
+        private static void boxBlur(int[] px, int w, int h, int rad, boolean horiz) {
+            int len = horiz ? w : h, lines = horiz ? h : w, win = rad * 2 + 1;
+            int[] out = new int[len];
+            for (int l = 0; l < lines; l++) {
+                int ra = 0, rr = 0, rg = 0, rb = 0;
+                for (int i = -rad; i <= rad; i++) { int c = px[idx(Math.max(0, Math.min(len - 1, i)), l, w, horiz)]; ra += c >>> 24; rr += (c >> 16) & 255; rg += (c >> 8) & 255; rb += c & 255; }
+                for (int i = 0; i < len; i++) {
+                    out[i] = ((ra / win) << 24) | ((rr / win) << 16) | ((rg / win) << 8) | (rb / win);
+                    int cin = px[idx(Math.min(len - 1, i + rad + 1), l, w, horiz)], cout = px[idx(Math.max(0, i - rad), l, w, horiz)];
+                    ra += (cin >>> 24) - (cout >>> 24); rr += ((cin >> 16) & 255) - ((cout >> 16) & 255);
+                    rg += ((cin >> 8) & 255) - ((cout >> 8) & 255); rb += (cin & 255) - (cout & 255);
+                }
+                for (int i = 0; i < len; i++) px[idx(i, l, w, horiz)] = out[i];
+            }
+        }
+        private static int idx(int i, int l, int w, boolean horiz) { return horiz ? l * w + i : i * w + l; }
+    }
+
+    /**
+     * Liquid glass: the frosted wallpaper right behind this view, a tint for readability, a soft sheen in the top part and a
+     * light rim that fades downwards. Static: it redraws only when its view does (scrolling, a change), never on a timer.
+     */
+    public static final class Liquid extends Drawable {
+        private final View host;
+        private final Paint frost = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG), tint = new Paint(Paint.ANTI_ALIAS_FLAG),
+                sheen = new Paint(Paint.ANTI_ALIAS_FLAG), rim = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final RectF r = new RectF();
+        private final android.graphics.Matrix m = new android.graphics.Matrix();
+        private final int[] a = new int[2], b = new int[2];
+        private final float radius, sw;
+        private final boolean night;
+        private android.graphics.Bitmap shaderFor;
+
+        public Liquid(View host, boolean night, int tintColor, float radiusPx, float strokePx) {
+            this.host = host; this.night = night; radius = radiusPx; sw = strokePx;
+            tint.setColor(tintColor);
+            rim.setStyle(Paint.Style.STROKE); rim.setStrokeWidth(strokePx);
+            if (Frost.users.size() > 64) Frost.users.removeIf(w -> w.get() == null || !w.get().isAttachedToWindow());   // old cards from earlier builds
+            Frost.users.add(new java.lang.ref.WeakReference<>(host));
+        }
+
+        public void setTint(int color) { if (tint.getColor() != color) { tint.setColor(color); invalidateSelf(); } }
+
+        @Override protected void onBoundsChange(android.graphics.Rect bd) {
+            float h = Math.max(1, bd.height());
+            sheen.setShader(new LinearGradient(0, bd.top, 0, bd.top + Math.min(h * 0.55f, radius * 3f + 24),
+                    night ? 0x1FFFFFFF : 0x40FFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP));
+            rim.setShader(new LinearGradient(0, bd.top, 0, bd.bottom,
+                    new int[]{night ? 0x5CFFFFFF : 0xB3FFFFFF, night ? 0x14FFFFFF : 0x33FFFFFF, night ? 0x26FFFFFF : 0x4DFFFFFF},
+                    new float[]{0, 0.5f, 1}, Shader.TileMode.CLAMP));
+        }
+
+        @Override public void draw(Canvas c) {
+            r.set(getBounds());
+            r.inset(sw / 2f, sw / 2f);
+            float rad = Math.max(0, radius - sw / 2f);
+            android.graphics.Bitmap fb = Frost.bmp;
+            View wall = Frost.wallView.get();
+            if (fb != null && wall != null) {
+                if (shaderFor != fb) { frost.setShader(new android.graphics.BitmapShader(fb, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)); shaderFor = fb; }
+                host.getLocationInWindow(a);
+                wall.getLocationInWindow(b);
+                m.setScale(Frost.SCALE, Frost.SCALE);
+                m.postTranslate(b[0] - a[0], b[1] - a[1]);
+                frost.getShader().setLocalMatrix(m);
+                c.drawRoundRect(r, rad, rad, frost);
+            }
+            c.drawRoundRect(r, rad, rad, tint);
+            c.drawRoundRect(r, rad, rad, sheen);
+            c.drawRoundRect(r, rad, rad, rim);
+        }
+
+        @Override public void getOutline(Outline o) { o.setRoundRect(getBounds(), radius); }
+        @Override public void setAlpha(int al) { tint.setAlpha(al); }
+        @Override public void setColorFilter(ColorFilter f) {}
+        @Override public int getOpacity() { return PixelFormat.TRANSLUCENT; }
+    }
+
+    /** Liquid glass for a card over the settings wallpaper (tint keeps text readable in both themes). */
+    public static Liquid liquid(View host, Pal p, float radiusPx) {
+        return new Liquid(host, p.night, p.night ? 0x8C140F2E : 0xB8FFFFFF, radiusPx, Math.max(1, dp(host.getContext(), 1)));
+    }
+
     public static Glass glass(Context c, Pal p, float radiusDp) {
         return new Glass(p.glass, p.glassBd, p.glassHi, dp(c, radiusDp), Math.max(1, dp(c, 1)));
     }
