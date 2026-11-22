@@ -133,9 +133,14 @@ final class RecentsChip {
             }
         }
         owner = a;
+        caShiftDp = Math.max(0, Math.min(40, Global.gint(a, "sbmods_ca_shift", 12)));   // used when there are no suggested apps
+        boolean big = Global.gint(a, "sbmods_recents_big", 1) != 0;   // "Use the empty space" off: Samsung's own places
+        caOn = big;
+        if (!big) caShiftDp = 0;
+        topUpDp = big ? Math.max(0, Math.min(20, Global.gint(a, "sbmods_top_up", 10))) : 0;
+        sugScale = Math.max(50, Math.min(100, Global.gint(a, "sbmods_sug_pct", 100))) / 100f;
         Global.gset(a, "sbmods_watch", "1");   // the helper measures CPU load only while this screen is open
-        main.removeCallbacks(tick);
-        main.post(tick);
+        fitBeforeDraw();
     }
 
     private static ChipView chip(Activity a, Runnable tap, Runnable longTap) {
@@ -164,8 +169,27 @@ final class RecentsChip {
     /** A chip just became visible (Overview opened): refresh now instead of waiting for the slow hidden tick. */
     static void kick() {
         if (owner == null || topRow == null) return;
+        fitBeforeDraw();
+    }
+
+    private static android.view.ViewTreeObserver.OnPreDrawListener preFit;
+
+    /** Size the chips after layout but before the first frame, so they never show at full size first. */
+    private static void fitBeforeDraw() {
         main.removeCallbacks(tick);
-        main.post(tick);
+        main.postDelayed(tick, 300);   // fallback if no frame gets drawn
+        if (preFit != null || topRow == null) return;
+        final View root = topRow.getRootView();
+        preFit = new android.view.ViewTreeObserver.OnPreDrawListener() {
+            @Override public boolean onPreDraw() {
+                root.getViewTreeObserver().removeOnPreDrawListener(this);
+                preFit = null;
+                main.removeCallbacks(tick);
+                tick.run();
+                return !root.isLayoutRequested();   // sizes changed: skip this frame, draw the fitted one
+            }
+        };
+        root.getViewTreeObserver().addOnPreDrawListener(preFit);
     }
 
     private static final Runnable tick = new Runnable() {
@@ -227,25 +251,63 @@ final class RecentsChip {
                 v.setVisibility(View.GONE);
             }
         }
-        int[] f = new int[2], c = new int[2];
-        flow.getLocationInWindow(f);
-        ((View) topRow.getParent()).getLocationInWindow(c);
+        int[] f = restPos(flow, (View) topRow.getParent());   // where the buttons end up, not where the open animation has them now
         FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) topRow.getLayoutParams();
-        int want = f[1] - c[1] + Math.max(0, (flow.getHeight() - topRow.getHeight()) / 2);
+        int want = f[1] + Math.max(0, (flow.getHeight() - topRow.getHeight()) / 2) - topUpPx(a, flow);
         if (lp.topMargin != want) { lp.topMargin = want; topRow.setLayoutParams(lp); }
     }
 
     /** CPU / GPU chips: vertically centred on Samsung's "Close all" and only as wide as the room beside it. */
+    /** Samsung's top row ("N active apps", search, more) moved up towards the status bar: returns the px it moved. */
+    private static int topUpPx(Activity a, View flow) {
+        int px = Math.round(topUpDp * a.getResources().getDisplayMetrics().density);
+        // top_buttons_flow is a ConstraintLayout Flow helper: moving it does not move the buttons it arranges, so move the buttons themselves
+        if (flow.getTranslationY() != 0f) flow.setTranslationY(0f);
+        for (View v : new View[]{byId(a, "search_button"), byId(a, "moreOption"), byId(a, "fgsButtonContainer")}) if (v != null && v.getTranslationY() != -px) v.setTranslationY(-px);
+        return px;
+    }
+
+    private static int cardsId = -2;
+
+    /** The task cards: bigger cards reach into the top strip, and their small app icons are not Samsung's top buttons. */
+    private static boolean isCards(View c) {
+        if (cardsId == -2) cardsId = c.getResources().getIdentifier("taskListContainer", "id", Entry.LAUNCHER);
+        return cardsId != 0 && c.getId() == cardsId;
+    }
+
+    private static View byId(Activity a, String name) {
+        int id = a.getResources().getIdentifier(name, "id", Entry.LAUNCHER);
+        return id == 0 ? null : a.findViewById(id);
+    }
+
+    private static int topUpDp = 10;
+    private static boolean caOn = true;
+    private static float sugScale = 1f;   // Samsung lays out the lower 6-column row itself (RecentsSize); this extra view scale stays for tuning
+
+    /** dp "Close all" moves down (global sbmods_ca_shift, read when Overview opens; 0 = Samsung's place). */
+    private static int caShiftDp = 12;
+
     private static void alignBottom(Activity a) {
         if (gpuChip == null || cpuChip == null || !(gpuChip.getParent() instanceof View)) return;
         View box = (View) gpuChip.getParent();
         View btn = closeAll(box, 0);
         if (btn == null) return;
         float d = a.getResources().getDisplayMetrics().density;
-        int[] b = new int[2], c = new int[2];
-        btn.getLocationInWindow(b);
-        box.getLocationInWindow(c);
-        int left = b[0] - c[0], right = box.getWidth() - (left + btn.getWidth());
+        int[] b = restPos(btn, box), c = {0, 0};   // laid-out height: ignores Samsung's slide-in, so the chips don't chase it
+        // "Close all" sits ~78 px above the dock icons: move it (and the chips with it) down into that gap, so the bigger cards fit above it
+        int shift = Math.round(caShiftDp * d);
+        View sug = byId(a, "suggestedAppsContainer");
+        if (caOn && sug != null && sug.isShown() && sug.getHeight() > 0) {
+            // Samsung's suggested apps (6 smaller icons, see RecentsSize): "Close all" sits just above their icons
+            float sc = sugScale;
+            sug.setPivotX(sug.getWidth() / 2f); sug.setPivotY(sug.getHeight());
+            if (sug.getScaleX() != sc) { sug.setScaleX(sc); sug.setScaleY(sc); }
+            int iconTop = restPos(sug, box)[1] + Math.round(sug.getHeight() * (1 - sc) + 21 * d * sc);   // icons are drawn ~21 dp below the row's top
+            shift = Math.max(0, Math.min(Math.round(48 * d), iconTop - Math.round(9 * d) - (b[1] + btn.getHeight())));
+        }
+        if (btn.getTranslationY() != shift) btn.setTranslationY(shift);
+        b[1] += shift;
+        int left = Math.max(0, (box.getWidth() - btn.getWidth()) / 2), right = left;   // "Close all" is always centred (its layout x is offset by Samsung, measured 2026-11-23)
         int room = Math.min(left, right) - Math.round((EDGE - ChipView.PAD) * d) - Math.round(6 * d);
         int centre = box.getHeight() - (b[1] - c[1] + btn.getHeight() / 2);
         for (ChipView t : new ChipView[]{gpuChip, cpuChip}) {
@@ -257,6 +319,20 @@ final class RecentsChip {
             if (lp.bottomMargin != bottom) { lp.bottomMargin = bottom; change = true; }
             if (change) t.setLayoutParams(lp);
         }
+    }
+
+    /** v's position inside `anchor` from layout alone (no translation / animation), or its window offset if not inside. */
+    private static int[] restPos(View v, View anchor) {
+        int x = 0, y = 0;
+        View p = v;
+        while (p != null && p != anchor) {
+            x += p.getLeft() - (p == v ? 0 : p.getScrollX()); y += p.getTop() - (p == v ? 0 : p.getScrollY());
+            p = p.getParent() instanceof View ? (View) p.getParent() : null;
+        }
+        if (p == anchor) return new int[]{x, y};
+        int[] a = new int[2], o = new int[2];
+        v.getLocationInWindow(a); anchor.getLocationInWindow(o);
+        return new int[]{a[0] - o[0], a[1] - o[1]};
     }
 
     /** Samsung's "Close all": the wide clickable button in the middle of the bottom area. */
@@ -294,7 +370,7 @@ final class RecentsChip {
         int[] l = new int[2];
         for (int i = 0; i < g.getChildCount(); i++) {
             View c = g.getChildAt(i);
-            if (c == topRow || c == gpuChip || c == cpuChip || !c.isShown() || c.getWidth() <= 0 || c.getHeight() <= 0) continue;
+            if (c == topRow || c == gpuChip || c == cpuChip || !c.isShown() || c.getWidth() <= 0 || c.getHeight() <= 0 || isCards(c)) continue;
             c.getLocationInWindow(l);
             float d = c.getResources().getDisplayMetrics().density;
             boolean small = c.getWidth() < 100 * d && c.getHeight() < 70 * d;
@@ -315,7 +391,7 @@ final class RecentsChip {
         int[] l = new int[2];
         for (int i = 0; i < g.getChildCount(); i++) {
             View c = g.getChildAt(i);
-            if (c == topRow || c == gpuChip || c == cpuChip || !c.isShown() || c.getWidth() <= 0 || c.getHeight() <= 0) continue;
+            if (c == topRow || c == gpuChip || c == cpuChip || !c.isShown() || c.getWidth() <= 0 || c.getHeight() <= 0 || isCards(c)) continue;
             c.getLocationInWindow(l);
             float d = c.getResources().getDisplayMetrics().density;
             boolean small = c.getWidth() < 260 * d && c.getHeight() < 70 * d && c.getHeight() > 14 * d;
@@ -346,8 +422,9 @@ final class RecentsChip {
         cp = effPct(ctx, "cpu", cp, cool); gp = effPct(ctx, "gpu", gp, cool);   // cool-down uses your levels; 100 = Full on purpose
         int load = Global.gint(ctx, "sbmods_cpu_load", -1);
         boolean psm = Global.gint(ctx, "low_power", 0) == 1;   // Samsung also caps the speed while power saving is on
-        chipFor(cpuChip, "CPU", ps.cpuCur > 0 ? Perf.ghz(ps.cpuCur) + (load >= 0 ? " \u00b7 " + load + "%" : "") : "\u2014", cp, ps.cpuCap, ps.cpuHw, true, psm);
-        chipFor(gpuChip, "GPU", ps.gpuCur > 0 ? ps.gpuCur + " MHz" + (gpuAvg(ps.gpuBusy) >= 3 ? " \u00b7 " + gpuAvg(-2) + "%" : "") : "\u2014", gp, ps.gpuCap, ps.gpuHw, false, psm);
+        // short enough for the ~75 dp beside "Close all": speed on top, load + state below (the exact cap is in the panel)
+        chipFor(cpuChip, "CPU", ps.cpuCur > 0 ? Perf.ghz(ps.cpuCur) : "\u2014", load >= 0 ? load + "% " : "", cp, ps.cpuCap, ps.cpuHw, true, psm);
+        chipFor(gpuChip, "GPU", ps.gpuCur > 0 ? ps.gpuCur + " MHz" : "\u2014", gpuAvg(ps.gpuBusy) >= 3 ? gpuAvg(-2) + "% " : "", gp, ps.gpuCap, ps.gpuHw, false, psm);
     }
 
     /** RAM and swap from /proc/meminfo (shared by the chips and the panel's Memory card). */
@@ -428,23 +505,25 @@ final class RecentsChip {
     }
 
     /** Fill a CPU / GPU chip: live speed, and on the line below what (if anything) holds it back. */
-    private static void chipFor(ChipView t, String name, String value, int pct, int cap, int hw, boolean cpu, boolean psm) {
+    private static void chipFor(ChipView t, String name, String value, String load, int pct, int cap, int hw, boolean cpu, boolean psm) {
         String sub; int dot, subC;
         int want = Perf.pick(cpu ? Perf.cpuSteps : Perf.gpuSteps, hw, pct);
         if (pct > 0) {
             boolean held = want > 0 && cap > 0 && cap <= want;
             boolean fresh = android.os.SystemClock.uptimeMillis() - PerfPanel.pChangedAt < 4000;
-            sub = held ? "Limited · max " + (cpu ? Perf.ghz(cap) : cap + " MHz") : fresh ? "Applying…" : "Limit not applied";
+            sub = held ? "Limit" : fresh ? "Applying…" : "Not applied";
+            if (!held) load = "";   // the rare states get the whole line
             dot = held || fresh ? CYAN : RED; subC = dot;
         } else if (cap > 0 && hw > 0 && cap < hw * 0.97f) {
-            sub = (psm ? "Power saving · " : "Heat limit · ") + (cpu ? Perf.ghz(cap) : cap + " MHz");
+            sub = psm ? "Saver" : "Heat";
             dot = AMBER; subC = AMBER;
         } else {
-            sub = "Full speed";
-            dot = GREEN; subC = 0x99FFFFFF;
+            sub = "Full";
+            dot = GREEN; subC = GREEN;   // no dot any more: the line below carries the colour
         }
-        t.set(name, value, dot, -1);
-        t.sub(sub, subC);
+        t.setContentDescription(name);   // the unit (GHz / MHz) already says which one it is; screen readers still hear the name
+        t.set(value.startsWith("\u2014") ? name : "", value, dot, -1);
+        t.sub(load + sub, subC);
     }
 
     /** The level really in force: 0 / 100 = full speed; during cool-down "no choice" (0) means your picked level. */

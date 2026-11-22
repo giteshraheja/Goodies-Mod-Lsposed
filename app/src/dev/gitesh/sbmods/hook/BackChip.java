@@ -117,16 +117,29 @@ final class BackChip {
             Config cfg = owner.config();
             float gap = (cfg.itemGap >= 0 ? cfg.itemGap : 6) * d;
             float push = Math.max(0, c.getWidth() - overlap) + (extraPad > 0.5f ? extraPad + gap : 0);
-            if (nb != null && Math.abs(nb.getTranslationX() - push) > 0.5f) nb.setTranslationX(push);
+            // real padding, not translationX: Samsung resets translations during its open-card animation, which left the icons
+            // under the tab for a few seconds every time a live activity appeared (same fix as syncRow)
+            if (nb != null) {
+                if (nbPad0 < 0) nbPad0 = nb.getPaddingStart();
+                int want = nbPad0 + Math.round(push);
+                if (nb.getPaddingStart() != want) nb.setPaddingRelative(want, nb.getPaddingTop(), nb.getPaddingEnd(), nb.getPaddingBottom());
+                if (nb.getTranslationX() != 0f) nb.setTranslationX(0f);
+            }
             mergeApplied = true;
         } else if (mergeApplied) {
             mergeApplied = false;
             c.setTranslationZ(0f);
             c.setTranslationX(0f);
             c.setTranslationY(0f);
-            if (nb != null) nb.setTranslationX(0f);
+            if (nb != null) {
+                nb.setTranslationX(0f);
+                if (nbPad0 >= 0 && nb.getPaddingStart() != nbPad0) nb.setPaddingRelative(nbPad0, nb.getPaddingTop(), nb.getPaddingEnd(), nb.getPaddingBottom());
+            }
+            nbPad0 = -1;
         }
     }
+
+    private int nbPad0 = -1;   // the notification row's own start padding before Merge added room
 
     /** Stack mode with a live activity, back button resting behind it (only its lower edge shows). */
     boolean sliverMode() { return sliverWanted && chip != null; }
@@ -312,7 +325,10 @@ final class BackChip {
     };
 
     /** Is something playing / paused in a media session (which Samsung shows as a live activity capsule)? */
-    private boolean liveActive(Context ctx) {
+    private boolean liveActive(Context ctx) { return liveActive(ctx, true); }
+
+    /** A media session that is playing (or, with paused = true, also paused). */
+    private boolean liveActive(Context ctx, boolean paused) {
         try {
             android.media.session.MediaSessionManager msm = ctx.getSystemService(android.media.session.MediaSessionManager.class);
             List<android.media.session.MediaController> l = msm.getActiveSessions(null);
@@ -321,7 +337,7 @@ final class BackChip {
                 android.media.session.PlaybackState st = mc.getPlaybackState();
                 if (st == null) continue;
                 int s = st.getState();
-                if (s == android.media.session.PlaybackState.STATE_PLAYING || s == android.media.session.PlaybackState.STATE_PAUSED
+                if (s == android.media.session.PlaybackState.STATE_PLAYING || (paused && s == android.media.session.PlaybackState.STATE_PAUSED)
                         || s == android.media.session.PlaybackState.STATE_BUFFERING) return true;
             }
         } catch (Throwable t) {
@@ -525,8 +541,11 @@ final class BackChip {
                 // A live activity exists but Samsung is not showing its capsule. Any room I take on the left can keep the capsule
                 // from coming back (Samsung drops it when space is short and does not re-add it), so the button steps aside
                 // completely until the capsule is up again.
-                if (label != null && (cfg.backLive == 3 || cfg.backLive == 4) && lastLive && !lastCap && !peeking) label = null;
-                compactWanted = false;
+                // Only while music is really playing: Samsung drops the capsule of paused music for good, and waiting for it
+                // hid the button until the session ended (2026-11-23).
+                // Pill hidden while music plays: keep a small back button (arrow + app icon, no name) instead of none, so going back
+                // still works and the pill keeps its room to come back.
+                compactWanted = label != null && (cfg.backLive == 3 || cfg.backLive == 4) && lastLive && !lastCap && !peeking && liveActive(ctx, false);
                 sliverWanted = label != null && cfg.backLive == 3 && shareLive && !peeking;   // "Stack": chip rests behind the live activity
                 if (peeking && (!shareLive || cfg.backLive != 3)) { peeking = false; c.setMinWidth(0); c.setGravity(Gravity.CENTER_VERTICAL); }
             }

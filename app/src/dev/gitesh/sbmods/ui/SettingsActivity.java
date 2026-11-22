@@ -461,7 +461,8 @@ public final class SettingsActivity extends Activity {
             {"Apps kept in memory", "recents kept-open apps locked"},
             {"Screen smoothness", "screen speed refresh rate hz"}, {"Screen smoothness (Hz)", "top speed of the screen refresh rate 120 96 60"},
             {"Deep sleep sooner", "sleep sooner doze"},
-            {"Recent apps chips", "overview screen chips"}, {"Recent apps panel: cards", "panel cards overview performance"},
+            {"Recent apps chips", "overview screen chips"}, {"Recent apps layout", "overview recents bigger cards grid gaps suggested apps close all"},
+            {"Use the empty space", "overview recents bigger cards"}, {"Suggested apps", "overview recents bottom row icons"}, {"Recent apps panel: cards", "panel cards overview performance"},
             {"Full speed for games", "game mode"}, {"Right now", "insights status"},
             {"How often it updates", "battery saving refresh interval"},
         };
@@ -1947,8 +1948,78 @@ public final class SettingsActivity extends Activity {
         switchRow("Show the chips", "RAM, swap and temperature show at the top of Recents. CPU and GPU show at the bottom.",
                 gl("sbmods_recents_chip", 1) != 0, v -> putGl("sbmods_recents_chip", v ? "1" : "0"));
         endGroup(null);
+        buildRecentsLayout();
     }
 
+    /** Recent apps screen layout: bigger Grid cards, tighter gaps, more suggested apps (hook/RecentsSize + RecentsChip). */
+    private void buildRecentsLayout() {
+        group("Recent apps layout");
+        cardResetAction(() -> putGlRestart("sbmods_recents_big", "1", "sbmods_grid_scale", "", "sbmods_grid_rowgap", "", "sbmods_grid_colgap", "",
+                "sbmods_grid_top", "", "sbmods_sug_cols", "", "sbmods_top_up", "", "sbmods_ca_shift", ""));
+        boolean on = gl("sbmods_recents_big", 1) != 0;
+        switchRow("Use the empty space", "Bigger cards, smaller gaps and more suggested apps. Cards change in the Grid style "
+                + "(chosen in Good Lock Home Up); without it Samsung's own layout stays.", on, v -> putGlRestart("sbmods_recents_big", v ? "1" : "0"));
+        if (on) {
+            divider();
+            slider("Card size", 290, 400, glMil("sbmods_grid_scale", 345), v -> String.format(Locale.ROOT, "%.1f%%", v / 10f),
+                    v -> later("sbmods_grid_scale", v / 1000f), 345);
+            divider();
+            slider("Suggested apps", 4, 6, gl("sbmods_sug_cols", 6), v -> String.valueOf(v), v -> later("sbmods_sug_cols", v), 6);
+            if (advanced("recentsLayout")) {
+                divider();
+                slider("Gap between rows", 0, 60, glMil("sbmods_grid_rowgap", 30), v -> v == 60 ? "Samsung's" : String.format(Locale.ROOT, "%.1f%%", v / 10f),
+                        v -> later("sbmods_grid_rowgap", v / 1000f), 30);
+                divider();
+                slider("Gap between cards", 0, 40, glMil("sbmods_grid_colgap", 20), v -> v == 40 ? "Samsung's" : String.format(Locale.ROOT, "%.1f%%", v / 10f),
+                        v -> later("sbmods_grid_colgap", v / 1000f), 20);
+                divider();
+                slider("Where the cards start", 30, 110, glMil("sbmods_grid_top", 88), v -> v == 110 ? "Samsung's" : String.format(Locale.ROOT, "%.1f%%", v / 10f),
+                        v -> later("sbmods_grid_top", v / 1000f), 88);
+                divider();
+                slider("Top buttons closer to the status bar", 0, 20, gl("sbmods_top_up", 10), v -> v == 0 ? "Off" : v + " dp", v -> later("sbmods_top_up", v), 10);
+            }
+        }
+        endGroup("Recent apps opens with bigger cards that fill the screen: the top buttons move closer to the status bar, \"Close all\" sits just above "
+                + "the suggested apps, and the gaps between cards shrink. Card size and gaps only change in the Grid style. "
+                + "Too big a card size pushes the cards under \"Close all\": the starting values fit a Galaxy S23 Ultra. "
+                + "Changes show the next time you open Recent apps.");
+    }
+
+    private final Handler laterH = new Handler(android.os.Looper.getMainLooper());
+    private final java.util.Map<String, String> laterKv = new java.util.LinkedHashMap<>();
+    private final Runnable laterRun = () -> {
+        java.util.List<String> kv = new java.util.ArrayList<>();
+        for (java.util.Map.Entry<String, String> e : laterKv.entrySet()) { kv.add(e.getKey()); kv.add(e.getValue()); }
+        laterKv.clear();
+        putGlRestart(kv.toArray(new String[0]));
+    };
+
+    /** Sliders call this on every step: write once, shortly after the finger stops. */
+    private void later(String key, Object value) {
+        laterKv.put(key, String.valueOf(value));
+        laterH.removeCallbacks(laterRun);
+        laterH.postDelayed(laterRun, 700);
+    }
+
+    /** A global stored as a fraction ("0.345"), read as thousandths. */
+    private int glMil(String key, int def) {
+        try { String v = glStr(key); return v.isEmpty() ? def : Math.round(Float.parseFloat(v) * 1000); } catch (Throwable t) { return def; }
+    }
+
+    /** Writes the globals (empty value = back to the default), then restarts the launcher so Recents is rebuilt with them. */
+    private void putGlRestart(String... kv) {
+        new Thread(() -> {
+            StringBuilder del = new StringBuilder();
+            java.util.List<String> put = new java.util.ArrayList<>();
+            for (int i = 0; i + 1 < kv.length; i += 2) {
+                if (kv[i + 1].isEmpty()) del.append("settings delete global ").append(kv[i]).append("; ");
+                else { put.add(kv[i]); put.add(kv[i + 1]); }
+            }
+            boolean ok = put.isEmpty() || Helper.putGlobal(put.toArray(new String[0]));
+            Helper.rootOut(del + "am force-stop com.sec.android.app.launcher");   // the launcher reads these once; it comes back by itself
+            runOnUiThread(() -> { if (!ok) Toast.makeText(this, "Root access was not granted to this app", Toast.LENGTH_LONG).show(); refresh(); });
+        }).start();
+    }
 
     // ---------------------------------------------------------------- Sleep sooner (System tab)
 
