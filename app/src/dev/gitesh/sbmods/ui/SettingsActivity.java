@@ -329,6 +329,7 @@ public final class SettingsActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        Ui.Frost.readSolid(this);   // Reduce transparency / power saving may have changed while away
         if (restoredElsewhere) {   // the setup guide restored a backup: what this screen holds is the old options
             restoredElsewhere = false;
             cfg = Config.load(prefs);
@@ -400,7 +401,7 @@ public final class SettingsActivity extends Activity {
         previewHolder.removeAllViews();
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setBackground(Ui.liquid(card, pal, dp(Ui.R_CARD)));
+        card.setBackground(Ui.liquidCard(card, pal, dp(Ui.R_CARD)));
         card.setPadding(dp(Ui.S3), dp(Ui.S3), dp(Ui.S3), dp(Ui.S2));   // compact: the bar and its tray only
         float d = getResources().getDisplayMetrics().density;
         android.view.WindowMetrics wm = getWindowManager().getMaximumWindowMetrics();
@@ -2817,7 +2818,7 @@ public final class SettingsActivity extends Activity {
         advNow = null;
         LinearLayout c = new LinearLayout(this);
         c.setOrientation(LinearLayout.VERTICAL);
-        c.setBackground(Ui.liquid(c, pal, dp(Ui.R_CARD)));
+        c.setBackground(Ui.liquidCard(c, pal, dp(Ui.R_CARD)));
         c.setClipToOutline(true);
         c.setPadding(dp(Ui.S4), 0, dp(Ui.S4), dp(Ui.S1));
         page.addView(c, cardParams());

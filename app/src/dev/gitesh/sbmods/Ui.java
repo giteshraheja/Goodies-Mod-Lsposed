@@ -294,7 +294,8 @@ public final class Ui {
 
         @Override protected void onBoundsChange(android.graphics.Rect b) {
             float h = Math.max(1, b.height());
-            hi.setShader(new LinearGradient(0, b.top, 0, b.top + Math.min(h, radius * 1.6f + 8), hiColor, hiColor & 0x00FFFFFF, Shader.TileMode.CLAMP));
+            float d = Math.min(h, radius * 1.6f + 8);   // light from the top left, fading down and to the right
+            hi.setShader(new LinearGradient(b.left, b.top, b.left + Math.min(b.width(), d * 2.5f), b.top + d, hiColor, hiColor & 0x00FFFFFF, Shader.TileMode.CLAMP));
         }
 
         @Override public void draw(Canvas c) {
@@ -320,6 +321,19 @@ public final class Ui {
     public static final class Frost {
         static final int SCALE = 6;
         static android.graphics.Bitmap bmp;
+        /** Plain tinted cards instead of glass: Samsung's "Reduce transparency and blur" is on, or power saving is (as Apple / Google do). */
+        static boolean solid;
+
+        /** Re-reads the two switches; returns true when it changed (the caller redraws). */
+        public static boolean readSolid(Context c) {
+            boolean s0 = false;
+            try { s0 = android.provider.Settings.Global.getInt(c.getContentResolver(), "accessibility_reduce_transparency", 0) == 1; } catch (Throwable ignored) {}
+            try { s0 |= c.getSystemService(android.os.PowerManager.class).isPowerSaveMode(); } catch (Throwable ignored) {}
+            boolean ch = s0 != solid;
+            solid = s0;
+            if (ch) invalidateShown();
+            return ch;
+        }
         static java.lang.ref.WeakReference<View> wallView = new java.lang.ref.WeakReference<>(null);
         static final java.util.ArrayList<java.lang.ref.WeakReference<View>> users = new java.util.ArrayList<>();
         private Frost() {}
@@ -376,7 +390,9 @@ public final class Ui {
     public static final class Liquid extends Drawable {
         private final View host;
         private final Paint frost = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG), tint = new Paint(Paint.ANTI_ALIAS_FLAG),
-                sheen = new Paint(Paint.ANTI_ALIAS_FLAG), rim = new Paint(Paint.ANTI_ALIAS_FLAG);
+                sheen = new Paint(Paint.ANTI_ALIAS_FLAG), rim = new Paint(Paint.ANTI_ALIAS_FLAG), lens = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final RectF r2 = new RectF();
+        private int baseTint, keyX = Integer.MIN_VALUE, keyY, adaptAlpha = -1;   // adaptive tint, cached per position
         private final RectF r = new RectF();
         private final android.graphics.Matrix m = new android.graphics.Matrix();
         private final int[] a = new int[2], b = new int[2];
@@ -386,21 +402,26 @@ public final class Ui {
 
         public Liquid(View host, boolean night, int tintColor, float radiusPx, float strokePx) {
             this.host = host; this.night = night; radius = radiusPx; sw = strokePx;
-            tint.setColor(tintColor);
+            tint.setColor(tintColor); baseTint = tintColor;
             rim.setStyle(Paint.Style.STROKE); rim.setStrokeWidth(strokePx);
+            lens.setStyle(Paint.Style.STROKE); lens.setStrokeWidth(strokePx);
             if (Frost.users.size() > 64) Frost.users.removeIf(w -> w.get() == null || !w.get().isAttachedToWindow());   // old cards from earlier builds
             Frost.users.add(new java.lang.ref.WeakReference<>(host));
         }
 
-        public void setTint(int color) { if (tint.getColor() != color) { tint.setColor(color); invalidateSelf(); } }
+        public void setTint(int color) { if (baseTint != color) { baseTint = color; tint.setColor(color); adaptAlpha = -1; keyX = Integer.MIN_VALUE; invalidateSelf(); } }
 
         @Override protected void onBoundsChange(android.graphics.Rect bd) {
             float h = Math.max(1, bd.height());
             sheen.setShader(new LinearGradient(0, bd.top, 0, bd.top + Math.min(h * 0.55f, radius * 3f + 24),
                     night ? 0x1FFFFFFF : 0x40FFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP));
-            rim.setShader(new LinearGradient(0, bd.top, 0, bd.bottom,
-                    new int[]{night ? 0x5CFFFFFF : 0xB3FFFFFF, night ? 0x14FFFFFF : 0x33FFFFFF, night ? 0x26FFFFFF : 0x4DFFFFFF},
-                    new float[]{0, 0.5f, 1}, Shader.TileMode.CLAMP));
+            // light from the top left: the rim catches it there, fades along the sides, and glints faintly at the bottom right
+            rim.setShader(new LinearGradient(bd.left, bd.top, bd.left + Math.min(bd.width(), h * 1.4f), bd.bottom,
+                    new int[]{night ? 0x73FFFFFF : 0xCCFFFFFF, night ? 0x12FFFFFF : 0x2EFFFFFF, night ? 0x2EFFFFFF : 0x59FFFFFF},
+                    new float[]{0, 0.55f, 1}, Shader.TileMode.CLAMP));
+            // inner lens line: a second, fainter edge just inside the top, like the thickness of real glass
+            lens.setShader(new LinearGradient(0, bd.top, 0, bd.top + Math.min(h, radius + 8),
+                    night ? 0x24FFFFFF : 0x4DFFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP));
         }
 
         @Override public void draw(Canvas c) {
@@ -409,18 +430,41 @@ public final class Ui {
             float rad = Math.max(0, radius - sw / 2f);
             android.graphics.Bitmap fb = Frost.bmp;
             View wall = Frost.wallView.get();
-            if (fb != null && wall != null) {
-                if (shaderFor != fb) { frost.setShader(new android.graphics.BitmapShader(fb, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)); shaderFor = fb; }
+            if (Frost.solid) {   // Reduce transparency / power saving: a plain card, no frost
+                tint.setColor(baseTint | 0xF0000000);
+            } else if (fb != null && wall != null) {
+                if (shaderFor != fb) { frost.setShader(new android.graphics.BitmapShader(fb, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)); shaderFor = fb; keyX = Integer.MIN_VALUE; }
                 host.getLocationInWindow(a);
                 wall.getLocationInWindow(b);
+                int ox = a[0] - b[0], oy = a[1] - b[1];
                 m.setScale(Frost.SCALE, Frost.SCALE);
-                m.postTranslate(b[0] - a[0], b[1] - a[1]);
+                m.postTranslate(-ox, -oy);
                 frost.getShader().setLocalMatrix(m);
                 c.drawRoundRect(r, rad, rad, frost);
-            }
+                // adaptive tint: a brighter backdrop gets a stronger tint (dark theme) / a darker one a stronger white (light), so text contrast stays even
+                if (ox != keyX || oy / 24 != keyY || adaptAlpha < 0) {
+                    keyX = ox; keyY = oy / 24;
+                    float lum = backdropLum(fb, ox, oy, getBounds().width(), getBounds().height());
+                    int al = (baseTint >>> 24) + Math.round((night ? lum - 0.30f : 0.55f - lum) * 150);
+                    adaptAlpha = Math.max(0x66, Math.min(0xE6, al));
+                }
+                tint.setColor((baseTint & 0x00FFFFFF) | (adaptAlpha << 24));
+            } else tint.setColor(baseTint);
             c.drawRoundRect(r, rad, rad, tint);
-            c.drawRoundRect(r, rad, rad, sheen);
+            if (!Frost.solid) c.drawRoundRect(r, rad, rad, sheen);
             c.drawRoundRect(r, rad, rad, rim);
+            if (!Frost.solid) { r2.set(r); r2.inset(sw * 1.5f, sw * 1.5f); float r2r = Math.max(0, rad - sw * 1.5f); c.drawRoundRect(r2, r2r, r2r, lens); }
+        }
+
+        /** Average brightness (0..1) of the frost behind a w x h box at (ox, oy): 9 samples of the small bitmap. */
+        private static float backdropLum(android.graphics.Bitmap fb, int ox, int oy, int w, int h) {
+            float sum = 0; int n = 0;
+            for (int i = 1; i <= 3; i++) for (int j = 1; j <= 3; j++) {
+                int x = Math.max(0, Math.min(fb.getWidth() - 1, (ox + w * i / 4) / Frost.SCALE)), y = Math.max(0, Math.min(fb.getHeight() - 1, (oy + h * j / 4) / Frost.SCALE));
+                int px = fb.getPixel(x, y);
+                sum += (0.2126f * ((px >> 16) & 255) + 0.7152f * ((px >> 8) & 255) + 0.0722f * (px & 255)) / 255f; n++;
+            }
+            return sum / n;
         }
 
         @Override public void getOutline(Outline o) { o.setRoundRect(getBounds(), radius); }
@@ -429,9 +473,14 @@ public final class Ui {
         @Override public int getOpacity() { return PixelFormat.TRANSLUCENT; }
     }
 
-    /** Liquid glass for a card over the settings wallpaper (tint keeps text readable in both themes). */
+    /** Liquid glass for a floating control (bottom bar, chips): the clearest glass. */
     public static Liquid liquid(View host, Pal p, float radiusPx) {
         return new Liquid(host, p.night, p.night ? 0x8C140F2E : 0xB8FFFFFF, radiusPx, Math.max(1, dp(host.getContext(), 1)));
+    }
+
+    /** Liquid glass for content (cards with text): thicker, so reading always wins over the effect (Apple's rule: glass is for controls). */
+    public static Liquid liquidCard(View host, Pal p, float radiusPx) {
+        return new Liquid(host, p.night, p.night ? 0xA6140F2E : 0xCCFFFFFF, radiusPx, Math.max(1, dp(host.getContext(), 1)));
     }
 
     public static Glass glass(Context c, Pal p, float radiusDp) {

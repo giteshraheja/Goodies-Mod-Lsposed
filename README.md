@@ -1,7 +1,7 @@
 # PulseBar
 
 An LSPosed / Vector module for the Samsung status bar (and the Recents screen) on a rooted Galaxy S23 Ultra, plus a settings app.
-Formerly "StatusBar Mods". Package `dev.gitesh.sbmods` (unchanged), version 3.38.0.
+Formerly "StatusBar Mods". Package `dev.gitesh.sbmods` (unchanged), version 3.39.0.
 
 ## What it does
 - **Status bar items and positions:** a phone temperature next to the clock (skin, battery or CPU sensor, optional warning colour), a custom clock
@@ -18,6 +18,8 @@ Formerly "StatusBar Mods". Package `dev.gitesh.sbmods` (unchanged), version 3.38
   apps spared when cleaning, Recent apps panel and chips) and Help (a "Right now" summary, self-check, background helper, fixes, backup,
   start over). Search finds any option, by its old name too. Cards, chips and the bottom bar are liquid glass: a frosted copy of
   the wallpaper (blurred once, at 1/6 size, only when the wallpaper changes) with a sheen and a light rim; nothing animates or blurs live.
+  Cards use thicker glass than controls, the tint adapts to how bright the wallpaper behind is, and the glass turns into plain cards
+  with Samsung's "Reduce transparency and blur" or power saving on.
 - **Gestures:** tap, double-tap and long-press on the battery, clock, temperature, camera hole, Wi-Fi and mobile signal. Actions include power saving,
   flashlight, Wi-Fi, Bluetooth, do not disturb, lock the screen, close apps, Samsung Finder, camera, any app you pick, and more. "Test" tries one.
 - **Back pill:** a small chip in the status bar that jumps back to the previous app. It can merge with a live activity or stack with it.

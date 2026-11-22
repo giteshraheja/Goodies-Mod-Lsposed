@@ -206,7 +206,7 @@ final class PerfPanel {
     private static void applyBlur(Context a, Window w, Ui.Glass bg, boolean on) {
         bg.setFill(on ? Ui.cur.sheet : Ui.cur.sheetSolid);   // glass when blurred, a near-solid sheet otherwise
         WindowManager.LayoutParams lp = w.getAttributes();
-        if (on) { w.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND); lp.setBlurBehindRadius(dp(a, 60)); }
+        if (on) { w.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND); lp.setBlurBehindRadius(dp(a, 40)); }   // 40 dp (was 60) still reads as frosted glass; a smaller radius is less GPU work every frame
         else { w.clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND); lp.setBlurBehindRadius(0); }
         w.setAttributes(lp);
         w.setDimAmount(Ui.cur.night ? (on ? 0.25f : 0.45f) : (on ? 0.10f : 0.30f));
