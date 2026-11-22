@@ -109,7 +109,8 @@ public final class Controller {
     private long replaceWindow;
     private String lastError = "";
     private volatile CharSequence lastText = "";
-    private boolean screenOn = true, polling;
+    private boolean screenOn = true;
+    private volatile boolean polling;
 
     private WeakReference<TextView> clockRef = new WeakReference<>(null);
     private TextView label, dateView, wxView;
@@ -453,6 +454,7 @@ public final class Controller {
         TextView clock = clockRef.get();
         if (clock == null || label == null) return;
         if (tickIdle && clock.isShown()) { tickIdle = false; restartClockTick(); }   // bar is drawing again: back to the 1 s tick (flag cleared first, so no loop)
+        if (!barShown && screenOn && clock.isShown()) { barShown = true; if (!polling) startPolling(); }   // back from fullscreen: refresh the label now
         if (followVisibleClock(clock)) return;
         if (!(clock.getParent() instanceof LinearLayout)) {
             if (label.getVisibility() != View.GONE) label.setVisibility(View.GONE);
@@ -995,6 +997,7 @@ public final class Controller {
 
     private static String nz(String s) { return s == null ? "" : s; }
 
+    private volatile boolean barShown = true;   // clock visible at the last clockTick
     private boolean tickIdle;   // seconds clock is waiting a full minute because the bar is hidden
 
     private final Runnable clockTick = new Runnable() {
@@ -1002,6 +1005,8 @@ public final class Controller {
             try {
                 TextView ck = clockRef.get();
                 boolean shown = ck != null && ck.isShown();
+                barShown = shown;
+                if (shown && !polling) startPolling();   // bar back from fullscreen: label refresh resumes
                 tickIdle = !shown && ClockFormat.needsSeconds(cfg);
                 if (shown || !ClockFormat.needsSeconds(cfg)) refreshClock();   // hidden bar: no 1 s refresh
                 if (disabled || cfg.clockMode == Config.CLOCK_STOCK || ck == null) return;
@@ -1022,7 +1027,7 @@ public final class Controller {
 
     private final Runnable tick = new Runnable() {
         @Override public void run() {
-            if (disabled) { polling = false; return; }
+            if (disabled || (!barShown && cfg.clockMode != Config.CLOCK_STOCK)) { polling = false; return; }   // hidden bar (fullscreen): clockTick restarts us
             CharSequence text;
             try {
                 text = renderAll();

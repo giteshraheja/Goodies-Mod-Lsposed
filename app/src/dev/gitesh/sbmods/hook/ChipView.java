@@ -116,4 +116,9 @@ final class ChipView extends View {
     }
 
     @Override public void setPressed(boolean pressed) { super.setPressed(pressed); invalidate(); }
+
+    @Override public void onVisibilityAggregated(boolean isVisible) {
+        super.onVisibilityAggregated(isVisible);
+        if (isVisible) RecentsChip.kick();
+    }
 }

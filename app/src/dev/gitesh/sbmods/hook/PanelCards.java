@@ -1077,9 +1077,7 @@ final class PanelCards {
 
     /** May the owner stop this app from the panel? The helper refuses the protected ones too (stopok); also never the calling services. */
     static boolean stoppable(Activity a, String pkg) {
-        return !(NeverStop.listed(pkg) || pkg.equals(Entry.LAUNCHER) || pkg.equals("com.android.systemui") || pkg.equals(a.getPackageName())
-                || pkg.startsWith("com.google.android.gms") || pkg.startsWith("com.android.providers.") || pkg.equals("android") || pkg.equals("dev.gitesh.sbmods") || pkg.equals("com.termux")
-                || pkg.equals("com.sec.imsservice") || pkg.equals("com.sec.epdg"));
+        return !(NeverStop.listed(pkg) || pkg.equals(a.getPackageName()));
     }
 
     // ------------------------------------------------------------------ insights (a few plain suggestions, worked out only when the panel opens)

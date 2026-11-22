@@ -158,6 +158,16 @@ final class RecentsChip {
 
     // ------------------------------------------------------------------ live values
 
+    /** Overview hidden (home screen): slow safety-net look only; becoming visible restarts the tick at once. */
+    private static final long HIDDEN_MS = 15_000;
+
+    /** A chip just became visible (Overview opened): refresh now instead of waiting for the slow hidden tick. */
+    static void kick() {
+        if (owner == null || topRow == null) return;
+        main.removeCallbacks(tick);
+        main.post(tick);
+    }
+
     private static final Runnable tick = new Runnable() {
         @Override public void run() {
             try {
@@ -167,7 +177,7 @@ final class RecentsChip {
                 // CPU load only while Overview is really on screen (not the home screen); 2 = the Performance panel is open (per-core load too)
                 Global.gset(a, "sbmods_watch", !shown ? "0" : PerfPanel.showing() ? "2" : "1");
                 if (shown) { try { align(a); refresh(a); } catch (Throwable t) { Log.w("recents chip tick: " + t); } }
-                main.postDelayed(this, 2500);
+                main.postDelayed(this, shown ? 2500 : HIDDEN_MS);   // hidden: ChipView.onVisibilityAggregated kicks us early
             } catch (Throwable t) { Log.w("recents chip tick: " + t); }
         }
     };

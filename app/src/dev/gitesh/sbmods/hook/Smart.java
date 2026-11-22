@@ -472,8 +472,7 @@ final class Smart {
     private static final Set<String> restarted1 = new HashSet<>();   // apps restarted since this boot (mirrors K_GFXR)
 
     private static boolean protectedPkg(String p) {
-        if (NeverStop.listed(p) || p.equals("android") || p.equals(Config.SYSUI) || p.equals(Entry.LAUNCHER) || p.equals(home()) || p.equals(Config.PKG) || p.equals("com.termux")
-                || p.startsWith("com.android.providers.") || p.startsWith("com.google.android.gms") || p.equals("com.sec.imsservice") || p.equals("com.sec.epdg")) return true;
+        if (NeverStop.listed(p) || p.equals(home())) return true;
         String ime = Settings.Secure.getString(ctx.getContentResolver(), Settings.Secure.DEFAULT_INPUT_METHOD);
         return ime != null && ime.startsWith(p + "/");
     }
