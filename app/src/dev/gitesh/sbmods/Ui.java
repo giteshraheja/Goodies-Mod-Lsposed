@@ -158,14 +158,6 @@ public final class Ui {
         return round((p.card & 0x00FFFFFF) | (p.night ? 0xC2000000 : 0xD9000000), dp(c, R_CARD), 0, 0);
     }
 
-    /** A fill with only the top corners rounded (the sheet that rises over the wallpaper). */
-    public static Drawable topRound(int fill, int radiusPx) {
-        GradientDrawable g = new GradientDrawable();
-        g.setColor(fill);
-        g.setCornerRadii(new float[]{radiusPx, radiusPx, radiusPx, radiusPx, 0, 0, 0, 0});
-        return g;
-    }
-
     /**
      * The settings app's wallpaper: a violet gradient, a warm glow, two soft ribbons and four thin contour lines, all
      * built once when the bounds change (no blur, no animation). It is drawn only when its view is invalidated, which
@@ -576,8 +568,6 @@ public final class Ui {
         @Override public int getOpacity() { return PixelFormat.TRANSLUCENT; }
     }
 
-    public static IconDrawable iconDrawable(String name, int color) { return new IconDrawable(name, color); }
-
     public static ImageView icon(Context c, String name, int color, float sizeDp) {
         ImageView v = new ImageView(c);
         v.setImageDrawable(new IconDrawable(name, color));
@@ -639,7 +629,7 @@ public final class Ui {
             LinearLayout card = new LinearLayout(c);
             card.setOrientation(LinearLayout.VERTICAL);
             card.setPadding(0, dp(c, S5), 0, dp(c, S2));
-            card.setBackground(round(p.card, dp(c, R_CARD + 4), 0, 0));
+            card.setBackground(round(p.card, dp(c, R_CARD), 0, 0));
             if (title != null) {
                 TextView t = text(c, title, 20, p.tx, 700);
                 t.setPadding(dp(c, S5), 0, dp(c, S5), dp(c, S3));

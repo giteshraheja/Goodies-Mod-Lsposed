@@ -32,11 +32,20 @@ final class Mover {
     private int endId = -1, startId = -1;
     private boolean zonesDirty;   // we collapsed items / clipped icons and have not released yet (origMargins is shared with the net merge, so not usable here)
     private final boolean[] shownBuf = new boolean[ZoneLayout.ELEMENTS];
+    // per-frame buffers, reused (update runs before every status bar frame)
+    private final View[] viewsBuf = new View[ZoneLayout.ELEMENTS];
+    private final float[] wBuf = new float[ZoneLayout.ELEMENTS], natBuf = new float[ZoneLayout.ELEMENTS];
+    private final boolean[] mvBuf = new boolean[ZoneLayout.ELEMENTS];
+    private final IdentityHashMap<View, Float> shiftBuf = new IdentityHashMap<>();
+    private final IdentityHashMap<View, Boolean> keepBuf = new IdentityHashMap<>();
+    private static final String[] LEFT_IDS = {"notificationIcons"}, RIGHT_NET = {"statusIcons"}, RIGHT_ALL = {"networkSpeed", "statusIcons"};
 
     /** views: clock, temperature label, battery, back button, date (any may be null), in ZoneLayout element order. */
     void update(Config c, View root, View... viewsIn) {
         if (root == null) { releaseZones(); return; }   // status bar not attached (yet / any more)
-        View[] views = java.util.Arrays.copyOf(viewsIn, ZoneLayout.ELEMENTS);
+        View[] views = viewsBuf;
+        java.util.Arrays.fill(views, null);
+        System.arraycopy(viewsIn, 0, views, 0, Math.min(viewsIn.length, views.length));
         if (views[ZoneLayout.NETSPEED] == null) {
             int nid = id(root, "networkSpeed");
             views[ZoneLayout.NETSPEED] = nid == 0 ? null : root.findViewById(nid);
@@ -69,8 +78,10 @@ final class Mover {
         root.getLocationOnScreen(rloc);
 
         // which items are actually placed (showing + not in Samsung's place)
-        float[] w = new float[ZoneLayout.ELEMENTS];
-        boolean[] mv = new boolean[ZoneLayout.ELEMENTS];
+        float[] w = wBuf;
+        boolean[] mv = mvBuf;
+        java.util.Arrays.fill(w, 0f);
+        java.util.Arrays.fill(mv, false);
         for (int i = 0; i < ZoneLayout.ELEMENTS; i++) {
             View v = i < views.length ? views[i] : null;
             if (v != null && plan.mode[i] != ZoneLayout.STOCK && v.isShown() && v.getWidth() > 0) {
@@ -79,7 +90,7 @@ final class Mover {
             }
         }
         // where items that stay in Samsung's place are right now (other items can be stuck to them, e.g. "right of the back button")
-        float[] nat = new float[ZoneLayout.ELEMENTS];
+        float[] nat = natBuf;
         java.util.Arrays.fill(nat, Float.NaN);
         for (int i = 0; i < ZoneLayout.ELEMENTS; i++) {
             View v = views[i];
@@ -173,7 +184,8 @@ final class Mover {
         if (notifBox != null) leftBase = Math.max(leftEdge, nat[ZoneLayout.BACK]);   // no back button, live activity showing: the icons start right after it
         float[] ln = ZoneLayout.lanes(x, w, screenW, holeL, holeR, leftEdge, rightEdge, gapPx, 8 * density, 14 * density, leftBase);
 
-        IdentityHashMap<View, Float> shift = new IdentityHashMap<>();
+        IdentityHashMap<View, Float> shift = shiftBuf;
+        shift.clear();
         float pushLeft = ln[0] - leftBase;
         boolean chipBase = !backGone && leftBase > leftEdge + 0.5f;   // a back button in Samsung's place: its own row padding makes the room (a push would drag the button along)
         BackChip.extraPad = chipBase && pushLeft > 0.5f ? pushLeft : 0;
@@ -186,7 +198,8 @@ final class Mover {
         for (int i = 0; i < ZoneLayout.ELEMENTS; i++) if (mv[i]) shift.remove(views[i]);   // placed items get absolute positions below
 
         // ---- 4. apply shifts; reset whatever we shifted before and no longer need
-        IdentityHashMap<View, Boolean> keep = new IdentityHashMap<>();
+        IdentityHashMap<View, Boolean> keep = keepBuf;
+        keep.clear();
         for (Map.Entry<View, Float> e : shift.entrySet()) {
             View v = e.getKey();
             keep.put(v, true);
@@ -209,14 +222,16 @@ final class Mover {
 
         // ---- 6. Samsung's icons that still reach into the space of placed items are cut off cleanly
         // (only Samsung's icons themselves: the battery lives in the same box and must not be cut)
-        String[] left = {"notificationIcons"}, right = netPlaced ? new String[]{"statusIcons"} : new String[]{"networkSpeed", "statusIcons"};
+        String[] left = LEFT_IDS, right = netPlaced ? RIGHT_NET : RIGHT_ALL;
         for (String n : left) { int id = id(root, n); clipTo(id == 0 ? null : root.findViewById(id), false, ln[1], rloc[0]); }
         for (String n : right) { int id = id(root, n); clipTo(id == 0 ? null : root.findViewById(id), true, ln[3], rloc[0]); }
         if (netPlaced && views[ZoneLayout.NETSPEED] != null && views[ZoneLayout.NETSPEED].getClipBounds() != null) views[ZoneLayout.NETSPEED].setClipBounds(null);   // placed: drop a cut left from when it sat in Samsung's place
 
-        for (View v : new java.util.ArrayList<>(applied.keySet())) {
-            if (v != null && !keep.containsKey(v)) { applied.remove(v); if (v.getTranslationX() != 0) v.setTranslationX(0); }
+        for (java.util.Iterator<View> it = applied.keySet().iterator(); it.hasNext(); ) {
+            View v = it.next();
+            if (v != null && !keep.containsKey(v)) { it.remove(); if (v.getTranslationX() != 0) v.setTranslationX(0); }
         }
+        keep.clear(); shift.clear();   // don't hold views between frames
     }
 
     private final java.util.ArrayList<java.lang.ref.WeakReference<View>> clipped = new java.util.ArrayList<>();
