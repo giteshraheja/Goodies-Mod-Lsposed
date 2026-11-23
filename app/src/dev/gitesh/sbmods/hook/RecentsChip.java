@@ -246,12 +246,12 @@ final class RecentsChip {
             for (View v : order) v.setVisibility(View.VISIBLE);
             int avail = limit > wantLeft ? limit - Math.round(2 * d) - wantLeft : Integer.MAX_VALUE;
             int spec = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED);
-            // keep all three as long as possible: full labels -> short labels -> just dot + value; only then drop chips
+            // keep all three as long as possible: full labels -> short labels -> small labels above the values -> just dot + value; only then drop chips
             int start = compact ? 1 : 0;
-            for (int lvl = start; lvl <= 2; lvl++) {
+            for (int lvl = start; lvl <= 3; lvl++) {
                 for (ChipView cv : all) {
-                    boolean cp = lvl >= 1, br = lvl == 2;
-                    if (cv.compact != cp || cv.bare != br) { cv.compact = cp; cv.bare = br; cv.requestLayout(); }
+                    boolean cp = lvl >= 1, tn = lvl == 2, br = lvl == 3;
+                    if (cv.compact != cp || cv.bare != br || cv.tiny != tn) { cv.compact = cp; cv.bare = br; cv.tiny = tn; cv.requestLayout(); }
                     LinearLayout.LayoutParams ml = (LinearLayout.LayoutParams) cv.getLayoutParams();
                     int gapPx = cv == tempChip ? 0 : Math.round((br ? 5 : cp ? 8 : 6) * d);   // no gap after the last one   // compact chips have less padding of their own, so a bit more gap
                     if (ml.rightMargin != gapPx) { ml.rightMargin = gapPx; cv.setLayoutParams(ml); }
@@ -595,7 +595,8 @@ final class RecentsChip {
             sub = "Full";
             dot = GREEN; subC = GREEN;   // no dot any more: the line below carries the colour
         }
-        t.setContentDescription(name);   // the unit (GHz / MHz) already says which one it is; screen readers still hear the name
+        t.setContentDescription(name);
+        if (!name.equals(t.name)) { t.name = name; t.requestLayout(); }   // "CPU 1.7 GHz": says which one it is
         t.set(value.startsWith("\u2014") ? name : "", value, dot, -1);
         t.sub(load + sub, subC);
     }

@@ -192,10 +192,11 @@ final class CardNotifs {
         }
         for (int i = shown - 1; i >= 0; i--) col.addView(RecentsNotifs.row(a, ns.get(i), d, again), rowLp(gap));   // newest at the bottom
         View[] strip = new View[1];   // music buttons: first player's controls go into the card's right strip
+        View[] music = new View[1];
         for (int i = Math.min(2, live.size()) - 1; i >= 0; i--) {
             RecentsNotifs.N s = live.get(i);
             View v = null;
-            if (s.session != null && strip[0] == null) { try { v = MediaBlock.make(a, s, d, strip); } catch (Throwable t) { Log.w("media block: " + t); } }
+            if (s.session != null && strip[0] == null) { try { v = MediaBlock.make(a, s, d, strip); music[0] = v; } catch (Throwable t) { Log.w("media block: " + t); } }
             col.addView(v != null ? v : RecentsNotifs.liveBlock(a, s, d, again), rowLp(gap));
         }
         FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM);
@@ -223,12 +224,28 @@ final class CardNotifs {
             x.setOnClickListener(v -> { v.performHapticFeedback(android.view.HapticFeedbackConstants.CONTEXT_CLICK); RecentsNotifs.clear(a, java.util.Collections.singleton(pkg)); again.run(); });
             p.root.addView(x, xl);
         }
-        if (strip[0] != null) {   // music buttons stacked in the strip, just above the clear button
+        if (strip[0] != null && music[0] != null) {   // music buttons: a pill exactly beside the player (same top and bottom); the clear button goes above it
             int sw = Math.round(30 * d);
             FrameLayout.LayoutParams ml = new FrameLayout.LayoutParams(sw, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.END);
             ml.rightMargin = Math.round((STRIP_DP - 30) / 2f * d);
-            ml.bottomMargin = pad + (any ? Math.round(34 * d) : 0);
+            ml.bottomMargin = pad;
             p.root.addView(strip[0], ml);
+            View pill = strip[0], mv = music[0];
+            View xv = any ? p.root.getChildAt(p.root.getChildCount() - 2) : null;
+            col.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+                int top = col.getTop() + mv.getTop(), bot = col.getTop() + mv.getBottom(), rootH = p.root.getHeight();
+                if (bot <= top || rootH <= 0) return;
+                int h = bot - top, bm = rootH - bot;
+                FrameLayout.LayoutParams pl = (FrameLayout.LayoutParams) pill.getLayoutParams();
+                boolean ch = pl.height != h || pl.bottomMargin != bm;
+                pl.height = h; pl.bottomMargin = bm;
+                if (xv != null) {
+                    FrameLayout.LayoutParams xl2 = (FrameLayout.LayoutParams) xv.getLayoutParams();
+                    int xb2 = bm + h + gap;
+                    if (xl2.bottomMargin != xb2) { xl2.bottomMargin = xb2; ch = true; }
+                }
+                if (ch) v.post(() -> { pill.requestLayout(); if (xv != null) xv.requestLayout(); });
+            });
         }
     }
 

@@ -25,7 +25,8 @@ final class ChipView extends View {
     private static final String[] WORST_V = {"8.8 GHz", "888 MHz"};
     private static final String[] WORST_S = {"100% Saver", "100% Limit", "100% Heat", "100% Full", "Not applied", "Applying\u2026"};
     private static final float V2 = 15, S2 = 12;   // sp of the speed / the line below: just under "Close all" (16), next to the top chips (13)
-    boolean stacked, compact, bare;   // compact: small label; bare: no label at all (dot + value)
+    boolean stacked, compact, bare, tiny;   // compact: small label; tiny: small label above the value; bare: no label at all (dot + value)
+    String name = "";   // stacked chips without a label: drawn small before the value ("CPU 1.7 GHz")
     int maxW, hgt;       // hgt: same height as "Close all" (0 = not known yet)            // stacked chips: never wider than this (room beside Samsung's "Close all"); text shrinks to fit
     private float k = 1; // that shrink factor   // compact: just dot + value (used when Samsung's own pill shares the corner)
 
@@ -54,11 +55,16 @@ final class ChipView extends View {
     @Override protected void onMeasure(int w, int h) {
         fontLabel(); float lw = bare ? 0 : p.measureText(label);
         fontValue(); float vw = p.measureText(value);
+        if (compact && tiny && !bare) {   // two lines: small label over the value, same 40 dp height
+            p.setTextSize(9f * d); p.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL)); float tw = p.measureText(label);
+            setMeasuredDimension(Math.round(2 * d + 7 * d + 4 * d + Math.max(tw, vw) + 2 * d), Math.round(40 * d)); return;
+        }
         if (compact) { setMeasuredDimension(Math.round(2 * d + 7 * d + 4 * d + (bare ? 0 : lw + 3 * d) + vw + 2 * d), Math.round(40 * d)); return; }   // short, but still says what it is
         if (stacked && label.isEmpty()) {   // two lines, no dot: speed on the top edge, load + state on the bottom edge
             Typeface bold = Typeface.create("sans-serif-medium", Typeface.NORMAL), norm = Typeface.create("sans-serif", Typeface.NORMAL);
             p.setTypeface(bold); p.setTextSize(V2 * d);
-            float cv = p.measureText(value), wv = Math.max(p.measureText(WORST_V[0]), p.measureText(WORST_V[1]));
+            float nw = name.isEmpty() ? 0 : nameW(V2 * d);
+            float cv = nw + p.measureText(value), wv = nw + Math.max(p.measureText(WORST_V[0]), p.measureText(WORST_V[1]));
             p.setTypeface(norm); p.setTextSize(S2 * d);
             float cs = p.measureText(sub), ws = 0;
             for (String t : WORST_S) ws = Math.max(ws, p.measureText(t));
@@ -112,7 +118,15 @@ final class ChipView extends View {
                 p.setTextSize(vs);
                 p.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));   // Samsung's own weight, like "Close all"
                 p.setColor(Color.WHITE);
-                c.drawText(value, x0, top + b1, p);
+                float vw2 = p.measureText(value);
+                c.drawText(value, right ? x0 : x0 + (name.isEmpty() ? 0 : nameW(vs)), top + b1, p);
+                if (!name.isEmpty()) {   // "CPU" / "GPU" small and grey, on the value's baseline
+                    float nx = right ? x0 - vw2 - 4 * d * k : x0;
+                    p.setTextSize(vs * 0.72f);
+                    p.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+                    p.setColor(0xB3FFFFFF);
+                    c.drawText(name, nx, top + b1, p);
+                }
                 p.setTextSize(ss);
                 p.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
                 p.setColor((subColor & 0x00FFFFFF) | 0xD9000000);   // the state colour, a little softer
@@ -138,9 +152,19 @@ final class ChipView extends View {
         }
         p.setColor(color);
         float in = compact ? 2 * d : 4 * d;
-        c.drawCircle(in + 3.5f * d, cy, 3.5f * d, p);
+        c.drawCircle(in + 3.5f * d, tiny && !bare ? cy + 6f * d : cy, 3.5f * d, p);   // tiny: beside the value line
         p.setTextAlign(android.graphics.Paint.Align.LEFT);
         float x = in + 7 * d + (compact ? 4 : 5) * d;
+        if (tiny && !bare) {   // small label on top, value below
+            p.setTextSize(9f * d); p.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+            p.setColor(0x99FFFFFF);
+            c.drawText(label, x, cy - 2.5f * d, p);
+            fontValue();
+            p.setColor(color == RecentsChip.GREEN || color == RecentsChip.CYAN || color == RecentsChip.AMBER || color == RecentsChip.RED ? Color.WHITE : color);
+            c.drawText(value, x, cy + 10f * d, p);
+            p.clearShadowLayer();
+            return;
+        }
         if (!bare) {
             fontLabel();
             p.setColor(compact ? 0x99FFFFFF : 0xCCFFFFFF);
@@ -151,6 +175,15 @@ final class ChipView extends View {
         p.setColor(color == RecentsChip.GREEN || color == RecentsChip.CYAN || color == RecentsChip.AMBER || color == RecentsChip.RED ? Color.WHITE : color);
         c.drawText(value, x, cy + 4.6f * d, p);
         p.clearShadowLayer();
+    }
+
+    /** Width of the small name plus its gap, for a value drawn at text size vs. */
+    private float nameW(float vs) {
+        float ts = p.getTextSize(); Typeface tf = p.getTypeface();
+        p.setTextSize(vs * 0.72f); p.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+        float w = p.measureText(name) + 4 * d;
+        p.setTextSize(ts); p.setTypeface(tf);
+        return w;
     }
 
     @Override public void setPressed(boolean pressed) { super.setPressed(pressed); invalidate(); }

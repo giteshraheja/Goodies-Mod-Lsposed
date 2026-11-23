@@ -126,7 +126,7 @@ final class MediaBlock {
         btns.setGravity(Gravity.CENTER_VERTICAL);
         FrameLayout leftSlot = new FrameLayout(a), rightSlot = new FrameLayout(a);
         ImageView prev = button(a, android.R.drawable.ic_media_previous, d, 28);
-        ImageView play = button(a, android.R.drawable.ic_media_play, d, vertical ? 30 : 34);
+        ImageView play = button(a, android.R.drawable.ic_media_play, d, vertical ? 26 : 34);   // card: fits inside the 30 dp pill
         ImageView next = button(a, android.R.drawable.ic_media_next, d, 28);
         GradientDrawable pb = new GradientDrawable();   // play / pause: solid white circle
         pb.setShape(GradientDrawable.OVAL);
@@ -157,10 +157,12 @@ final class MediaBlock {
             pill.setBackground(pb2);
             int vp = Math.round(2 * d);
             pill.setPadding(0, vp, 0, vp);
-            for (View b : new View[]{prev, play, next}) {
-                LinearLayout.LayoutParams l = (LinearLayout.LayoutParams) b.getLayoutParams();
+            View[] bs = {prev, play, next};
+            for (int i = 0; i < bs.length; i++) {   // spread over the player's height (the card sets the pill's height)
+                if (i > 0) pill.addView(new View(a), new LinearLayout.LayoutParams(1, 0, 1f));
+                LinearLayout.LayoutParams l = (LinearLayout.LayoutParams) bs[i].getLayoutParams();
                 l.leftMargin = l.rightMargin = 0; l.topMargin = l.bottomMargin = Math.round(1 * d);
-                pill.addView(b, l);
+                pill.addView(bs[i], l);
             }
             strip[0] = pill;
         }

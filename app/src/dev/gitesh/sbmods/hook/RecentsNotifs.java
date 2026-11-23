@@ -155,6 +155,12 @@ final class RecentsNotifs {
     }
 
     static final int BODY_LINES = 4;
+
+    /** "now", "5m", "2h", "3d": how old a notification is. */
+    static String ago(long t) {
+        long m = Math.max(0, System.currentTimeMillis() - t) / 60000;
+        return m < 1 ? "now" : m < 60 ? m + "m" : m < 1440 ? m / 60 + "h" : m / 1440 + "d";
+    }
     static final String BODY = "sbmods_nbody";
 
     /** One notification row: app's small icon, title, text; tap opens it, a sideways swipe dismisses it. */
@@ -178,7 +184,24 @@ final class RecentsNotifs {
         t.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         t.setSingleLine(true);
         t.setEllipsize(TextUtils.TruncateAt.END);
-        col.addView(t);
+        LinearLayout head = new LinearLayout(a);   // title ........ 5m
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        head.addView(t, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        if (s.time > 0) {
+            TextView age = new TextView(a);
+            age.setTextColor(0x99FFFFFF);
+            age.setTextSize(TypedValue.COMPLEX_UNIT_SP, 9);
+            age.setSingleLine(true);
+            age.setPadding(Math.round(4 * d), 0, 0, 0);
+            Runnable upd = () -> age.setText(ago(s.time));
+            upd.run();
+            age.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {   // fresh each time Overview shows it
+                @Override public void onViewAttachedToWindow(View v) { upd.run(); }
+                @Override public void onViewDetachedFromWindow(View v) {}
+            });
+            head.addView(age);
+        }
+        col.addView(head);
         if (!TextUtils.isEmpty(s.text)) {
             TextView b = new TextView(a);
             b.setText(s.text);
