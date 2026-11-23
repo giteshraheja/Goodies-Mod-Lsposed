@@ -36,9 +36,15 @@ final class MediaBlock {
      *   ~~~~~~~~~ seek bar ~~~~~~~~~~
      *   0:52                     2:58
      *   [extra] prev (play) next [extra]
+     * On a card (strip mode) prev / play / next sit in the card's right strip and the row keeps only the extras.
      * Blurred cover behind, darkened so the text stays readable.
      */
-    static View make(Activity a, RecentsNotifs.N n, float d) {
+    static View make(Activity a, RecentsNotifs.N n, float d) { return make(a, n, d, null); }
+
+    /** strip != null (Recent apps card): prev / play / next go into strip[0] as a vertical pill for the card's right strip;
+     *  the block keeps title, seek bar and the app's extra buttons, and no cover thumb (too narrow). */
+    static View make(Activity a, RecentsNotifs.N n, float d, View[] strip) {
+        boolean vertical = strip != null;
         MediaController mc = new MediaController(a, n.session);
         FrameLayout box = new FrameLayout(a);
         box.setOutlineProvider(new ViewOutlineProvider() {
@@ -83,7 +89,7 @@ final class MediaBlock {
         int ts = Math.round(34 * d);
         LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(ts, ts);
         tl.rightMargin = Math.round(7 * d);
-        head.addView(thumb, tl);
+        if (!vertical) head.addView(thumb, tl);
         LinearLayout names = new LinearLayout(a);
         names.setOrientation(LinearLayout.VERTICAL);
         TextView title = text(a, 12, true);
@@ -120,15 +126,16 @@ final class MediaBlock {
         btns.setGravity(Gravity.CENTER_VERTICAL);
         FrameLayout leftSlot = new FrameLayout(a), rightSlot = new FrameLayout(a);
         ImageView prev = button(a, android.R.drawable.ic_media_previous, d, 28);
-        ImageView play = button(a, android.R.drawable.ic_media_play, d, 34);
+        ImageView play = button(a, android.R.drawable.ic_media_play, d, vertical ? 30 : 34);
         ImageView next = button(a, android.R.drawable.ic_media_next, d, 28);
         GradientDrawable pb = new GradientDrawable();   // play / pause: solid white circle
         pb.setShape(GradientDrawable.OVAL);
         pb.setColor(0xFFFFFFFF);
         play.setBackground(pb);
         play.setColorFilter(0xFF111111);
-        View[] slots = {leftSlot, prev, play, next, rightSlot};
-        float[] wts = {1f, 1f, 1.3f, 1f, 1f};
+        FrameLayout midSlot = new FrameLayout(a);
+        View[] slots = vertical ? new View[]{leftSlot, midSlot, rightSlot} : new View[]{leftSlot, prev, play, next, rightSlot};
+        float[] wts = vertical ? new float[]{1f, 1f, 1f} : new float[]{1f, 1f, 1.3f, 1f, 1f};
         for (int i = 0; i < slots.length; i++) {
             FrameLayout cell = slots[i] instanceof FrameLayout ? (FrameLayout) slots[i] : new FrameLayout(a);
             if (cell != slots[i]) {
@@ -140,8 +147,25 @@ final class MediaBlock {
         LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         bl.topMargin = Math.round(2 * d);
         col.addView(btns, bl);
+        if (vertical) {   // one round dark pill in the card's free strip, like the clear button
+            LinearLayout pill = new LinearLayout(a);
+            pill.setOrientation(LinearLayout.VERTICAL);
+            pill.setGravity(Gravity.CENTER);
+            GradientDrawable pb2 = new GradientDrawable();
+            pb2.setColor(0xE61C1C1E);
+            pb2.setCornerRadius(15 * d);
+            pill.setBackground(pb2);
+            int vp = Math.round(2 * d);
+            pill.setPadding(0, vp, 0, vp);
+            for (View b : new View[]{prev, play, next}) {
+                LinearLayout.LayoutParams l = (LinearLayout.LayoutParams) b.getLayoutParams();
+                l.leftMargin = l.rightMargin = 0; l.topMargin = l.bottomMargin = Math.round(1 * d);
+                pill.addView(b, l);
+            }
+            strip[0] = pill;
+        }
         box.addView(col, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        FrameLayout[] extraSlots = {likeSlot, leftSlot, rightSlot};
+        FrameLayout[] extraSlots = vertical ? new FrameLayout[]{leftSlot, midSlot, rightSlot} : new FrameLayout[]{likeSlot, leftSlot, rightSlot};
         final String[] extraKey = {""};
 
         final boolean[] dragging = {false};
@@ -192,6 +216,7 @@ final class MediaBlock {
                     ViewGroup.LayoutParams il = iv.getLayoutParams();
                     extraSlots[used++].addView(iv, new FrameLayout.LayoutParams(il.width, il.height, Gravity.CENTER));
                 }
+                if (vertical) btns.setVisibility(used > 0 ? View.VISIBLE : View.GONE);   // only the extras row is left in the block
             }
         };
         bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
