@@ -42,7 +42,7 @@ final class MediaBlock {
     static View make(Activity a, RecentsNotifs.N n, float d) { return make(a, n, d, null); }
 
     /** strip != null (Recent apps card): prev / play / next go into strip[0] as a vertical pill for the card's right strip;
-     *  the block keeps title, seek bar and the app's extra buttons, and no cover thumb (too narrow). */
+     *  the block keeps title, seek bar and the app's extra buttons over the sharp cover (no thumb: too narrow). */
     static View make(Activity a, RecentsNotifs.N n, float d, View[] strip) {
         boolean vertical = strip != null;
         MediaController mc = new MediaController(a, n.session);
@@ -62,7 +62,7 @@ final class MediaBlock {
             }
         };
         art.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        art.setRenderEffect(android.graphics.RenderEffect.createBlurEffect(18 * d, 18 * d, android.graphics.Shader.TileMode.CLAMP));
+        if (!vertical) art.setRenderEffect(android.graphics.RenderEffect.createBlurEffect(18 * d, 18 * d, android.graphics.Shader.TileMode.CLAMP));   // card: sharp cover (no room for a thumb)
         box.addView(art, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         View shade = new View(a) {   // over the blur; 0 height when unconstrained, same trick as the cover
             @Override protected void onMeasure(int w, int h) {
@@ -70,7 +70,7 @@ final class MediaBlock {
                 super.onMeasure(w, h);
             }
         };
-        shade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x8C000000, 0xB3000000}));
+        shade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, vertical ? new int[]{0x33000000, 0x66000000, 0xD9000000} : new int[]{0x8C000000, 0xB3000000}));
         box.addView(shade, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         LinearLayout col = new LinearLayout(a);
@@ -257,6 +257,7 @@ final class MediaBlock {
         if (bold) t.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         t.setSingleLine(true);
         t.setEllipsize(TextUtils.TruncateAt.END);
+        t.setShadowLayer(6, 0, 2, 0xB3000000);   // readable over a bright cover
         return t;
     }
 
