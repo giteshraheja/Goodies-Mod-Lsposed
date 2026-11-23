@@ -36,6 +36,7 @@ final class RecentsRail {
     static final String TAG = "sbmods_recents_rail";
     private static final HashMap<String, Drawable> icons = new HashMap<>();
     private static String shownKey = "";
+    static final int ICON = 40;   // dp; the column is ICON + 8 dp wide
 
     /** Add / remove the column; call from Overview's onResume. */
     static void attach(Activity a, FrameLayout box) {
@@ -54,9 +55,9 @@ final class RecentsRail {
             rail.setPadding(0, pad, 0, pad);
             GradientDrawable bg = new GradientDrawable();
             bg.setColor(0x33000000);
-            bg.setCornerRadius(17 * d);
+            bg.setCornerRadius((ICON + 8) / 2f * d);
             rail.setBackground(bg);
-            FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(Math.round(34 * d), ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.END);
+            FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(Math.round((ICON + 8) * d), ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.END);
             lp.rightMargin = Math.round(1 * d);
             box.addView(rail, lp);
         }
@@ -69,8 +70,8 @@ final class RecentsRail {
         if (!(v instanceof LinearLayout) || bottom - top < 100) return;
         LinearLayout rail = (LinearLayout) v;
         float d = a.getResources().getDisplayMetrics().density;
-        int slot = Math.round(34 * d);   // 26 dp icon + 8 dp gap
-        int max = Math.max(1, (bottom - top - Math.round(8 * d)) / slot);
+        int slot = Math.round((ICON + 6) * d);   // icon + 6 dp gap
+        int max = Math.max(1, (bottom - top - Math.round(8 * d)) / slot);   // as many as fit beside the cards
         List<ActivityManager.RecentTaskInfo> tasks = tasks(a, max);
         StringBuilder key = new StringBuilder();
         for (ActivityManager.RecentTaskInfo t : tasks) key.append(t.taskId).append(',');
@@ -115,9 +116,9 @@ final class RecentsRail {
 
     private static View icon(Activity a, ActivityManager.RecentTaskInfo t, float d) {
         ImageView iv = new ImageView(a);
-        int size = Math.round(26 * d);
+        int size = Math.round(ICON * d);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(size, size);
-        lp.topMargin = lp.bottomMargin = Math.round(4 * d);
+        lp.topMargin = lp.bottomMargin = Math.round(3 * d);
         iv.setLayoutParams(lp);
         ComponentName cn = comp(t);
         String pkg = cn.getPackageName();

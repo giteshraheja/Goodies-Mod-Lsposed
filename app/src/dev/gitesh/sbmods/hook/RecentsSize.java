@@ -28,6 +28,7 @@ final class RecentsSize {
             {"row_gap_phone", "integer", FLOAT, 0.03f, "sbmods_grid_rowgap", 0f, 0.1f},                    // gap between the two rows of cards (Samsung 0.06)
             {"page_spacing_grid_phone", "integer", FLOAT, 0.02f, "sbmods_grid_colgap", 0f, 0.1f},          // gap between cards side by side (Samsung 0.04)
             {"task_icon_ratio_grid_phone", "integer", FLOAT, 115f, "sbmods_grid_icon", 80f, 160f},          // card icon, % of Samsung's size (see iconRatio)
+            {"page_side_margin_grid_phone", "integer", FLOAT, 0.137f, "sbmods_grid_side", 0f, 0.2f},       // right margin of the cards (Samsung 0.09): room for the open-apps column (RecentsRail)
     };
     private static int[] ids;
     private static float[] vals;
@@ -126,7 +127,7 @@ final class RecentsSize {
         try { XposedHelpers.findAndHookMethod(Resources.class, "getFraction", int.class, int.class, int.class, h); } catch (Throwable t) { Log.w("recents size hook 4: " + t); }
     }
 
-    private static final int ICON = 6;
+    private static final int ICON = 6, SIDE = 7;
 
     /** Samsung sizes card icons from the suggested-app icon (RecentStyler.getIconSize: item size x 0.63); with more columns
      *  those icons shrink, so scale the ratio back by cols/4 and then by the wanted %. */
@@ -156,6 +157,7 @@ final class RecentsSize {
             try {
                 android.app.Application app = (android.app.Application) Class.forName("android.app.ActivityThread").getMethod("currentApplication").invoke(null);
                 on = app == null ? 1 : android.provider.Settings.Global.getInt(app.getContentResolver(), "sbmods_recents_big", 1);
+                if (app != null && android.provider.Settings.Global.getInt(app.getContentResolver(), "sbmods_recents_rail", 1) == 0) vals[SIDE] = 0.09f;   // no column: Samsung's margin
                 for (int k = 0; app != null && k < WANT.length; k++) {   // fine-tuning without a rebuild; out-of-range values are ignored
                     float f = android.provider.Settings.Global.getFloat(app.getContentResolver(), (String) WANT[k][4], -1f);
                     if (f >= (Float) WANT[k][5] && f <= (Float) WANT[k][6]) vals[k] = f;
