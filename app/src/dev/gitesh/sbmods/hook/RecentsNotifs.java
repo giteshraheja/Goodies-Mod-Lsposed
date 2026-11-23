@@ -154,23 +154,34 @@ final class RecentsNotifs {
         try { return ic.loadDrawable(a.createPackageContext(pkg, 0)); } catch (Throwable t) { return null; }
     }
 
-    private static final java.util.HashMap<String, Integer> tints = new java.util.HashMap<>();
-
-    /** Dark row background tinted with the app's own colour (the strongest colour of its icon), e.g. YT Music = dark red.
-     *  Falls back to plain dark grey for grey / black-and-white icons. Worked out once per app. */
-    static int appTint(Context c, String pkg) {
-        Integer k = tints.get(pkg);
-        if (k != null) return k;
-        int col = iconColor(c, pkg), out = 0xE61C1C1E;
-        if (col != 0) {   // 30 % app colour into the dark base, then kept dark enough for white text
+    /** Row background: solid dark glass with the app's colour glowing in from the left and a thin edge in that colour.
+     *  Grey / black-and-white apps get plain dark glass with a faint light edge. */
+    static GradientDrawable rowBg(Context c, String pkg, float d) {
+        int col = iconColorCached(c, pkg);
+        GradientDrawable g;
+        if (col == 0) {
+            g = new GradientDrawable();
+            g.setColor(0xF21C1C1E);
+            g.setStroke(Math.max(1, Math.round(d * 0.75f)), 0x1FFFFFFF);
+        } else {
             float[] hsv = new float[3];
             android.graphics.Color.colorToHSV(col, hsv);
-            hsv[1] = Math.min(hsv[1], 0.75f);
-            hsv[2] = Math.min(hsv[2], 0.32f);
-            out = (android.graphics.Color.HSVToColor(hsv) & 0x00FFFFFF) | 0xE6000000;
+            hsv[1] = Math.min(hsv[1], 0.85f);
+            hsv[2] = Math.min(hsv[2], 0.42f);
+            int glow = android.graphics.Color.HSVToColor(hsv);
+            g = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{(glow & 0x00FFFFFF) | 0xF5000000, 0xF5161618});
+            hsv[2] = 0.85f; hsv[1] = Math.min(hsv[1], 0.7f);
+            g.setStroke(Math.max(1, Math.round(d * 0.75f)), (android.graphics.Color.HSVToColor(hsv) & 0x00FFFFFF) | 0x66000000);
         }
-        tints.put(pkg, out);
-        return out;
+        g.setCornerRadius(14 * d);
+        return g;
+    }
+
+    private static final java.util.HashMap<String, Integer> iconCols = new java.util.HashMap<>();
+    private static int iconColorCached(Context c, String pkg) {
+        Integer k = iconCols.get(pkg);
+        if (k == null) iconCols.put(pkg, k = iconColor(c, pkg));
+        return k;
     }
 
     /** Most common vivid colour in the app's icon (hue buckets weighted by saturation x brightness); 0 if none. */
@@ -216,12 +227,8 @@ final class RecentsNotifs {
         LinearLayout r = new LinearLayout(a);
         r.setOrientation(LinearLayout.HORIZONTAL);
         r.setGravity(Gravity.CENTER_VERTICAL);
-        int p = Math.round(6 * d);
-        r.setPadding(p, Math.round(3 * d), p, Math.round(3 * d));
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(appTint(a, s.pkg));
-        bg.setCornerRadius(12 * d);
-        r.setBackground(bg);
+        r.setBackground(rowBg(a, s.pkg, d));
+        r.setPadding(Math.round(8 * d), Math.round(5 * d), Math.round(7 * d), Math.round(5 * d));
         // no app icon: the card (and the column popup's title) already say which app it is
         LinearLayout col = new LinearLayout(a);
         col.setOrientation(LinearLayout.VERTICAL);
@@ -230,17 +237,17 @@ final class RecentsNotifs {
         t.setTextColor(0xFFFFFFFF);
         t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
         t.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        t.setSingleLine(true);
+        t.setMaxLines(2);   // the whole title (e.g. "Sewa just dropped"), not "Sewa just dro…"
         t.setEllipsize(TextUtils.TruncateAt.END);
         LinearLayout head = new LinearLayout(a);   // title ........ 5m
-        head.setGravity(Gravity.CENTER_VERTICAL);
+        head.setGravity(Gravity.TOP);   // the age stays on the title's first line
         head.addView(t, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         if (s.time > 0) {
             TextView age = new TextView(a);
             age.setTextColor(0x99FFFFFF);
             age.setTextSize(TypedValue.COMPLEX_UNIT_SP, 9);
             age.setSingleLine(true);
-            age.setPadding(Math.round(4 * d), 0, 0, 0);
+            age.setPadding(Math.round(4 * d), Math.round(2 * d), 0, 0);
             Runnable upd = () -> age.setText(ago(s.time));
             upd.run();
             age.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {   // fresh each time Overview shows it
@@ -272,10 +279,7 @@ final class RecentsNotifs {
         box.setOrientation(LinearLayout.VERTICAL);
         int p = Math.round(6 * d);
         box.setPadding(p, Math.round(4 * d), p, p);
-        GradientDrawable bg = new GradientDrawable();   // same dark glass as the other rows (the app's tint looked washed out)
-        bg.setColor(appTint(a, s.pkg));
-        bg.setCornerRadius(12 * d);
-        box.setBackground(bg);
+        box.setBackground(rowBg(a, s.pkg, d));
         View head = row(a, s, d, after);
         head.setBackground(null);
         head.setPadding(0, 0, 0, 0);
