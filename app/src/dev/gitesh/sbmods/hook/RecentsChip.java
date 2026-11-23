@@ -241,6 +241,10 @@ final class RecentsChip {
         {
             // bottom row: the buttons are known (search, more), read them directly; top: search the strip as before
             int limit = rowC >= 0 ? leftOfKnown(a) : leftOfButtons(parent0, tr[1], tr[1] + topRow.getHeight(), wantLeft, 0);
+            if (limit <= wantLeft && !realignSoon) {   // buttons not placed yet: look again shortly instead of waiting for the next tick
+                realignSoon = true;
+                topRow.postDelayed(() -> { realignSoon = false; try { align(a); } catch (Throwable t) { Log.w("recents chip realign: " + t); } }, 400);
+            }
             View[] order = {tempChip, ramChip, swapChip};   // dropped in this order (temperature first, swap last)
             ChipView[] all = {ramChip, swapChip, tempChip};
             for (View v : order) v.setVisibility(View.VISIBLE);
@@ -282,6 +286,7 @@ final class RecentsChip {
         return px;
     }
 
+    private static boolean realignSoon;
     private static int cardsId = -2;
 
     /** The task cards: bigger cards reach into the top strip, and their small app icons are not Samsung's top buttons. */
@@ -416,7 +421,8 @@ final class RecentsChip {
         int[] l = new int[2];
         for (String n : new String[]{"search_button", "moreOption"}) {
             View c = byId(a, n);
-            if (c == null || !c.isShown() || c.getWidth() <= 0) continue;
+            // not isShown(): while Overview fades in they can count as hidden, and the chips then thought they had the whole row
+            if (c == null || c.getVisibility() == View.GONE || c.getWidth() <= 0) continue;
             c.getLocationInWindow(l);
             int x = l[0] + Math.min(c.getPaddingLeft() + iconInset(c), c.getWidth() / 3);
             best = best == 0 ? x : Math.min(best, x);
