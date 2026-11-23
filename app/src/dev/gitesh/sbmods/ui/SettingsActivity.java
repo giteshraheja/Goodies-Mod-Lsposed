@@ -1963,6 +1963,11 @@ public final class SettingsActivity extends Activity {
         switchRow("Buttons at the bottom", "RAM, Swap, Temp, search and more sit just above \u201cClose all\u201d, within thumb reach; "
                 + "the cards start higher.", gl("sbmods_recents_bottom", 1) != 0, v -> putGlRestart("sbmods_recents_bottom", v ? "1" : "0"));
         divider();
+        switchRow("Notifications on the cards", "Each app's notifications show on its card, newest at the bottom (5 at most, the rest stacked). "
+                + "Tap one to open it, swipe it sideways to clear it; tap the card's right edge to open the app. "
+                + "Long-press an icon in the column for its notifications and shortcuts.", gl("sbmods_recents_notifs", 1) != 0,
+                v -> putGlRestart("sbmods_recents_notifs", v ? "1" : "0"));
+        divider();
         switchRow("Open apps column", "A column of your open apps' icons on the right, newest at the bottom. Tap one to open it, "
                 + "long-press to see its name.", gl("sbmods_recents_rail", 1) != 0, v -> putGlRestart("sbmods_recents_rail", v ? "1" : "0"));
         if (on) {

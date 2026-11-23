@@ -61,7 +61,7 @@ final class RecentsChip {
             });
             XposedHelpers.findAndHookMethod(Activity.class, "onPause", new XC_MethodHook() {
                 @Override protected void afterHookedMethod(MethodHookParam p) {
-                    if (p.thisObject == owner) { main.removeCallbacks(tick); if (PerfPanel.panel != null) { try { PerfPanel.panel.dismiss(); } catch (Throwable ignored) {} PerfPanel.panel = null; } Global.gset(owner, "sbmods_watch", "0"); }   // panel first: closing it must not leave the watch on
+                    if (p.thisObject == owner) { CardNotifs.detach(); main.removeCallbacks(tick); if (PerfPanel.panel != null) { try { PerfPanel.panel.dismiss(); } catch (Throwable ignored) {} PerfPanel.panel = null; } Global.gset(owner, "sbmods_watch", "0"); }   // panel first: closing it must not leave the watch on
                 }
             });
         } catch (Throwable t) { Log.w("recents chip hook failed: " + t); Log.miss("Activity.onResume hook in the launcher", "the Overview screen chips"); }
@@ -143,6 +143,7 @@ final class RecentsChip {
         sugScale = Math.max(50, Math.min(100, Global.gint(a, "sbmods_sug_pct", 100))) / 100f;
         Global.gset(a, "sbmods_watch", "1");   // the helper measures CPU load only while this screen is open
         try { RecentsRail.attach(a, box); } catch (Throwable t) { Log.w("recents rail: " + t); }
+        try { CardNotifs.attach(a, box); } catch (Throwable t) { Log.w("card notifs: " + t); }
         fitBeforeDraw();
     }
 
@@ -203,7 +204,7 @@ final class RecentsChip {
                 boolean shown = topRow.isShown();
                 // CPU load only while Overview is really on screen (not the home screen); 2 = the Performance panel is open (per-core load too)
                 Global.gset(a, "sbmods_watch", !shown ? "0" : PerfPanel.showing() ? "2" : "1");
-                if (shown) { try { align(a); refresh(a); } catch (Throwable t) { Log.w("recents chip tick: " + t); } }
+                if (shown) { try { align(a); refresh(a); CardNotifs.refresh(a); } catch (Throwable t) { Log.w("recents chip tick: " + t); } }
                 main.postDelayed(this, shown ? 2500 : HIDDEN_MS);   // hidden: ChipView.onVisibilityAggregated kicks us early
             } catch (Throwable t) { Log.w("recents chip tick: " + t); }
         }

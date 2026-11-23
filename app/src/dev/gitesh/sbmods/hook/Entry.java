@@ -23,6 +23,7 @@ public final class Entry implements IXposedHookLoadPackage {
             if (!Config.SYSUI.equals(lp.packageName)) return;
             if (lp.processName != null && !Config.SYSUI.equals(lp.processName)) return;
             if (attachHook != null) return;
+            SysNotifs.install(lp.classLoader);
 
             // One framework-level hook: every TextView attach. The callback filters down to the
             // status bar clock in a few cheap checks, so it never depends on Samsung class internals.
