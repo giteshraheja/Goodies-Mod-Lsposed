@@ -154,6 +154,54 @@ final class RecentsNotifs {
         try { return ic.loadDrawable(a.createPackageContext(pkg, 0)); } catch (Throwable t) { return null; }
     }
 
+    private static final java.util.HashMap<String, Integer> tints = new java.util.HashMap<>();
+
+    /** Dark row background tinted with the app's own colour (the strongest colour of its icon), e.g. YT Music = dark red.
+     *  Falls back to plain dark grey for grey / black-and-white icons. Worked out once per app. */
+    static int appTint(Context c, String pkg) {
+        Integer k = tints.get(pkg);
+        if (k != null) return k;
+        int col = iconColor(c, pkg), out = 0xE61C1C1E;
+        if (col != 0) {   // 30 % app colour into the dark base, then kept dark enough for white text
+            float[] hsv = new float[3];
+            android.graphics.Color.colorToHSV(col, hsv);
+            hsv[1] = Math.min(hsv[1], 0.75f);
+            hsv[2] = Math.min(hsv[2], 0.32f);
+            out = (android.graphics.Color.HSVToColor(hsv) & 0x00FFFFFF) | 0xE6000000;
+        }
+        tints.put(pkg, out);
+        return out;
+    }
+
+    /** Most common vivid colour in the app's icon (hue buckets weighted by saturation x brightness); 0 if none. */
+    private static int iconColor(Context c, String pkg) {
+        try {
+            Drawable ic = c.getPackageManager().getApplicationIcon(pkg);
+            int n = 32;
+            android.graphics.Bitmap bm = android.graphics.Bitmap.createBitmap(n, n, android.graphics.Bitmap.Config.ARGB_8888);
+            android.graphics.Canvas cv = new android.graphics.Canvas(bm);
+            ic.setBounds(0, 0, n, n);
+            ic.draw(cv);
+            float[] w = new float[24], r = new float[24], g = new float[24], b = new float[24], hsv = new float[3];
+            float all = 0;
+            for (int y = 0; y < n; y++) for (int x = 0; x < n; x++) {
+                int px = bm.getPixel(x, y);
+                if ((px >>> 24) < 200) continue;
+                android.graphics.Color.colorToHSV(px, hsv);
+                float wt = hsv[1] * hsv[2];
+                all += 1;
+                if (hsv[1] < 0.25f || hsv[2] < 0.2f) continue;   // greys, white, black say nothing about the brand
+                int i = (int) (hsv[0] / 15f) % 24;
+                w[i] += wt; r[i] += wt * ((px >> 16) & 255); g[i] += wt * ((px >> 8) & 255); b[i] += wt * (px & 255);
+            }
+            bm.recycle();
+            int best = 0;
+            for (int i = 1; i < 24; i++) if (w[i] > w[best]) best = i;
+            if (all == 0 || w[best] < all * 0.04f) return 0;   // hardly any colour: keep the plain dark row
+            return 0xFF000000 | (Math.round(r[best] / w[best]) << 16) | (Math.round(g[best] / w[best]) << 8) | Math.round(b[best] / w[best]);
+        } catch (Throwable t) { return 0; }
+    }
+
     static final int BODY_LINES = 4;
 
     /** "now", "5m", "2h", "3d": how old a notification is. */
@@ -171,7 +219,7 @@ final class RecentsNotifs {
         int p = Math.round(6 * d);
         r.setPadding(p, Math.round(3 * d), p, Math.round(3 * d));
         GradientDrawable bg = new GradientDrawable();
-        bg.setColor(0xE61C1C1E);
+        bg.setColor(appTint(a, s.pkg));
         bg.setCornerRadius(12 * d);
         r.setBackground(bg);
         // no app icon: the card (and the column popup's title) already say which app it is
@@ -225,7 +273,7 @@ final class RecentsNotifs {
         int p = Math.round(6 * d);
         box.setPadding(p, Math.round(4 * d), p, p);
         GradientDrawable bg = new GradientDrawable();   // same dark glass as the other rows (the app's tint looked washed out)
-        bg.setColor(0xE61C1C1E);
+        bg.setColor(appTint(a, s.pkg));
         bg.setCornerRadius(12 * d);
         box.setBackground(bg);
         View head = row(a, s, d, after);
