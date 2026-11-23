@@ -222,11 +222,11 @@ final class RecentsNotifs {
         if (s.session != null) { try { return MediaBlock.make(a, s, d); } catch (Throwable t) { Log.w("media block: " + t); } }
         LinearLayout box = new LinearLayout(a);
         box.setOrientation(LinearLayout.VERTICAL);
-        int p = Math.round(8 * d);
-        box.setPadding(p, p, p, Math.round(6 * d));
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(s.color != 0 && s.color != Notification.COLOR_DEFAULT ? (s.color & 0x00FFFFFF) | 0xF0000000 : 0xF02C2C2E);
-        bg.setCornerRadius(16 * d);
+        int p = Math.round(6 * d);
+        box.setPadding(p, Math.round(4 * d), p, p);
+        GradientDrawable bg = new GradientDrawable();   // same dark glass as the other rows (the app's tint looked washed out)
+        bg.setColor(0xE61C1C1E);
+        bg.setCornerRadius(12 * d);
         box.setBackground(bg);
         View head = row(a, s, d, after);
         head.setBackground(null);
@@ -246,7 +246,7 @@ final class RecentsNotifs {
                     ic = ic.mutate(); ic.setTint(0xFFFFFFFF);
                     iv.setImageDrawable(ic);
                     iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
-                    int ip = Math.round(4 * d);
+                    int ip = Math.round(5 * d);
                     iv.setPadding(ip, ip, ip, ip);
                     iv.setContentDescription(title);
                     b = iv;
@@ -261,20 +261,20 @@ final class RecentsNotifs {
                     b = t;
                 }
                 GradientDrawable bb = new GradientDrawable();
-                bb.setColor(0x33FFFFFF);
-                bb.setCornerRadius(14 * d);
+                bb.setColor(0x26FFFFFF);
+                bb.setCornerRadius(13 * d);
                 b.setBackground(bb);
                 b.setOnClickListener(v -> {
                     v.performHapticFeedback(android.view.HapticFeedbackConstants.CONTEXT_CLICK);
                     try { if (pi != null) send(a, pi); } catch (Throwable t) { Log.w("recents notif action: " + t); }
                     if (after != null) after.run();
                 });
-                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, Math.round(32 * d), 1f);
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, Math.round(26 * d), 1f);
                 lp.leftMargin = lp.rightMargin = Math.round(2 * d);
                 btns.addView(b, lp);
             }
             LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            bl.topMargin = Math.round(6 * d);
+            bl.topMargin = Math.round(4 * d);
             box.addView(btns, bl);
         }
         return box;

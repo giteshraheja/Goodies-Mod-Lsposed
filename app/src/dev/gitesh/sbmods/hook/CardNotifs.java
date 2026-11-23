@@ -36,7 +36,7 @@ final class CardNotifs {
     private static ViewTreeObserver.OnPreDrawListener follow;
     private static final IdentityHashMap<View, Panel> panels = new IdentityHashMap<>();
     private static Map<String, List<RecentsNotifs.N>> byPkg = new HashMap<>();
-    private static int sceneId, taskViewId;
+    private static int sceneId, taskViewId, lockId;
     private static Method pkgOf;
     private static final ArrayList<View> found = new ArrayList<>();
 
@@ -61,6 +61,7 @@ final class CardNotifs {
         }
         sceneId = a.getResources().getIdentifier("task_scene", "id", Entry.LAUNCHER);
         taskViewId = a.getResources().getIdentifier("taskView", "id", Entry.LAUNCHER);
+        lockId = a.getResources().getIdentifier("task_lock_button", "id", Entry.LAUNCHER);
         RecentsNotifs.bind(a, CardNotifs::update);
         update();
         refresh(a);
@@ -126,6 +127,7 @@ final class CardNotifs {
             View scene = sceneId == 0 ? null : tv.findViewById(sceneId);
             if (scene == null || !tv.isShown() || scene.getWidth() <= 0) continue;
             seen.put(tv, Boolean.TRUE);
+            moveLock(tv, scene, d);
             String pkg = pkg(tv);
             List<RecentsNotifs.N> ns = byPkg.get(pkg);
             Panel p = panels.get(tv);
@@ -152,6 +154,23 @@ final class CardNotifs {
         List<View> gone = new ArrayList<>();
         for (Map.Entry<View, Panel> e : panels.entrySet()) if (!seen.containsKey(e.getKey())) gone.add(e.getKey());
         for (View v : gone) { Panel p = panels.remove(v); if (p != null) L.removeView(p.root); }
+    }
+
+    private static final int[] kl = new int[2], ks = new int[2];
+
+    /** Samsung's "kept open" pin (task_lock_button, 40 dp at the card's bottom right) sits under our notifications:
+     *  shrink it to 28 dp and put it at the top of the card's right strip. */
+    private static void moveLock(View tv, View scene, float d) {
+        View lk = lockId == 0 ? null : tv.findViewById(lockId);
+        if (lk == null || !lk.isShown() || lk.getWidth() <= 0) return;
+        float sc = 28 * d / lk.getWidth();
+        if (lk.getScaleX() != sc) { lk.setScaleX(sc); lk.setScaleY(sc); }
+        lk.getLocationInWindow(kl);   // the drawn (scaled, translated) top-left; scaling is around the centre
+        scene.getLocationInWindow(ks);
+        float cx = kl[0] + lk.getWidth() * sc / 2f - lk.getTranslationX(), cy = kl[1] + lk.getHeight() * sc / 2f - lk.getTranslationY();   // centre without our move
+        float tx = Math.round(ks[0] + scene.getWidth() - STRIP_DP / 2f * d - cx), ty = Math.round(ks[1] + 20 * d - cy);   // centred in the strip, 6 dp from the top
+        if (Math.abs(lk.getTranslationX() - tx) > 1) lk.setTranslationX(tx);
+        if (Math.abs(lk.getTranslationY() - ty) > 1) lk.setTranslationY(ty);
     }
 
     private static void build(Activity a, Panel p, List<RecentsNotifs.N> ns, float d) {
