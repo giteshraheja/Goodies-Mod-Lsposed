@@ -141,6 +141,7 @@ final class RecentsChip {
         sugDownDp = big ? Math.max(0, Math.min(30, Global.gint(a, "sbmods_sug_down", 14))) : 0;
         sugScale = Math.max(50, Math.min(100, Global.gint(a, "sbmods_sug_pct", 100))) / 100f;
         Global.gset(a, "sbmods_watch", "1");   // the helper measures CPU load only while this screen is open
+        try { RecentsRail.attach(a, box); } catch (Throwable t) { Log.w("recents rail: " + t); }
         fitBeforeDraw();
     }
 
@@ -311,6 +312,10 @@ final class RecentsChip {
         }
         if (btn.getTranslationY() != shift) btn.setTranslationY(shift);
         b[1] += shift;
+        if (box instanceof FrameLayout && topRow != null) {   // open-apps column: from under the top chips down to just above "Close all"
+            int[] t0 = restPos(topRow, box);
+            try { RecentsRail.fit(a, (FrameLayout) box, t0[1] + topRow.getHeight() + Math.round(8 * d), b[1] - Math.round(8 * d)); } catch (Throwable t) { Log.w("recents rail fit: " + t); }
+        }
         int left = Math.max(0, (box.getWidth() - btn.getWidth()) / 2), right = left;   // "Close all" is always centred (its layout x is offset by Samsung, measured 2026-11-23)
         int room = Math.min(left, right) - Math.round((EDGE - ChipView.PAD) * d) - Math.round(6 * d);
         int centre = box.getHeight() - (b[1] - c[1] + btn.getHeight() / 2);
