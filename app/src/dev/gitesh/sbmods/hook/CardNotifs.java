@@ -191,7 +191,13 @@ final class CardNotifs {
             col.addView(stack(a, ns.get(shown), more, d, () -> { p.expanded = true; p.key = ""; if (layer != null) layer.invalidate(); }), rowLp(gap));
         }
         for (int i = shown - 1; i >= 0; i--) col.addView(RecentsNotifs.row(a, ns.get(i), d, again), rowLp(gap));   // newest at the bottom
-        for (int i = Math.min(2, live.size()) - 1; i >= 0; i--) col.addView(RecentsNotifs.liveBlock(a, live.get(i), d, again), rowLp(gap));
+        View[] strip = new View[1];   // music buttons: first player's controls go into the card's right strip
+        for (int i = Math.min(2, live.size()) - 1; i >= 0; i--) {
+            RecentsNotifs.N s = live.get(i);
+            View v = null;
+            if (s.session != null && strip[0] == null) { try { v = MediaBlock.make(a, s, d, strip); } catch (Throwable t) { Log.w("media block: " + t); } }
+            col.addView(v != null ? v : RecentsNotifs.liveBlock(a, s, d, again), rowLp(gap));
+        }
         FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM);
         cl.rightMargin = Math.round(STRIP_DP * d);
         p.root.addView(col, cl);
@@ -216,6 +222,13 @@ final class CardNotifs {
             final String pkg = p.pkg;
             x.setOnClickListener(v -> { v.performHapticFeedback(android.view.HapticFeedbackConstants.CONTEXT_CLICK); RecentsNotifs.clear(a, java.util.Collections.singleton(pkg)); again.run(); });
             p.root.addView(x, xl);
+        }
+        if (strip[0] != null) {   // music buttons stacked in the strip, just above the clear button
+            int sw = Math.round(30 * d);
+            FrameLayout.LayoutParams ml = new FrameLayout.LayoutParams(sw, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.END);
+            ml.rightMargin = Math.round((STRIP_DP - 30) / 2f * d);
+            ml.bottomMargin = pad + (any ? Math.round(34 * d) : 0);
+            p.root.addView(strip[0], ml);
         }
     }
 

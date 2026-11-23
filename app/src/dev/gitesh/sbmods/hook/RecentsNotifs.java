@@ -160,7 +160,7 @@ final class RecentsNotifs {
         r.setOrientation(LinearLayout.HORIZONTAL);
         r.setGravity(Gravity.CENTER_VERTICAL);
         int p = Math.round(6 * d);
-        r.setPadding(p, Math.round(5 * d), p, Math.round(5 * d));
+        r.setPadding(p, Math.round(3 * d), p, Math.round(3 * d));
         GradientDrawable bg = new GradientDrawable();
         bg.setColor(0xE61C1C1E);
         bg.setCornerRadius(12 * d);
@@ -181,7 +181,7 @@ final class RecentsNotifs {
             b.setText(s.text);
             b.setTextColor(0xCCFFFFFF);
             b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
-            b.setMaxLines(2);
+            b.setSingleLine(true);   // one line each: rows stay short, tap opens the full notification
             b.setEllipsize(TextUtils.TruncateAt.END);
             col.addView(b);
         }
