@@ -116,6 +116,10 @@ final class SysNotifs {
         b.putInt("color", n.color);
         b.putBoolean("clear", s.isClearable());
         b.putBoolean("media", e.containsKey(Notification.EXTRA_MEDIA_SESSION));
+        try {   // music: the launcher drives the player itself (cover, seek bar, buttons) through the media session
+            android.media.session.MediaSession.Token tk = e.getParcelable(Notification.EXTRA_MEDIA_SESSION, android.media.session.MediaSession.Token.class);
+            if (tk != null) b.putParcelable("session", tk);
+        } catch (Throwable ignored) {}
         if (n.contentIntent != null) b.putParcelable("tap", n.contentIntent);
         Icon si = n.getSmallIcon();
         if (si != null && si.getType() == Icon.TYPE_RESOURCE) b.putParcelable("icon", si);

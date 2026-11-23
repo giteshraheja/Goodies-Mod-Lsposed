@@ -137,7 +137,7 @@ final class CardNotifs {
             StringBuilder k = new StringBuilder(pkg).append(p.expanded);
             for (RecentsNotifs.N s : ns) {
                 k.append('|').append(s.getKey()).append(s.getPostTime());
-                k.append(s.actsKey());   // play <-> pause swaps the button: rebuild
+                if (s.session == null) k.append(s.actsKey());   // play <-> pause swaps the button: rebuild (music updates itself)
             }
             if (!k.toString().equals(p.key)) { p.key = k.toString(); p.pkg = pkg; build(a, p, ns, d); }
             scene.getLocationInWindow(so);

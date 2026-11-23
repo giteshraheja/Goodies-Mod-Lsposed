@@ -72,7 +72,8 @@ final class RecentsRail {
         LinearLayout rail = (LinearLayout) v;
         float d = a.getResources().getDisplayMetrics().density;
         int slot = Math.round((ICON + 6) * d);   // icon + 6 dp gap
-        boolean clear = RecentsNotifs.on(a);   // "Clear" (notifications of the apps with cards) sits at the bottom
+        boolean clear = false;   // "Clear" (notifications of the apps with cards): top of the column, only when there is something to clear
+        if (RecentsNotifs.on(a)) { java.util.List<String> pk = CardNotifs.cardPkgs(a); for (RecentsNotifs.N n : RecentsNotifs.active(pk)) if (n.clear) { clear = true; break; } }
         int max = Math.max(1, (bottom - top - Math.round(8 * d)) / slot - (clear ? 1 : 0));   // as many as fit beside the cards
         List<ActivityManager.RecentTaskInfo> tasks = recent(a, max);
         StringBuilder key = new StringBuilder().append(clear);
@@ -80,8 +81,8 @@ final class RecentsRail {
         if (!key.toString().equals(shownKey)) {
             shownKey = key.toString();
             rail.removeAllViews();
+            if (clear) rail.addView(clearButton(a, d));   // first = top, away from the thumb so it is not hit by accident
             for (int i = tasks.size() - 1; i >= 0; i--) rail.addView(icon(a, tasks.get(i), d));   // oldest on top, newest at the bottom
-            if (clear) rail.addView(clearButton(a, d));
             rail.setVisibility(tasks.isEmpty() ? View.GONE : View.VISIBLE);
         }
         // grow upward from "Close all"

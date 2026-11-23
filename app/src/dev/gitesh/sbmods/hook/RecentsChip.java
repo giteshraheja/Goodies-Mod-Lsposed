@@ -232,14 +232,15 @@ final class RecentsChip {
         }
         int blockRight = 0;
         View parent0 = (View) topRow.getParent();
-        blockRight = rightOfOthers(parent0, tr[1], tr[1] + topRow.getHeight(), 0);
+        blockRight = rowC >= 0 ? rightOf(a, "fgsButtonContainer") : rightOfOthers(parent0, tr[1], tr[1] + topRow.getHeight(), 0);
         boolean compact = blockRight > 0;
         FrameLayout.LayoutParams lp0 = (FrameLayout.LayoutParams) topRow.getLayoutParams();
         int wantLeft = compact ? blockRight + Math.round(6 * d) : Math.round((EDGE - 4) * d);
         if (lp0.leftMargin != wantLeft) { lp0.leftMargin = wantLeft; topRow.setLayoutParams(lp0); }
         // never run into Samsung's search / more buttons: drop the least useful chips until the row fits
         {
-            int limit = leftOfButtons(parent0, tr[1], tr[1] + topRow.getHeight(), wantLeft, 0);
+            // bottom row: the buttons are known (search, more), read them directly; top: search the strip as before
+            int limit = rowC >= 0 ? leftOfKnown(a) : leftOfButtons(parent0, tr[1], tr[1] + topRow.getHeight(), wantLeft, 0);
             View[] order = {tempChip, ramChip, swapChip};   // dropped in this order (temperature first, swap last)
             ChipView[] all = {ramChip, swapChip, tempChip};
             for (View v : order) v.setVisibility(View.VISIBLE);
@@ -297,7 +298,8 @@ final class RecentsChip {
     private static int topUpDp = 20;
     /** Top row (RAM/Swap/Temp, "N active apps", search, more) moved down just above "Close all" for one-hand reach (global sbmods_recents_bottom). */
     static boolean bottomRow = true;
-    private static int caTopBox = -1;   // "Close all" top inside the Overview box, from alignBottom
+    private static int caTopBox = -1;
+    private static String lastDbg = "";   // "Close all" top inside the Overview box, from alignBottom
     private static boolean caOn = true;
     private static int sugDownDp = 14;   // suggested apps moved down toward the gesture bar (global sbmods_sug_down)
     private static float sugScale = 1f;   // Samsung lays out the lower 6-column row itself (RecentsSize); this extra view scale stays for tuning
@@ -406,6 +408,33 @@ final class RecentsChip {
         if (dr == null || dr.getIntrinsicWidth() <= 0) return 0;
         int inner = c.getWidth() - c.getPaddingLeft() - c.getPaddingRight();
         return Math.max(0, (inner - dr.getIntrinsicWidth()) / 2);
+    }
+
+    /** Bottom row: left edge (window px) of the drawn search icon, or of "more" if search is hidden; 0 if neither. */
+    private static int leftOfKnown(Activity a) {
+        int best = 0;
+        int[] l = new int[2];
+        for (String n : new String[]{"search_button", "moreOption"}) {
+            View c = byId(a, n);
+            if (c == null || !c.isShown() || c.getWidth() <= 0) continue;
+            c.getLocationInWindow(l);
+            int x = l[0] + Math.min(c.getPaddingLeft() + iconInset(c), c.getWidth() / 3);
+            best = best == 0 ? x : Math.min(best, x);
+        }
+        return best;
+    }
+
+    /** Right edge (window px) of a shown view of Samsung's by id name, 0 if not shown. */
+    private static int rightOf(Activity a, String name) {
+        View c = byId(a, name);
+        if (c == null || !c.isShown() || c.getWidth() <= 0 || c.getAlpha() < 0.1f) return 0;
+        int[] l = new int[2];
+        c.getLocationInWindow(l);
+        if (c instanceof ViewGroup && ((ViewGroup) c).getChildCount() == 1) {   // the pill inside its container
+            View in = ((ViewGroup) c).getChildAt(0);
+            if (in.isShown() && in.getWidth() > 0) { in.getLocationInWindow(l); return l[0] + in.getWidth(); }
+        }
+        return l[0] + c.getWidth();
     }
 
     private static int leftOfButtons(View v, int top, int bottom, int minX, int depth) {

@@ -45,7 +45,7 @@ final class RecentsNotifs {
     /** One notification as the status bar sent it. */
     static final class N {
         String key, pkg; CharSequence title, text; long time; int flags, color; boolean clear, media;
-        PendingIntent tap; Icon icon; List<Bundle> acts = new ArrayList<>();
+        PendingIntent tap; Icon icon; List<Bundle> acts = new ArrayList<>(); android.media.session.MediaSession.Token session;
         String getKey() { return key; }
         String getPackageName() { return pkg; }
         long getPostTime() { return time; }
@@ -96,6 +96,7 @@ final class RecentsNotifs {
         n.clear = b.getBoolean("clear"); n.media = b.getBoolean("media");
         n.tap = b.getParcelable("tap", PendingIntent.class);
         n.icon = b.getParcelable("icon", Icon.class);
+        n.session = b.getParcelable("session", android.media.session.MediaSession.Token.class);
         ArrayList<Bundle> a = b.getParcelableArrayList("acts", Bundle.class);
         if (a != null) n.acts = a;
         return n;
@@ -164,14 +165,7 @@ final class RecentsNotifs {
         bg.setColor(0xE61C1C1E);
         bg.setCornerRadius(12 * d);
         r.setBackground(bg);
-        ImageView iv = new ImageView(a);
-        Drawable ic = load(a, s.icon, s.pkg);
-        if (ic != null) { ic = ic.mutate(); ic.setTint(s.color != 0 && s.color != Notification.COLOR_DEFAULT ? s.color | 0xFF000000 : 0xFFFFFFFF); }
-        iv.setImageDrawable(ic);
-        int is = Math.round(16 * d);
-        LinearLayout.LayoutParams il = new LinearLayout.LayoutParams(is, is);
-        il.rightMargin = Math.round(6 * d);
-        r.addView(iv, il);
+        // no app icon: the card (and the column popup's title) already say which app it is
         LinearLayout col = new LinearLayout(a);
         col.setOrientation(LinearLayout.VERTICAL);
         TextView t = new TextView(a);
@@ -198,6 +192,7 @@ final class RecentsNotifs {
 
     /** Bigger block for a live notification: title, text and its own buttons (play / pause / next, answer / hang up...). */
     static View liveBlock(Activity a, N s, float d, Runnable after) {
+        if (s.session != null) { try { return MediaBlock.make(a, s, d); } catch (Throwable t) { Log.w("media block: " + t); } }
         LinearLayout box = new LinearLayout(a);
         box.setOrientation(LinearLayout.VERTICAL);
         int p = Math.round(8 * d);
