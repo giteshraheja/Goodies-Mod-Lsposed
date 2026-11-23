@@ -287,13 +287,13 @@ final class TapActions {
      */
     private static void togglePowerSaver(Context ctx) {
         boolean on = Settings.Global.getInt(ctx.getContentResolver(), "low_power", 0) == 0;
-        final String done = on ? "Power saving on" : "Power saving off";
+        final String done = on ? "Power saving on \u00b7 Light profile" : "Power saving off \u00b7 Standard profile";
         new Thread(() -> {
             String method = on ? "psm_turn_on" : "psm_turn_off";
             try {
                 Bundle r = ctx.getContentResolver().call(DC_API, method, null, null);
                 Log.i(method + " -> " + r);
-                if (r != null && r.getBoolean("result", false)) { toast(ctx, done); return; }
+                if (r != null && r.getBoolean("result", false)) { perfProfile(ctx, on); toast(ctx, done); return; }
             } catch (Throwable t) {
                 Log.w(method + " failed: " + t);
             }
@@ -303,12 +303,20 @@ final class TapActions {
                 Class<?> exp = bc.getClass().getClassLoader().loadClass("com.android.systemui.animation.Expandable");
                 bc.getClass().getMethod("setPowerSaveMode", boolean.class, exp).invoke(bc, on, null);
                 Log.i("fallback BatteryController.setPowerSaveMode(" + on + ")");
+                perfProfile(ctx, on);
                 toast(ctx, done);
             } catch (Throwable t) {
                 Log.w("fallback failed: " + t);
                 toast(ctx, "Couldn\u2019t change power saving");
             }
         }, "sbmods-psm").start();
+    }
+
+    /** Samsung's Performance profile follows power saving: on = Light, off = Standard
+     *  (Device Care keeps it in global sem_low_heat_mode, 1 = Light; the system watches that setting). */
+    private static void perfProfile(Context ctx, boolean light) {
+        try { Global.gset(ctx, "sem_low_heat_mode", light ? "1" : "0"); Log.i("performance profile -> " + (light ? "Light" : "Standard")); }
+        catch (Throwable t) { Log.w("performance profile: " + t); }
     }
 
     // ---- flashlight: track state with a torch callback, registered once
