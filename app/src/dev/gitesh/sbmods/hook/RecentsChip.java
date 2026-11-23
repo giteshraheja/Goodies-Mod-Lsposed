@@ -138,6 +138,7 @@ final class RecentsChip {
         caOn = big;
         if (!big) caShiftDp = 0;
         topUpDp = big ? Math.max(0, Math.min(30, Global.gint(a, "sbmods_top_up", 20))) : 0;
+        bottomRow = big && Global.gint(a, "sbmods_recents_bottom", 1) != 0;
         sugDownDp = big ? Math.max(0, Math.min(30, Global.gint(a, "sbmods_sug_down", 14))) : 0;
         sugScale = Math.max(50, Math.min(100, Global.gint(a, "sbmods_sug_pct", 100))) / 100f;
         Global.gset(a, "sbmods_watch", "1");   // the helper measures CPU load only while this screen is open
@@ -219,6 +220,15 @@ final class RecentsChip {
         int[] tr = new int[2];
         topRow.getLocationInWindow(tr);
         float d = a.getResources().getDisplayMetrics().density;
+        int rowC = moveButtonsDown(a, (View) topRow.getParent());
+        if (rowC >= 0) {   // bottom mode: our chips go in the same row, measured where they will be (not where they were laid out)
+            FrameLayout.LayoutParams lb = (FrameLayout.LayoutParams) topRow.getLayoutParams();
+            int want = rowC - topRow.getHeight() / 2;
+            if (lb.topMargin != want) { lb.topMargin = want; topRow.setLayoutParams(lb); }
+            int[] o = new int[2];
+            ((View) topRow.getParent()).getLocationInWindow(o);
+            tr[1] = o[1] + want;
+        }
         int blockRight = 0;
         View parent0 = (View) topRow.getParent();
         blockRight = rightOfOthers(parent0, tr[1], tr[1] + topRow.getHeight(), 0);
@@ -253,6 +263,7 @@ final class RecentsChip {
                 v.setVisibility(View.GONE);
             }
         }
+        if (rowC >= 0) return;
         int[] f = restPos(flow, (View) topRow.getParent());   // where the buttons end up, not where the open animation has them now
         FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) topRow.getLayoutParams();
         int want = f[1] + Math.max(0, (flow.getHeight() - topRow.getHeight()) / 2) - topUpPx(a, flow);
@@ -283,12 +294,33 @@ final class RecentsChip {
     }
 
     private static int topUpDp = 20;
+    /** Top row (RAM/Swap/Temp, "N active apps", search, more) moved down just above "Close all" for one-hand reach (global sbmods_recents_bottom). */
+    static boolean bottomRow = true;
+    private static int caTopBox = -1;   // "Close all" top inside the Overview box, from alignBottom
     private static boolean caOn = true;
     private static int sugDownDp = 14;   // suggested apps moved down toward the gesture bar (global sbmods_sug_down)
     private static float sugScale = 1f;   // Samsung lays out the lower 6-column row itself (RecentsSize); this extra view scale stays for tuning
 
     /** dp "Close all" moves down (global sbmods_ca_shift, read when Overview opens; 0 = Samsung's place). */
     private static int caShiftDp = 12;
+
+    private static final int ROW_H = 48;   // dp, the moved row's touch height
+
+    /** Centre (in the Overview box) of the row above "Close all". */
+    private static int rowCenter(float d) { return caTopBox - Math.round((6 + ROW_H / 2f) * d); }
+
+    /** Bottom mode: Samsung's search / more / "N active apps" go to the row above "Close all"; returns that row's centre, or -1. */
+    private static int moveButtonsDown(Activity a, View box) {
+        if (!bottomRow || caTopBox <= 0) return -1;
+        float d = a.getResources().getDisplayMetrics().density;
+        int c = rowCenter(d);
+        for (View v : new View[]{byId(a, "search_button"), byId(a, "moreOption"), byId(a, "fgsButtonContainer")}) {
+            if (v == null || v.getHeight() <= 0) continue;
+            float ty = c - (restPos(v, box)[1] + v.getHeight() / 2f);
+            if (Math.abs(v.getTranslationY() - ty) > 0.5f) v.setTranslationY(ty);
+        }
+        return c;
+    }
 
     private static void alignBottom(Activity a) {
         if (gpuChip == null || cpuChip == null || !(gpuChip.getParent() instanceof View)) return;
@@ -312,9 +344,12 @@ final class RecentsChip {
         }
         if (btn.getTranslationY() != shift) btn.setTranslationY(shift);
         b[1] += shift;
-        if (box instanceof FrameLayout && topRow != null) {   // open-apps column: from under the top chips down to just above "Close all"
-            int[] t0 = restPos(topRow, box);
-            try { RecentsRail.fit(a, (FrameLayout) box, t0[1] + topRow.getHeight() + Math.round(8 * d), b[1] - Math.round(8 * d)); } catch (Throwable t) { Log.w("recents rail fit: " + t); }
+        caTopBox = b[1];
+        if (box instanceof FrameLayout && topRow != null) {   // open-apps column: beside the cards
+            int railTop, railBottom;
+            if (bottomRow) { railTop = Math.round(36 * d); railBottom = rowCenter(d) - Math.round((ROW_H / 2f + 8) * d); }
+            else { int[] t0 = restPos(topRow, box); railTop = t0[1] + topRow.getHeight() + Math.round(8 * d); railBottom = b[1] - Math.round(8 * d); }
+            try { RecentsRail.fit(a, (FrameLayout) box, railTop, railBottom); } catch (Throwable t) { Log.w("recents rail fit: " + t); }
         }
         int left = Math.max(0, (box.getWidth() - btn.getWidth()) / 2), right = left;   // "Close all" is always centred (its layout x is offset by Samsung, measured 2026-11-23)
         int room = Math.min(left, right) - Math.round((EDGE - ChipView.PAD) * d) - Math.round(6 * d);

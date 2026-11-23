@@ -1960,6 +1960,9 @@ public final class SettingsActivity extends Activity {
         switchRow("Use the empty space", "Bigger cards, smaller gaps and more suggested apps. Cards change in the Grid style "
                 + "(chosen in Good Lock Home Up); without it Samsung's own layout stays.", on, v -> putGlRestart("sbmods_recents_big", v ? "1" : "0"));
         divider();
+        switchRow("Buttons at the bottom", "RAM, Swap, Temp, search and more sit just above \u201cClose all\u201d, within thumb reach; "
+                + "the cards start higher.", gl("sbmods_recents_bottom", 1) != 0, v -> putGlRestart("sbmods_recents_bottom", v ? "1" : "0"));
+        divider();
         switchRow("Open apps column", "A column of your open apps' icons on the right, newest at the bottom. Tap one to open it, "
                 + "long-press to see its name.", gl("sbmods_recents_rail", 1) != 0, v -> putGlRestart("sbmods_recents_rail", v ? "1" : "0"));
         if (on) {

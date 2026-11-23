@@ -36,7 +36,7 @@ final class RecentsRail {
     static final String TAG = "sbmods_recents_rail";
     private static final HashMap<String, Drawable> icons = new HashMap<>();
     private static String shownKey = "";
-    static final int ICON = 40;   // dp; the column is ICON + 8 dp wide
+    static final int ICON = 46;   // dp; the column is ICON + 8 dp wide
 
     /** Add / remove the column; call from Overview's onResume. */
     static void attach(Activity a, FrameLayout box) {
