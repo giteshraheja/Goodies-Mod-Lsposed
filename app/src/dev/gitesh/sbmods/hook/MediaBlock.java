@@ -98,8 +98,12 @@ final class MediaBlock {
         ImageView prev = button(a, android.R.drawable.ic_media_previous, d, 28);
         ImageView play = button(a, android.R.drawable.ic_media_play, d, vertical ? 30 : 38);
         ImageView next = button(a, android.R.drawable.ic_media_next, d, 28);
-        if (!vertical) btns.addView(prev);   // the card's strip keeps two: play / pause and next
-        btns.addView(play); btns.addView(next);
+        btns.addView(prev); btns.addView(play); btns.addView(next);
+        GradientDrawable pb = new GradientDrawable();   // play / pause: the main button, a solid white circle
+        pb.setShape(GradientDrawable.OVAL);
+        pb.setColor(0xFFFFFFFF);
+        play.setBackground(pb);
+        play.setColorFilter(0xFF111111);
         if (vertical) {   // one round dark pill in the card's free strip, like the clear button
             btns.setOrientation(LinearLayout.VERTICAL);
             GradientDrawable pill = new GradientDrawable();
@@ -108,7 +112,7 @@ final class MediaBlock {
             btns.setBackground(pill);
             int vp = Math.round(2 * d);
             btns.setPadding(0, vp, 0, vp);
-            for (View b : new View[]{play, next}) { LinearLayout.LayoutParams l = (LinearLayout.LayoutParams) b.getLayoutParams(); l.leftMargin = l.rightMargin = 0; l.topMargin = l.bottomMargin = Math.round(1 * d); }
+            for (View b : new View[]{prev, play, next}) { LinearLayout.LayoutParams l = (LinearLayout.LayoutParams) b.getLayoutParams(); l.leftMargin = l.rightMargin = 0; l.topMargin = l.bottomMargin = Math.round(1 * d); }
             strip[0] = btns;
         } else {
             LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -131,7 +135,11 @@ final class MediaBlock {
             art.setImageBitmap(bm);
             long dur = md == null ? 0 : md.getLong(MediaMetadata.METADATA_KEY_DURATION);
             boolean playing = st != null && st.getState() == PlaybackState.STATE_PLAYING;
-            play.setImageResource(playing ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play);
+            if (play.getTag() != Boolean.valueOf(playing)) {   // play <-> pause: a quick pop so the change is noticed
+                if (play.getTag() != null) { play.setScaleX(0.6f); play.setScaleY(0.6f); play.animate().scaleX(1f).scaleY(1f).setDuration(220).setInterpolator(new android.view.animation.OvershootInterpolator(2.5f)).start(); }
+                play.setTag(playing);
+                play.setImageResource(playing ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play);
+            }
             sq.setPlaying(playing);
             play.setContentDescription(playing ? "Pause" : "Play");
             long pos = st == null ? 0 : st.getPosition();
@@ -205,6 +213,17 @@ final class MediaBlock {
     private static ImageView button(Activity a, int res, float d, int dp) {
         ImageView b = new ImageView(a);
         if (res != 0) b.setImageResource(res);
+        android.animation.StateListAnimator sla = new android.animation.StateListAnimator();   // springs down when pressed, pops back on release
+        android.animation.AnimatorSet down = new android.animation.AnimatorSet();
+        down.playTogether(android.animation.ObjectAnimator.ofFloat(b, "scaleX", 0.82f), android.animation.ObjectAnimator.ofFloat(b, "scaleY", 0.82f));
+        down.setDuration(90);
+        android.animation.AnimatorSet up = new android.animation.AnimatorSet();
+        up.playTogether(android.animation.ObjectAnimator.ofFloat(b, "scaleX", 1f), android.animation.ObjectAnimator.ofFloat(b, "scaleY", 1f));
+        up.setDuration(260);
+        up.setInterpolator(new android.view.animation.OvershootInterpolator(3f));
+        sla.addState(new int[]{android.R.attr.state_pressed}, down);
+        sla.addState(new int[]{}, up);
+        b.setStateListAnimator(sla);
         b.setColorFilter(0xFFFFFFFF);
         b.setScaleType(ImageView.ScaleType.FIT_CENTER);
         int pad = Math.round(dp / 5f * d);
