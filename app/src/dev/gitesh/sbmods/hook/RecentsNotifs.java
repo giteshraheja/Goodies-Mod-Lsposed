@@ -239,32 +239,29 @@ final class RecentsNotifs {
         t.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         t.setMaxLines(2);   // the whole title (e.g. "Sewa just dropped"), not "Sewa just dro…"
         t.setEllipsize(TextUtils.TruncateAt.END);
-        LinearLayout head = new LinearLayout(a);   // title ........ 5m
-        head.setGravity(Gravity.TOP);   // the age stays on the title's first line
-        head.addView(t, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        if (s.time > 0) {
-            TextView age = new TextView(a);
-            age.setTextColor(0x99FFFFFF);
-            age.setTextSize(TypedValue.COMPLEX_UNIT_SP, 9);
-            age.setSingleLine(true);
-            age.setPadding(Math.round(4 * d), Math.round(2 * d), 0, 0);
-            Runnable upd = () -> age.setText(ago(s.time));
-            upd.run();
-            age.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {   // fresh each time Overview shows it
-                @Override public void onViewAttachedToWindow(View v) { upd.run(); }
-                @Override public void onViewDetachedFromWindow(View v) {}
-            });
-            head.addView(age);
-        }
-        col.addView(head);
-        if (!TextUtils.isEmpty(s.text)) {
+        col.addView(t);   // title gets the full width
+        boolean hasText = !TextUtils.isEmpty(s.text);
+        if (hasText || s.time > 0) {   // "3m · Diljit Dosanjh": the age leads the second line instead of taking room from the title
             TextView b = new TextView(a);
-            b.setText(s.text);
             b.setTextColor(0xCCFFFFFF);
             b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
             b.setMaxLines(BODY_LINES);   // long texts: up to 4 lines (cards trim this when space runs out)
             b.setEllipsize(TextUtils.TruncateAt.END);
-            b.setTag(BODY);
+            if (hasText) b.setTag(BODY);
+            Runnable upd = () -> {
+                if (s.time <= 0) { b.setText(s.text); return; }
+                String age = ago(s.time);
+                android.text.SpannableStringBuilder sb = new android.text.SpannableStringBuilder(age);
+                sb.setSpan(new android.text.style.ForegroundColorSpan(0x8CFFFFFF), 0, age.length(), android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                sb.setSpan(new android.text.style.RelativeSizeSpan(0.9f), 0, age.length(), android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                if (hasText) sb.append(" \u00b7 ").append(s.text);
+                b.setText(sb);
+            };
+            upd.run();
+            b.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {   // fresh age each time Overview shows it
+                @Override public void onViewAttachedToWindow(View v) { upd.run(); }
+                @Override public void onViewDetachedFromWindow(View v) {}
+            });
             col.addView(b);
         }
         r.addView(col, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
