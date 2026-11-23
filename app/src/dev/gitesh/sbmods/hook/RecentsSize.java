@@ -21,12 +21,13 @@ final class RecentsSize {
 
     /** {resource name, resource type, kind, value, tuning setting, min, max} */
     private static final Object[][] WANT = {
-            {"task_scene_scale_grid_phone", "integer", FLOAT, 0.345f, "sbmods_grid_scale", 0.2f, 0.5f},   // card size, share of the screen (Samsung 0.29)
+            {"task_scene_scale_grid_phone", "integer", FLOAT, 0.352f, "sbmods_grid_scale", 0.2f, 0.5f},   // card size, share of the screen (Samsung 0.29)
             {"task_scene_top_grid_phone", "integer", FLOAT, 0.088f, "sbmods_grid_top", 0.03f, 0.3f},      // where the grid starts (Samsung 0.11); the top row moves up 10 dp with it
             {"suggested_apps_default_grid_x", "integer", INT, 6f, "sbmods_sug_cols", 3f, 7f},             // suggested apps per row (Samsung 4)
             {"suggested_apps_height_phone", "fraction", FRACTION, 0.124f, "sbmods_sug_h", 0.05f, 0.2f},    // row height, share of the screen (Samsung 0.124; lower cut the icons off)
             {"row_gap_phone", "integer", FLOAT, 0.03f, "sbmods_grid_rowgap", 0f, 0.1f},                    // gap between the two rows of cards (Samsung 0.06)
             {"page_spacing_grid_phone", "integer", FLOAT, 0.02f, "sbmods_grid_colgap", 0f, 0.1f},          // gap between cards side by side (Samsung 0.04)
+            {"task_icon_ratio_grid_phone", "integer", FLOAT, 115f, "sbmods_grid_icon", 80f, 160f},          // card icon, % of Samsung's size (see iconRatio)
     };
     private static int[] ids;
     private static float[] vals;
@@ -125,6 +126,14 @@ final class RecentsSize {
         try { XposedHelpers.findAndHookMethod(Resources.class, "getFraction", int.class, int.class, int.class, h); } catch (Throwable t) { Log.w("recents size hook 4: " + t); }
     }
 
+    private static final int ICON = 6;
+
+    /** Samsung sizes card icons from the suggested-app icon (RecentStyler.getIconSize: item size x 0.63); with more columns
+     *  those icons shrink, so scale the ratio back by cols/4 and then by the wanted %. */
+    private static void iconRatio() {
+        if (vals[ICON] > 2f) vals[ICON] = 0.63f * (Math.round(vals[2]) / 4f) * (vals[ICON] / 100f);
+    }
+
     /** Tuned values loaded and the feature on (portrait only). */
     private static boolean ready(Resources r) {
         find(r, 0);
@@ -152,6 +161,7 @@ final class RecentsSize {
                     if (f >= (Float) WANT[k][5] && f <= (Float) WANT[k][6]) vals[k] = f;
                 }
             } catch (Throwable t) { on = 1; }
+            iconRatio();
         }
         return on == 1 ? at : -1;
     }

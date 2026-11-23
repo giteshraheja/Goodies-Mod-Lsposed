@@ -148,8 +148,7 @@ final class Mover {
         boolean backGone = plan.mode[ZoneLayout.BACK] == ZoneLayout.STOCK && Float.isNaN(nat[ZoneLayout.BACK]);
         if (backGone) {
             nat[ZoneLayout.BACK] = leftEdge; w[ZoneLayout.BACK] = 0;
-            int lid = id(root, "samsung_ongoing_activity_chip_container");
-            View live = lid == 0 ? null : root.findViewById(lid);
+            View live = BackChip.liveView(root);
             if (BackChip.capsuleShown(live)) {
                 live.getLocationOnScreen(loc);
                 nat[ZoneLayout.BACK] = loc[0] - rloc[0] - live.getTranslationX() + live.getWidth() + gapPx;

@@ -589,11 +589,7 @@ public final class Controller {
     }
 
     private View liveBox() {
-        View r = statusRoot;
-        if (r == null) return null;
-        int id = r.getResources().getIdentifier("samsung_ongoing_activity_chip_container", "id", Config.SYSUI);
-        Log.missId(id, "samsung_ongoing_activity_chip_container", "the back pill beside live activities");
-        return id == 0 ? null : r.findViewById(id);
+        return BackChip.liveView(statusRoot);
     }
 
     private void cancelStack() {

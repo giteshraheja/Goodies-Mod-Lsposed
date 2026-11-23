@@ -161,10 +161,30 @@ final class BackChip {
 
     private View liveBox() {
         TextView c = chip;
-        if (c == null) return null;
-        int id = c.getResources().getIdentifier("samsung_ongoing_activity_chip_container", "id", Config.SYSUI);
-        Log.missId(id, "samsung_ongoing_activity_chip_container", "the back pill beside live activities");
-        return id == 0 ? null : c.getRootView().findViewById(id);
+        return c == null ? null : liveView(c.getRootView());
+    }
+
+    private static int liveId, callId, aospId;
+
+    /** The live activity next to the back button: One UI's capsule (music, timer), else the phone-call / cast chip, which
+     *  Samsung keeps in its own box nearer the clock (samsung_status_bar_chips_container), else Android's own chip
+     *  (screen recording, sharing the screen: ongoing_activity_chip_primary). */
+    static View liveView(View root) {
+        if (root == null) return null;
+        if (liveId == 0) {
+            android.content.res.Resources r = root.getResources();
+            liveId = r.getIdentifier("samsung_ongoing_activity_chip_container", "id", Config.SYSUI);
+            callId = r.getIdentifier("samsung_status_bar_chips_container", "id", Config.SYSUI);
+            aospId = r.getIdentifier("ongoing_activity_chip_primary", "id", Config.SYSUI);
+            Log.missId(liveId, "samsung_ongoing_activity_chip_container", "the back pill beside live activities");
+            if (liveId == 0) return null;
+        }
+        View live = root.findViewById(liveId);
+        if (capsuleShown(live)) return live;
+        View v = callId == 0 ? null : root.findViewById(callId);
+        if (capsuleShown(v)) return v;
+        v = aospId == 0 ? null : root.findViewById(aospId);
+        return capsuleShown(v) ? v : live;
     }
 
     /**
