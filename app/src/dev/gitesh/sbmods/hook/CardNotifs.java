@@ -178,9 +178,13 @@ final class CardNotifs {
             sv.post(() -> sv.fullScroll(View.FOCUS_DOWN));
             return;
         }
+        Fit outer = new Fit(a);   // [rows + clear button] above [music / live blocks]; shrinks long texts to fit the card
+        outer.setOrientation(LinearLayout.VERTICAL);
+        outer.setGravity(Gravity.BOTTOM);
+        outer.setPadding(pad, 0, pad, pad);
+        FrameLayout upper = new FrameLayout(a);
         LinearLayout col = new LinearLayout(a);
         col.setOrientation(LinearLayout.VERTICAL);
-        col.setPadding(pad, 0, 0, pad);
         List<RecentsNotifs.N> live = new ArrayList<>();   // music / calls / scores: their own bigger block at the very bottom
         List<RecentsNotifs.N> rest = new ArrayList<>();
         for (RecentsNotifs.N s : ns) (RecentsNotifs.live(s) ? live : rest).add(s);
@@ -191,20 +195,13 @@ final class CardNotifs {
             col.addView(stack(a, ns.get(shown), more, d, () -> { p.expanded = true; p.key = ""; if (layer != null) layer.invalidate(); }), rowLp(gap));
         }
         for (int i = shown - 1; i >= 0; i--) col.addView(RecentsNotifs.row(a, ns.get(i), d, again), rowLp(gap));   // newest at the bottom
-        View[] strip = new View[1];   // music buttons: first player's controls go into the card's right strip
-        for (int i = Math.min(2, live.size()) - 1; i >= 0; i--) {
-            RecentsNotifs.N s = live.get(i);
-            View v = null;
-            if (s.session != null && strip[0] == null) { try { v = MediaBlock.make(a, s, d, strip); } catch (Throwable t) { Log.w("media block: " + t); } }
-            col.addView(v != null ? v : RecentsNotifs.liveBlock(a, s, d, again), rowLp(gap));
-        }
         FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM);
-        cl.rightMargin = Math.round(STRIP_DP * d);
-        p.root.addView(col, cl);
+        cl.rightMargin = Math.round((STRIP_DP - 6) * d);   // rows keep off the card's right strip
+        upper.addView(col, cl);
         boolean any = false;
         for (RecentsNotifs.N s : rest) if (s.clear) any = true;
         for (RecentsNotifs.N s : live) if (s.clear) any = true;
-        if (any) {   // clear this card's notifications: a small round button just right of the list, in the card's free strip
+        if (any) {   // clear this card's notifications: a small round button in the card's free strip, just above the music
             TextView x = new TextView(a);
             x.setText("\u2715");
             x.setTextColor(0xFFFFFFFF);
@@ -217,18 +214,38 @@ final class CardNotifs {
             x.setContentDescription("Clear this app's notifications");
             int xs = Math.round(28 * d);
             FrameLayout.LayoutParams xl = new FrameLayout.LayoutParams(xs, xs, Gravity.BOTTOM | Gravity.END);
-            xl.rightMargin = Math.round((STRIP_DP - 28) / 2f * d);   // centred in the card's free strip
-            xl.bottomMargin = pad;
+            xl.rightMargin = Math.round((STRIP_DP - 28) / 2f * d - pad);   // centred in the card's free strip
+            xl.topMargin = gap;
             final String pkg = p.pkg;
             x.setOnClickListener(v -> { v.performHapticFeedback(android.view.HapticFeedbackConstants.CONTEXT_CLICK); RecentsNotifs.clear(a, java.util.Collections.singleton(pkg)); again.run(); });
-            p.root.addView(x, xl);
+            upper.addView(x, xl);
         }
-        if (strip[0] != null) {   // music buttons stacked in the strip, just above the clear button
-            int sw = Math.round(30 * d);
-            FrameLayout.LayoutParams ml = new FrameLayout.LayoutParams(sw, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.END);
-            ml.rightMargin = Math.round((STRIP_DP - 30) / 2f * d);
-            ml.bottomMargin = pad + (any ? Math.round(34 * d) : 0);
-            p.root.addView(strip[0], ml);
+        outer.addView(upper, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        for (int i = Math.min(2, live.size()) - 1; i >= 0; i--)   // live blocks use the card's full width
+            outer.addView(RecentsNotifs.liveBlock(a, live.get(i), d, again), rowLp(gap));
+        p.root.addView(outer, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM));
+    }
+
+    /** Lets notification texts use up to 4 lines, then trims them (oldest rows first) until everything fits the card. */
+    private static final class Fit extends LinearLayout {
+        Fit(Activity a) { super(a); }
+        @Override protected void onMeasure(int w, int h) {
+            List<TextView> bodies = new ArrayList<>();
+            bodies(this, bodies);
+            for (TextView t : bodies) if (t.getMaxLines() != RecentsNotifs.BODY_LINES) t.setMaxLines(RecentsNotifs.BODY_LINES);
+            super.onMeasure(w, h);
+            int room = MeasureSpec.getSize(h);
+            if (MeasureSpec.getMode(h) == MeasureSpec.UNSPECIFIED) return;
+            for (int lines = RecentsNotifs.BODY_LINES; getMeasuredHeight() > room && lines > 1; ) {
+                boolean cut = false;   // oldest (top) row first, one line at a time
+                for (TextView t : bodies) if (t.getMaxLines() == lines && t.getLineCount() > lines - 1) { t.setMaxLines(lines - 1); cut = true; break; }
+                if (!cut) { lines--; continue; }
+                super.onMeasure(w, h);
+            }
+        }
+        private static void bodies(View v, List<TextView> out) {
+            if (v instanceof TextView && RecentsNotifs.BODY.equals(v.getTag())) { out.add((TextView) v); return; }
+            if (v instanceof ViewGroup) { ViewGroup g = (ViewGroup) v; for (int i = 0; i < g.getChildCount(); i++) bodies(g.getChildAt(i), out); }
         }
     }
 

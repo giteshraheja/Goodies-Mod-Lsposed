@@ -30,10 +30,15 @@ import android.widget.TextView;
 final class MediaBlock {
     private MediaBlock() {}
 
-    static View make(Activity a, RecentsNotifs.N n, float d) { return make(a, n, d, null); }
-
-    /** strip != null: the buttons go into strip[0] as a vertical column (for the card's right strip) instead of a row. */
-    static View make(Activity a, RecentsNotifs.N n, float d, View[] strip) {
+    /**
+     * Compact player sized for a Recent apps card (~130 dp wide):
+     *   [cover] title / artist      [like]
+     *   ~~~~~~~~~ seek bar ~~~~~~~~~~
+     *   0:52                     2:58
+     *   [extra] prev (play) next [extra]
+     * Blurred cover behind, darkened so the text stays readable.
+     */
+    static View make(Activity a, RecentsNotifs.N n, float d) {
         MediaController mc = new MediaController(a, n.session);
         FrameLayout box = new FrameLayout(a);
         box.setOutlineProvider(new ViewOutlineProvider() {
@@ -44,82 +49,100 @@ final class MediaBlock {
         base.setColor(0xFF2C2C2E);
         box.setBackground(base);
 
-        ImageView art = new ImageView(a) {   // cover fills the block (sized by the text, not by the picture), darkened so the text stays readable
+        ImageView art = new ImageView(a) {   // fills the block (sized by the content, not by the picture)
             @Override protected void onMeasure(int w, int h) {
                 if (View.MeasureSpec.getMode(h) != View.MeasureSpec.EXACTLY) { setMeasuredDimension(View.MeasureSpec.getSize(w), 0); return; }
                 super.onMeasure(w, h);
             }
         };
         art.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        art.setRenderEffect(android.graphics.RenderEffect.createBlurEffect(18 * d, 18 * d, android.graphics.Shader.TileMode.CLAMP));
         box.addView(art, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x66000000, 0xCC000000});
-        art.setForeground(g);   // shade drawn over the cover (a separate view would grow to the whole card)
+        View shade = new View(a) {   // over the blur; 0 height when unconstrained, same trick as the cover
+            @Override protected void onMeasure(int w, int h) {
+                if (View.MeasureSpec.getMode(h) != View.MeasureSpec.EXACTLY) { setMeasuredDimension(View.MeasureSpec.getSize(w), 0); return; }
+                super.onMeasure(w, h);
+            }
+        };
+        shade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x8C000000, 0xB3000000}));
+        box.addView(shade, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         LinearLayout col = new LinearLayout(a);
         col.setOrientation(LinearLayout.VERTICAL);
         int p = Math.round(8 * d);
-        col.setPadding(p, Math.round(6 * d), p, Math.round(6 * d));
+        col.setPadding(p, p, p, Math.round(4 * d));
+
+        LinearLayout head = new LinearLayout(a);   // cover thumb + title / artist + like
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        ImageView thumb = new ImageView(a);
+        thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        thumb.setOutlineProvider(new ViewOutlineProvider() {
+            @Override public void getOutline(View v, Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), 8 * d); }
+        });
+        thumb.setClipToOutline(true);
+        int ts = Math.round(34 * d);
+        LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(ts, ts);
+        tl.rightMargin = Math.round(7 * d);
+        head.addView(thumb, tl);
+        LinearLayout names = new LinearLayout(a);
+        names.setOrientation(LinearLayout.VERTICAL);
         TextView title = text(a, 12, true);
-        title.setSingleLine(false);   // full song name: up to two lines
-        title.setMaxLines(2);
         TextView artist = text(a, 10, false);
         artist.setTextColor(0xCCFFFFFF);
-        col.addView(title);
-        LinearLayout sub = new LinearLayout(a);   // artist + "0:13 / 3:50" on one line
-        sub.addView(artist, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        col.addView(sub);
+        names.addView(title);
+        names.addView(artist);
+        head.addView(names, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        FrameLayout likeSlot = new FrameLayout(a);   // the app's first extra button (usually like)
+        head.addView(likeSlot, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        col.addView(head, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         SeekBar bar = new SeekBar(a);
-        bar.setPadding(0, Math.round(6 * d), 0, Math.round(2 * d));
+        bar.setPadding(0, Math.round(6 * d), 0, 0);
         Squiggly sq = new Squiggly(d);   // One UI's moving wave
         bar.setProgressDrawable(sq);
-        GradientDrawable thumb = new GradientDrawable();   // the upright pill handle of One UI's player
-        thumb.setColor(0xFFFFFFFF);
-        thumb.setCornerRadius(2 * d);
-        thumb.setSize(Math.round(4 * d), Math.round(16 * d));
-        bar.setThumb(thumb);
+        GradientDrawable knob = new GradientDrawable();   // upright pill handle
+        knob.setColor(0xFFFFFFFF);
+        knob.setCornerRadius(2 * d);
+        knob.setSize(Math.round(4 * d), Math.round(14 * d));
+        bar.setThumb(knob);
         bar.setSplitTrack(false);
-        bar.setMinHeight(Math.round(16 * d));
-        bar.setMaxHeight(Math.round(16 * d));
+        bar.setMinHeight(Math.round(14 * d));
+        bar.setMaxHeight(Math.round(14 * d));
         col.addView(bar, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        LinearLayout times = new LinearLayout(a);   // 0:52 ............ 2:58
         TextView now = text(a, 9, false), total = text(a, 9, false);
         now.setTextColor(0xB3FFFFFF); total.setTextColor(0xB3FFFFFF);
-        now.setPadding(Math.round(4 * d), 0, 0, 0);
-        sub.addView(now);
-        sub.addView(total);
+        times.addView(now, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        times.addView(total);
+        col.addView(times, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        LinearLayout extra = new LinearLayout(a);   // the app's own extra buttons (thumbs up, dislike, shuffle...) from its media session
-        extra.setGravity(Gravity.CENTER_VERTICAL);
-        col.addView(extra, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        final String[] extraKey = {""};
-        LinearLayout btns = new LinearLayout(a);
-        btns.setGravity(Gravity.CENTER);
-        boolean vertical = strip != null;
+        LinearLayout btns = new LinearLayout(a);   // equal slots so it fits any card width
+        btns.setGravity(Gravity.CENTER_VERTICAL);
+        FrameLayout leftSlot = new FrameLayout(a), rightSlot = new FrameLayout(a);
         ImageView prev = button(a, android.R.drawable.ic_media_previous, d, 28);
-        ImageView play = button(a, android.R.drawable.ic_media_play, d, vertical ? 30 : 38);
+        ImageView play = button(a, android.R.drawable.ic_media_play, d, 34);
         ImageView next = button(a, android.R.drawable.ic_media_next, d, 28);
-        btns.addView(prev); btns.addView(play); btns.addView(next);
-        GradientDrawable pb = new GradientDrawable();   // play / pause: the main button, a solid white circle
+        GradientDrawable pb = new GradientDrawable();   // play / pause: solid white circle
         pb.setShape(GradientDrawable.OVAL);
         pb.setColor(0xFFFFFFFF);
         play.setBackground(pb);
         play.setColorFilter(0xFF111111);
-        if (vertical) {   // one round dark pill in the card's free strip, like the clear button
-            btns.setOrientation(LinearLayout.VERTICAL);
-            GradientDrawable pill = new GradientDrawable();
-            pill.setColor(0xE61C1C1E);
-            pill.setCornerRadius(15 * d);
-            btns.setBackground(pill);
-            int vp = Math.round(2 * d);
-            btns.setPadding(0, vp, 0, vp);
-            for (View b : new View[]{prev, play, next}) { LinearLayout.LayoutParams l = (LinearLayout.LayoutParams) b.getLayoutParams(); l.leftMargin = l.rightMargin = 0; l.topMargin = l.bottomMargin = Math.round(1 * d); }
-            strip[0] = btns;
-        } else {
-            LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            bl.topMargin = Math.round(2 * d);
-            col.addView(btns, bl);
+        View[] slots = {leftSlot, prev, play, next, rightSlot};
+        float[] wts = {1f, 1f, 1.3f, 1f, 1f};
+        for (int i = 0; i < slots.length; i++) {
+            FrameLayout cell = slots[i] instanceof FrameLayout ? (FrameLayout) slots[i] : new FrameLayout(a);
+            if (cell != slots[i]) {
+                ViewGroup.LayoutParams ol = slots[i].getLayoutParams();
+                cell.addView(slots[i], new FrameLayout.LayoutParams(ol.width, ol.height, Gravity.CENTER));
+            }
+            btns.addView(cell, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, wts[i]));
         }
+        LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        bl.topMargin = Math.round(2 * d);
+        col.addView(btns, bl);
         box.addView(col, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        FrameLayout[] extraSlots = {likeSlot, leftSlot, rightSlot};
+        final String[] extraKey = {""};
 
         final boolean[] dragging = {false};
         Runnable show = () -> {
@@ -133,6 +156,8 @@ final class MediaBlock {
             if (bm == null && md != null) bm = md.getBitmap(MediaMetadata.METADATA_KEY_ART);
             if (bm == null && md != null) bm = md.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON);
             art.setImageBitmap(bm);
+            thumb.setImageBitmap(bm);
+            thumb.setVisibility(bm != null ? View.VISIBLE : View.GONE);
             long dur = md == null ? 0 : md.getLong(MediaMetadata.METADATA_KEY_DURATION);
             boolean playing = st != null && st.getState() == PlaybackState.STATE_PLAYING;
             if (play.getTag() != Boolean.valueOf(playing)) {   // play <-> pause: a quick pop so the change is noticed
@@ -146,27 +171,27 @@ final class MediaBlock {
             if (playing && st.getLastPositionUpdateTime() > 0) pos += (long) ((SystemClock.elapsedRealtime() - st.getLastPositionUpdateTime()) * st.getPlaybackSpeed());
             if (dur > 0) pos = Math.min(pos, dur);
             bar.setVisibility(dur > 0 ? View.VISIBLE : View.GONE);
-            now.setVisibility(dur > 0 ? View.VISIBLE : View.GONE); total.setVisibility(dur > 0 ? View.VISIBLE : View.GONE);
+            times.setVisibility(dur > 0 ? View.VISIBLE : View.GONE);
             bar.setEnabled(st != null && (st.getActions() & PlaybackState.ACTION_SEEK_TO) != 0);
             if (!dragging[0] && dur > 0) { bar.setMax((int) (dur / 1000)); bar.setProgress((int) (pos / 1000)); now.setText(time(pos)); }
-            total.setText("/" + time(dur));
+            total.setText(time(dur));
             java.util.List<PlaybackState.CustomAction> cas = st == null ? java.util.Collections.emptyList() : st.getCustomActions();
             StringBuilder k = new StringBuilder();
             for (PlaybackState.CustomAction ca : cas) k.append(ca.getAction()).append(ca.getIcon()).append(',');
             if (!k.toString().equals(extraKey[0])) {   // rebuild only when the app changes its buttons (e.g. liked -> unlike)
                 extraKey[0] = k.toString();
-                extra.removeAllViews();
-                int max = Math.min(4, cas.size());
-                for (int i = 0; i < max; i++) {
+                for (FrameLayout sl : extraSlots) sl.removeAllViews();
+                int used = 0;
+                for (int i = 0; i < cas.size() && used < extraSlots.length; i++) {   // 1st: beside the title, 2nd / 3rd: either side of the controls
                     PlaybackState.CustomAction ca = cas.get(i);
                     ImageView iv = button(a, 0, d, 26);
                     try { iv.setImageDrawable(a.createPackageContext(mc.getPackageName(), 0).getDrawable(ca.getIcon())); } catch (Throwable e) { continue; }
                     iv.setContentDescription(ca.getName());
                     iv.setOnClickListener(v -> { tap(v); mc.getTransportControls().sendCustomAction(ca, null); });
                     iv.setOnLongClickListener(v -> { android.widget.Toast.makeText(a, ca.getName(), android.widget.Toast.LENGTH_SHORT).show(); return true; });
-                    extra.addView(iv);
+                    ViewGroup.LayoutParams il = iv.getLayoutParams();
+                    extraSlots[used++].addView(iv, new FrameLayout.LayoutParams(il.width, il.height, Gravity.CENTER));
                 }
-                extra.setVisibility(extra.getChildCount() > 0 ? View.VISIBLE : View.GONE);
             }
         };
         bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {

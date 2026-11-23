@@ -103,7 +103,8 @@ final class SysNotifs {
         CharSequence title = e.getCharSequence(Notification.EXTRA_TITLE);
         if (title == null) title = e.getCharSequence(Notification.EXTRA_TITLE_BIG);
         CharSequence text = e.getCharSequence(Notification.EXTRA_TEXT);
-        if (text == null) text = e.getCharSequence(Notification.EXTRA_BIG_TEXT);
+        CharSequence big = e.getCharSequence(Notification.EXTRA_BIG_TEXT);   // expanded text when it says more
+        if (big != null && (text == null || big.length() > text.length())) text = big;
         if (text == null) { CharSequence[] lines = e.getCharSequenceArray(Notification.EXTRA_TEXT_LINES); if (lines != null && lines.length > 0) text = lines[lines.length - 1]; }
         if ((title == null || title.length() == 0) && (text == null || text.length() == 0)) return null;
         Bundle b = new Bundle();

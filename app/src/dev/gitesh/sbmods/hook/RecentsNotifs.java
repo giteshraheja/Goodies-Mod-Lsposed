@@ -154,6 +154,9 @@ final class RecentsNotifs {
         try { return ic.loadDrawable(a.createPackageContext(pkg, 0)); } catch (Throwable t) { return null; }
     }
 
+    static final int BODY_LINES = 4;
+    static final String BODY = "sbmods_nbody";
+
     /** One notification row: app's small icon, title, text; tap opens it, a sideways swipe dismisses it. */
     static View row(Activity a, N s, float d, Runnable after) {
         LinearLayout r = new LinearLayout(a);
@@ -181,8 +184,9 @@ final class RecentsNotifs {
             b.setText(s.text);
             b.setTextColor(0xCCFFFFFF);
             b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
-            b.setSingleLine(true);   // one line each: rows stay short, tap opens the full notification
+            b.setMaxLines(BODY_LINES);   // long texts: up to 4 lines (cards trim this when space runs out)
             b.setEllipsize(TextUtils.TruncateAt.END);
+            b.setTag(BODY);
             col.addView(b);
         }
         r.addView(col, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
