@@ -21,8 +21,8 @@ final class RecentsSize {
 
     /** {resource name, resource type, kind, value, tuning setting, min, max} */
     private static final Object[][] WANT = {
-            {"task_scene_scale_grid_phone", "integer", FLOAT, 0.352f, "sbmods_grid_scale", 0.2f, 0.5f},   // card size, share of the screen (Samsung 0.29)
-            {"task_scene_top_grid_phone", "integer", FLOAT, 0.088f, "sbmods_grid_top", 0.03f, 0.3f},      // where the grid starts (Samsung 0.11); the top row moves up 10 dp with it
+            {"task_scene_scale_grid_phone", "integer", FLOAT, 0.364f, "sbmods_grid_scale", 0.2f, 0.5f},   // card size, share of the screen (Samsung 0.29)
+            {"task_scene_top_grid_phone", "integer", FLOAT, 0.077f, "sbmods_grid_top", 0.03f, 0.3f},      // where the grid starts (Samsung 0.11); the top row moves up 20 dp with it
             {"suggested_apps_default_grid_x", "integer", INT, 6f, "sbmods_sug_cols", 3f, 7f},             // suggested apps per row (Samsung 4)
             {"suggested_apps_height_phone", "fraction", FRACTION, 0.124f, "sbmods_sug_h", 0.05f, 0.2f},    // row height, share of the screen (Samsung 0.124; lower cut the icons off)
             {"row_gap_phone", "integer", FLOAT, 0.03f, "sbmods_grid_rowgap", 0f, 0.1f},                    // gap between the two rows of cards (Samsung 0.06)

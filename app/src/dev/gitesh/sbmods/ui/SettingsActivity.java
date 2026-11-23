@@ -1955,14 +1955,14 @@ public final class SettingsActivity extends Activity {
     private void buildRecentsLayout() {
         group("Recent apps layout");
         cardResetAction(() -> putGlRestart("sbmods_recents_big", "1", "sbmods_grid_scale", "", "sbmods_grid_rowgap", "", "sbmods_grid_colgap", "",
-                "sbmods_grid_top", "", "sbmods_grid_icon", "", "sbmods_sug_cols", "", "sbmods_top_up", "", "sbmods_ca_shift", ""));
+                "sbmods_grid_top", "", "sbmods_grid_icon", "", "sbmods_sug_cols", "", "sbmods_top_up", "", "sbmods_sug_down", "", "sbmods_ca_shift", ""));
         boolean on = gl("sbmods_recents_big", 1) != 0;
         switchRow("Use the empty space", "Bigger cards, smaller gaps and more suggested apps. Cards change in the Grid style "
                 + "(chosen in Good Lock Home Up); without it Samsung's own layout stays.", on, v -> putGlRestart("sbmods_recents_big", v ? "1" : "0"));
         if (on) {
             divider();
-            slider("Card size", 290, 400, glMil("sbmods_grid_scale", 352), v -> String.format(Locale.ROOT, "%.1f%%", v / 10f),
-                    v -> later("sbmods_grid_scale", v / 1000f), 352);
+            slider("Card size", 290, 400, glMil("sbmods_grid_scale", 364), v -> String.format(Locale.ROOT, "%.1f%%", v / 10f),
+                    v -> later("sbmods_grid_scale", v / 1000f), 364);
             divider();
             slider("App icon on the cards", 80, 160, gl("sbmods_grid_icon", 115), v -> v == 100 ? "Samsung's" : v + "%",
                     v -> later("sbmods_grid_icon", v), 115);
@@ -1976,10 +1976,12 @@ public final class SettingsActivity extends Activity {
                 slider("Gap between cards", 0, 40, glMil("sbmods_grid_colgap", 20), v -> v == 40 ? "Samsung's" : String.format(Locale.ROOT, "%.1f%%", v / 10f),
                         v -> later("sbmods_grid_colgap", v / 1000f), 20);
                 divider();
-                slider("Where the cards start", 30, 110, glMil("sbmods_grid_top", 88), v -> v == 110 ? "Samsung's" : String.format(Locale.ROOT, "%.1f%%", v / 10f),
-                        v -> later("sbmods_grid_top", v / 1000f), 88);
+                slider("Where the cards start", 30, 110, glMil("sbmods_grid_top", 77), v -> v == 110 ? "Samsung's" : String.format(Locale.ROOT, "%.1f%%", v / 10f),
+                        v -> later("sbmods_grid_top", v / 1000f), 77);
                 divider();
-                slider("Top buttons closer to the status bar", 0, 20, gl("sbmods_top_up", 10), v -> v == 0 ? "Off" : v + " dp", v -> later("sbmods_top_up", v), 10);
+                slider("Top buttons closer to the status bar", 0, 30, gl("sbmods_top_up", 20), v -> v == 0 ? "Off" : v + " dp", v -> later("sbmods_top_up", v), 20);
+                divider();
+                slider("Suggested apps closer to the bottom", 0, 30, gl("sbmods_sug_down", 14), v -> v == 0 ? "Off" : v + " dp", v -> later("sbmods_sug_down", v), 14);
             }
         }
         endGroup("Recent apps opens with bigger cards that fill the screen: the top buttons move closer to the status bar, \"Close all\" sits just above "

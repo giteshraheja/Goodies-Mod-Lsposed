@@ -137,7 +137,8 @@ final class RecentsChip {
         boolean big = Global.gint(a, "sbmods_recents_big", 1) != 0;   // "Use the empty space" off: Samsung's own places
         caOn = big;
         if (!big) caShiftDp = 0;
-        topUpDp = big ? Math.max(0, Math.min(20, Global.gint(a, "sbmods_top_up", 10))) : 0;
+        topUpDp = big ? Math.max(0, Math.min(30, Global.gint(a, "sbmods_top_up", 20))) : 0;
+        sugDownDp = big ? Math.max(0, Math.min(30, Global.gint(a, "sbmods_sug_down", 14))) : 0;
         sugScale = Math.max(50, Math.min(100, Global.gint(a, "sbmods_sug_pct", 100))) / 100f;
         Global.gset(a, "sbmods_watch", "1");   // the helper measures CPU load only while this screen is open
         fitBeforeDraw();
@@ -280,8 +281,9 @@ final class RecentsChip {
         return id == 0 ? null : a.findViewById(id);
     }
 
-    private static int topUpDp = 10;
+    private static int topUpDp = 20;
     private static boolean caOn = true;
+    private static int sugDownDp = 14;   // suggested apps moved down toward the gesture bar (global sbmods_sug_down)
     private static float sugScale = 1f;   // Samsung lays out the lower 6-column row itself (RecentsSize); this extra view scale stays for tuning
 
     /** dp "Close all" moves down (global sbmods_ca_shift, read when Overview opens; 0 = Samsung's place). */
@@ -302,7 +304,9 @@ final class RecentsChip {
             float sc = sugScale;
             sug.setPivotX(sug.getWidth() / 2f); sug.setPivotY(sug.getHeight());
             if (sug.getScaleX() != sc) { sug.setScaleX(sc); sug.setScaleY(sc); }
-            int iconTop = restPos(sug, box)[1] + Math.round(sug.getHeight() * (1 - sc) + 21 * d * sc);   // icons are drawn ~21 dp below the row's top
+            float down = sugDownDp * d;
+            if (sug.getTranslationY() != down) sug.setTranslationY(down);
+            int iconTop = restPos(sug, box)[1] + Math.round(down + sug.getHeight() * (1 - sc) + 21 * d * sc);   // icons are drawn ~21 dp below the row's top
             shift = Math.max(0, Math.min(Math.round(48 * d), iconTop - Math.round(9 * d) - (b[1] + btn.getHeight())));
         }
         if (btn.getTranslationY() != shift) btn.setTranslationY(shift);
