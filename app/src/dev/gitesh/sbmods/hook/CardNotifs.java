@@ -184,7 +184,19 @@ final class CardNotifs {
             col.setOrientation(LinearLayout.VERTICAL);
             col.setGravity(Gravity.BOTTOM);
             col.setPadding(pad, pad, 0, pad);
-            col.addView(pill(a, "Show less", d, () -> { p.expanded = false; p.key = ""; if (layer != null) layer.invalidate(); }));
+            LinearLayout head = new LinearLayout(a);   // "Show less" + "Clear N" (this app's clearable ones)
+            head.addView(pill(a, "Show less", d, () -> { p.expanded = false; p.key = ""; if (layer != null) layer.invalidate(); }), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+            int nc = 0;
+            for (RecentsNotifs.N s : ns) if (s.clear) nc++;
+            if (nc > 0) {
+                final String pkg = p.pkg;
+                TextView cl = pill(a, "Clear " + nc, d, () -> { RecentsNotifs.clear(a, java.util.Collections.singleton(pkg)); p.expanded = false; again.run(); });
+                cl.setContentDescription("Clear this app's notifications");
+                LinearLayout.LayoutParams cll = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+                cll.leftMargin = gap;
+                head.addView(cl, cll);
+            }
+            col.addView(head);
             for (int i = ns.size() - 1; i >= 0; i--) col.addView(RecentsNotifs.row(a, ns.get(i), d, again), rowLp(gap));
             sv.addView(col, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
             GradientDrawable shade = new GradientDrawable();

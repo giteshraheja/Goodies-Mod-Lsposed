@@ -315,8 +315,18 @@ final class TapActions {
     /** Samsung's Performance profile follows power saving: on = Light, off = Standard
      *  (Device Care keeps it in global sem_low_heat_mode, 1 = Light; the system watches that setting). */
     private static void perfProfile(Context ctx, boolean light) {
-        try { Global.gset(ctx, "sem_low_heat_mode", light ? "1" : "0"); Log.i("performance profile -> " + (light ? "Light" : "Standard")); }
+        String want = light ? "1" : "0";
+        try { Global.gset(ctx, "sem_low_heat_mode", want); Log.i("performance profile -> " + (light ? "Light" : "Standard")); }
         catch (Throwable t) { Log.w("performance profile: " + t); }
+        // Device Care restores its own profile ~3 s after power saving changes: set ours again once it is done
+        Handler h = new Handler(Looper.getMainLooper());
+        for (long ms : new long[]{2500, 5000, 9000}) h.postDelayed(() -> {
+            try {
+                if (Settings.Global.getInt(ctx.getContentResolver(), "low_power", 0) != (light ? 1 : 0)) return;   // the user changed power saving again
+                String now = Settings.Global.getString(ctx.getContentResolver(), "sem_low_heat_mode");
+                if (!want.equals(now)) { Global.gset(ctx, "sem_low_heat_mode", want); Log.i("performance profile re-set after Device Care (" + now + " -> " + want + ")"); }
+            } catch (Throwable t) { Log.w("performance profile recheck: " + t); }
+        }, ms);
     }
 
     // ---- flashlight: track state with a torch callback, registered once
