@@ -310,7 +310,9 @@ final class CardNotifs {
     }
 
     private static View stack(Activity a, RecentsNotifs.N s, int more, float d, Runnable open) {
-        FrameLayout f = new FrameLayout(a);
+        FrameLayout f = new FrameLayout(a) {   // as tall as the front row: the match_parent edge must not take the whole card (it hid the rows below)
+            @Override protected void onMeasure(int w, int h) { super.onMeasure(w, MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED)); }
+        };
         View back = new View(a);   // the edge of the cards underneath
         GradientDrawable bb = new GradientDrawable();
         bb.setColor(0x991C1C1E);

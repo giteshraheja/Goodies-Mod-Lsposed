@@ -78,13 +78,17 @@ final class SysNotifs {
                 HashSet<String> withChildren = new HashSet<>();
                 for (StatusBarNotification s : all)
                     if (s.getNotification().getGroup() != null && (s.getNotification().flags & Notification.FLAG_GROUP_SUMMARY) == 0) withChildren.add(s.getPackageName() + "|" + s.getNotification().getGroup());
+                java.util.Arrays.sort(all, (x, y) -> Long.compare(y.getPostTime(), x.getPostTime()));   // newest first, so a per-app cap keeps the newest
+                java.util.HashMap<String, Integer> per = new java.util.HashMap<>();
                 for (StatusBarNotification s : all) {
                     Notification n = s.getNotification();
                     if (s.getUserId() != 0 && s.getUserId() != -1) continue;
                     if ((n.flags & Notification.FLAG_GROUP_SUMMARY) != 0 && n.getGroup() != null && withChildren.contains(s.getPackageName() + "|" + n.getGroup())) continue;   // groups merge into one list
+                    int c = per.getOrDefault(s.getPackageName(), 0);
+                    if (c >= 25) continue;   // cap per app: one busy app (49 Outlook mails) must not push other apps' notifications out
                     Bundle b = pack(s);
-                    if (b != null) out.add(b);
-                    if (out.size() >= 80) break;
+                    if (b != null) { out.add(b); per.put(s.getPackageName(), c + 1); }
+                    if (out.size() >= 200) break;
                 }
             }
         }
